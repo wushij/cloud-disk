@@ -1,0 +1,12 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: clouddisk-admin-server
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"

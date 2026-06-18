@@ -1,0 +1,13 @@
+# 无 Redis 时的本地降级：纯内存缓存 + 内存 Token（profile: local,memory）
+spring:
+  config:
+    activate:
+      on-profile: memory
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - cn.dev33.satoken.dao.SaTokenDaoRedisJackson
+
+clouddisk:
+  redis:
+    enabled: false

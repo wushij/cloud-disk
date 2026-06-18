@@ -1,0 +1,401 @@
+/* ============================================
+   CloudDisk Pro - 现代科技感主题
+   ============================================ */
+
+:root {
+  /* ---- 主题令牌 → 兼容 cd 变量 ---- */
+  --cd-primary: var(--theme-primary);
+  --cd-primary-light: color-mix(in srgb, var(--theme-primary) 65%, white);
+  --cd-primary-dark: var(--theme-primary-hover);
+  --cd-primary-bg: var(--theme-primary-muted);
+  --cd-primary-gradient: linear-gradient(
+    135deg,
+    var(--theme-primary) 0%,
+    color-mix(in srgb, var(--theme-primary) 75%, #6366f1) 100%
+  );
+  --cd-primary-gradient-hover: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--theme-primary) 75%, #6366f1) 0%,
+    var(--theme-primary) 100%
+  );
+
+  --cd-sidebar-bg: var(--theme-sidebar-bg);
+  --cd-sidebar-width: 240px;
+  --cd-sidebar-hover: var(--theme-primary-muted);
+  --cd-sidebar-active: var(--theme-primary-muted-strong);
+  --cd-sidebar-text: var(--theme-text-base);
+  --cd-sidebar-text-muted: var(--theme-text-secondary);
+
+  --cd-bg: var(--theme-bg);
+  --cd-bg-white: #ffffff;
+  --cd-border: var(--theme-border);
+  --cd-border-light: color-mix(in srgb, var(--theme-border) 70%, white);
+  --cd-text-primary: var(--theme-text-base);
+  --cd-text-regular: #475569;
+  --cd-text-secondary: var(--theme-text-secondary);
+  --cd-text-placeholder: #94a3b8;
+
+  /* ---- 功能色 ---- */
+  --cd-success: #22C55E;
+  --cd-success-bg: #ECFDF5;
+  --cd-warning: #F59E0B;
+  --cd-warning-bg: #FFFBEB;
+  --cd-danger: #EF4444;
+  --cd-danger-bg: #FEF2F2;
+  --cd-info: #3B82F6;
+  --cd-info-bg: #EFF6FF;
+
+  /* ---- 文件类型色 ---- */
+  --cd-file-folder: #F59E0B;
+  --cd-file-image: #22C55E;
+  --cd-file-video: #A855F7;
+  --cd-file-pdf: #EF4444;
+  --cd-file-doc: #3B82F6;
+  --cd-file-excel: #22C55E;
+  --cd-file-ppt: #F97316;
+  --cd-file-archive: #8B92A5;
+  --cd-file-default: #6B7280;
+
+  /* ---- 圆角 ---- */
+  --cd-radius-sm: 6px;
+  --cd-radius: 8px;
+  --cd-radius-lg: 12px;
+  --cd-radius-xl: 16px;
+  --cd-radius-full: 9999px;
+
+  /* ---- 阴影 ---- */
+  --cd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cd-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cd-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --cd-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08), 0 4px 6px rgba(0, 0, 0, 0.04);
+  --cd-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.06);
+
+  /* ---- 间距 ---- */
+  --cd-gap-xs: 4px;
+  --cd-gap-sm: 8px;
+  --cd-gap: 12px;
+  --cd-gap-md: 16px;
+  --cd-gap-lg: 20px;
+  --cd-gap-xl: 24px;
+  --cd-gap-2xl: 32px;
+
+  /* ---- 过渡 ---- */
+  --cd-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition-slow: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================
+   全局基础覆写
+   ============================================ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #D1D5DB transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #D1D5DB;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #9CA3AF;
+}
+
+/* ============================================
+   Element Plus 覆写
+   ============================================ */
+
+/* ---- 按钮 ---- */
+.el-button--primary {
+  background: var(--cd-primary-gradient) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500;
+  transition: var(--cd-transition);
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background: var(--cd-primary-gradient-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 124, 255, 0.35);
+}
+
+.el-button--primary:active {
+  transform: translateY(0);
+}
+
+.el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info) {
+  border-color: var(--cd-border);
+  color: var(--cd-text-regular);
+  transition: var(--cd-transition);
+}
+
+.el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info):hover {
+  border-color: var(--cd-primary);
+  color: var(--cd-primary);
+}
+
+/* ---- 输入框 ---- */
+.el-input__wrapper {
+  border-radius: var(--cd-radius) !important;
+  transition: var(--cd-transition);
+  box-shadow: 0 0 0 1px var(--cd-border) inset !important;
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--cd-primary-light) inset !important;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--cd-primary) inset, 0 0 0 3px var(--theme-primary-muted) !important;
+}
+
+/* ---- 卡片 ---- */
+.el-card {
+  border-radius: var(--cd-radius-lg) !important;
+  border: 1px solid var(--cd-border-light) !important;
+  box-shadow: var(--cd-shadow-sm) !important;
+  transition: var(--cd-transition);
+}
+
+.el-card:hover {
+  box-shadow: var(--cd-shadow) !important;
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--cd-border-light) !important;
+  padding: var(--cd-gap) var(--cd-gap-lg) !important;
+  font-weight: 600;
+  color: var(--cd-text-primary);
+}
+
+/* ---- 表格 ---- */
+.el-table {
+  --el-table-border-color: var(--cd-border-light);
+  --el-table-header-bg-color: #F8F9FC;
+  --el-table-row-hover-bg-color: #F5F7FC;
+  border-radius: var(--cd-radius-lg);
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600 !important;
+  color: var(--cd-text-regular) !important;
+  font-size: 13px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.el-table td.el-table__cell {
+  color: var(--cd-text-primary) !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: var(--theme-primary-muted) !important;
+}
+
+/* ---- 标签 ---- */
+.el-tag {
+  border-radius: var(--cd-radius-full) !important;
+  font-weight: 500;
+  padding: 0 10px !important;
+}
+
+/* ---- 弹窗 ---- */
+.el-dialog {
+  border-radius: var(--cd-radius-xl) !important;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  padding: var(--cd-gap-lg) var(--cd-gap-xl) var(--cd-gap) !important;
+  border-bottom: 1px solid var(--cd-border-light);
+}
+
+.el-dialog__body {
+  padding: var(--cd-gap-lg) var(--cd-gap-xl) !important;
+}
+
+.el-dialog__footer {
+  padding: var(--cd-gap) var(--cd-gap-xl) var(--cd-gap-lg) !important;
+  border-top: 1px solid var(--cd-border-light);
+}
+
+/* ---- 抽屉 ---- */
+.el-drawer__header {
+  padding: var(--cd-gap-lg) var(--cd-gap-xl) var(--cd-gap) !important;
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid var(--cd-border-light);
+}
+
+.el-drawer__body {
+  padding: var(--cd-gap-lg) var(--cd-gap-xl) !important;
+}
+
+/* ---- 面包屑 ---- */
+.el-breadcrumb__inner a,
+.el-breadcrumb__inner {
+  color: var(--cd-text-secondary) !important;
+  font-weight: 500;
+}
+
+.el-breadcrumb__inner a:hover {
+  color: var(--cd-primary) !important;
+}
+
+.el-breadcrumb__item:last-child .el-breadcrumb__inner {
+  color: var(--cd-text-primary) !important;
+}
+
+/* ---- Tabs ---- */
+.el-tabs__item {
+  font-weight: 500 !important;
+  transition: var(--cd-transition);
+}
+
+.el-tabs__item.is-active {
+  color: var(--cd-primary) !important;
+}
+
+.el-tabs__active-bar {
+  background-color: var(--cd-primary) !important;
+}
+
+/* ---- 消息 ---- */
+.el-message {
+  border-radius: var(--cd-radius-lg) !important;
+  box-shadow: var(--cd-shadow-lg) !important;
+}
+
+/* ---- Select ---- */
+.el-select .el-input__wrapper {
+  border-radius: var(--cd-radius) !important;
+}
+
+/* ---- 进度条 ---- */
+.el-progress-bar__inner {
+  background: var(--cd-primary-gradient) !important;
+}
+
+/* ---- Badge ---- */
+.el-badge__content {
+  background: var(--cd-primary) !important;
+  border: 2px solid #fff !important;
+  font-weight: 600;
+}
+
+/* ---- Statistic ---- */
+.el-statistic__head {
+  color: var(--cd-text-secondary) !important;
+  font-weight: 500 !important;
+  margin-bottom: 4px !important;
+}
+
+.el-statistic__content {
+  color: var(--cd-text-primary) !important;
+  font-weight: 700 !important;
+  font-size: 24px !important;
+}
+
+/* ---- Form ---- */
+.el-form-item__label {
+  color: var(--cd-text-regular) !important;
+  font-weight: 500 !important;
+}
+
+/* ---- Empty ---- */
+.el-empty__description p {
+  color: var(--cd-text-secondary) !important;
+}
+
+/* ============================================
+   通用动画
+   ============================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+/* ============================================
+   通用工具类
+   ============================================ */
+
+.cd-card {
+  background: var(--cd-bg-white);
+  border-radius: var(--cd-radius-lg);
+  border: 1px solid var(--cd-border-light);
+  box-shadow: var(--cd-shadow-sm);
+  transition: var(--cd-transition);
+}
+
+.cd-card:hover {
+  box-shadow: var(--cd-shadow);
+}
+
+.cd-card-flat {
+  background: var(--cd-bg-white);
+  border-radius: var(--cd-radius-lg);
+  border: 1px solid var(--cd-border-light);
+}
+
+.cd-gradient-text {
+  background: var(--cd-primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.cd-glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}

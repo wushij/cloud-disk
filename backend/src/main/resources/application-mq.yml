@@ -1,0 +1,29 @@
+# RabbitMQ + 媒体处理 profile
+# 激活方式: --spring.profiles.active=local,mq
+spring:
+  config:
+    activate:
+      on-profile: mq
+  autoconfigure:
+    exclude: []
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 5
+
+clouddisk:
+  rabbitmq:
+    enabled: true
+  ffmpeg:
+    enabled: true
+    path: ffmpeg
+    screenshot-time: "00:00:01"
+    video-codec: libx264
+    audio-codec: aac
+    transcode-suffix: _720p.mp4

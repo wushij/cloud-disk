@@ -1,0 +1,11 @@
+spring:
+  config:
+    activate:
+      on-profile: onlyoffice
+
+clouddisk:
+  onlyoffice:
+    enabled: true
+    document-server-url: http://127.0.0.1:8082
+    jwt-secret: clouddisk-onlyoffice-jwt-secret-change-me
+    callback-base-url: http://host.docker.internal:8088

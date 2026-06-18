@@ -1,0 +1,166 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: clouddisk-pro
+  profiles:
+    default: prod
+  web:
+    locale: zh_CN
+    locale-resolver: fixed
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRestClientAutoConfiguration
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 5
+  elasticsearch:
+    uris: http://127.0.0.1:9200
+  servlet:
+    multipart:
+      max-file-size: 128MB
+      max-request-size: 128MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 86400
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  is-read-header: true
+  is-read-cookie: false
+
+xxl:
+  job:
+    enabled: false
+    admin:
+      addresses: http://127.0.0.1:8080/xxl-job-admin
+    accessToken: default_token
+    executor:
+      appname: clouddisk-pro
+      address:
+      ip:
+      port: 9999
+      logpath: ./logs/xxl-job
+      logretentiondays: 30
+
+clouddisk:
+  redis:
+    enabled: false
+  storage:
+    type: local
+    local-root: ${CLOUDDISK_STORAGE:${user.home}/clouddisk-data}
+  minio:
+    endpoint: http://127.0.0.1:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: cloud-disk
+  chunk:
+    default-size: 8388608
+    max-size: 67108864
+    max-chunks: 5000
+    session-expire-hours: 24
+  upload:
+    max-file-size: 21474836480
+    allowed-extensions: jpg,jpeg,png,gif,webp,bmp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,webm,mkv,mp3,wav,json,xml,csv,md
+  onlyoffice:
+    enabled: false
+    document-server-url: http://127.0.0.1:8082
+    jwt-secret: clouddisk-onlyoffice-jwt-secret-change-me
+    callback-base-url: http://127.0.0.1:8088
+    edit-mode: edit
+  schedule:
+    enabled: true
+    recycle-retain-days: 30
+  rate-limit:
+    upload-per-minute: 60
+    login-per-minute: 20
+    register-per-minute: 10
+    share-per-minute: 120
+    api-per-minute: 300
+    share-extract-max-attempts: 5
+    login-fail-max: 5
+    login-lock-minutes: 15
+    ip-ban-threshold: 30
+    ip-ban-minutes: 60
+    captcha-after-failures: 3
+    captcha-on-register: true
+  sentinel:
+    enabled: true
+    dashboard: 127.0.0.1:8858
+    upload-qps: 30
+    login-qps: 10
+    register-qps: 5
+  cors:
+    allowed-origin-patterns:
+      - http://localhost:*
+      - http://127.0.0.1:*
+  rabbitmq:
+    enabled: false
+  elasticsearch:
+    enabled: false
+    index-name: cloud_disk_file
+  ffmpeg:
+    enabled: true
+    path: ffmpeg
+    screenshot-time: "00:00:01"
+    video-codec: libx264
+    audio-codec: aac
+    transcode-suffix: _720p.mp4
+  ldap:
+    enabled: false
+  sso:
+    enabled: false
+  monitoring:
+    admin-client-enabled: false
+    admin-server-url: http://127.0.0.1:8090
+  cdn:
+    enabled: false
+    domain: ""
+  virus-scan:
+    enabled: false
+    host: 127.0.0.1
+    port: 3310
+    timeout-ms: 30000
+    max-bytes: 104857600
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+spring.boot.admin.client:
+  enabled: ${clouddisk.monitoring.admin-client-enabled:false}
+  url: ${clouddisk.monitoring.admin-server-url:http://127.0.0.1:8090}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized

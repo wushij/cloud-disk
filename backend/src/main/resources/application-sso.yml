@@ -1,0 +1,19 @@
+# OIDC SSO profile（Azure AD / Keycloak / Okta 等）
+# 激活: --spring.profiles.active=local,sso
+spring:
+  config:
+    activate:
+      on-profile: sso
+
+clouddisk:
+  sso:
+    enabled: true
+    provider-name: OIDC
+    authorization-uri: https://your-idp.example.com/oauth2/v1/authorize
+    token-uri: https://your-idp.example.com/oauth2/v1/token
+    user-info-uri: https://your-idp.example.com/oauth2/v1/userinfo
+    client-id: your-client-id
+    client-secret: your-client-secret
+    redirect-uri: http://127.0.0.1:8088/api/auth/sso/callback
+    frontend-redirect: http://127.0.0.1:5173/login
+    scope: openid profile email

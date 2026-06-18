@@ -1,0 +1,9 @@
+# ELK 结构化 JSON 日志 profile
+# 激活: --spring.profiles.active=local,elk
+spring:
+  config:
+    activate:
+      on-profile: elk
+
+logging:
+  config: classpath:logback-spring.xml

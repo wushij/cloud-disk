@@ -1,0 +1,159 @@
+# CloudDisk Pro 本地依赖栈
+# docker compose -f deploy/docker-compose.yml up -d
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: clouddisk-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cloud_disk
+    ports:
+      - "3307:3306"
+    volumes:
+      - clouddisk-mysql:/var/lib/mysql
+      - ../sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: clouddisk-redis
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    container_name: clouddisk-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - clouddisk-minio:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: clouddisk-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  elasticsearch:
+    build:
+      context: ./elasticsearch
+    image: clouddisk/elasticsearch:8.12.2-ik-pinyin
+    container_name: clouddisk-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - clouddisk-es:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: clouddisk-kibana
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.12.2
+    container_name: clouddisk-logstash
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5044:5044"
+    volumes:
+      - ./logstash/pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+
+  skywalking-oap:
+    image: apache/skywalking-oap-server:9.7.0
+    container_name: clouddisk-skywalking-oap
+    ports:
+      - "11800:11800"
+      - "12800:12800"
+    environment:
+      SW_STORAGE: elasticsearch
+      SW_STORAGE_ES_CLUSTER_NODES: elasticsearch:9200
+    depends_on:
+      - elasticsearch
+
+  skywalking-ui:
+    image: apache/skywalking-ui:9.7.0
+    container_name: clouddisk-skywalking-ui
+    ports:
+      - "8188:8080"
+    environment:
+      SW_OAP_ADDRESS: http://skywalking-oap:12800
+    depends_on:
+      - skywalking-oap
+
+  spring-boot-admin:
+    build:
+      context: ../monitoring/admin-server
+      dockerfile: Dockerfile
+    container_name: clouddisk-admin
+    ports:
+      - "8090:8090"
+    profiles:
+      - monitoring
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: clouddisk-openldap
+    environment:
+      LDAP_ORGANISATION: CloudDisk
+      LDAP_DOMAIN: clouddisk.local
+      LDAP_ADMIN_PASSWORD: admin
+    ports:
+      - "389:389"
+    profiles:
+      - ldap
+
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.4.1
+    container_name: clouddisk-xxl-job-admin
+    depends_on:
+      - mysql
+    ports:
+      - "8080:8080"
+    environment:
+      PARAMS: >-
+        --spring.datasource.url=jdbc:mysql://mysql:3306/xxl_job?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=root
+        --spring.datasource.password=root
+    profiles:
+      - xxl
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.6
+    container_name: clouddisk-sentinel
+    ports:
+      - "8858:8858"
+    profiles:
+      - sentinel
+
+  onlyoffice:
+    image: onlyoffice/documentserver:8.0.1
+    container_name: clouddisk-onlyoffice
+    ports:
+      - "8082:80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: clouddisk-onlyoffice-jwt-secret-change-me
+    profiles:
+      - onlyoffice
+
+volumes:
+  clouddisk-mysql:
+  clouddisk-minio:
+  clouddisk-es:

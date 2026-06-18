@@ -1,0 +1,18 @@
+# LDAP 企业目录认证 profile
+# 激活: --spring.profiles.active=local,ldap
+# 本地测试可用 osixia/openldap（见 deploy/docker-compose.yml）
+spring:
+  config:
+    activate:
+      on-profile: ldap
+
+clouddisk:
+  ldap:
+    enabled: true
+    urls: ldap://127.0.0.1:389
+    base: dc=clouddisk,dc=local
+    user-dn: cn=admin,dc=clouddisk,dc=local
+    password: admin
+    user-search-base: ou=users
+    user-search-filter: "(&(objectClass=inetOrgPerson)(uid={0}))"
+    auto-provision: true

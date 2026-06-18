@@ -1,0 +1,12 @@
+spring:
+  config:
+    activate:
+      on-profile: clamav
+
+clouddisk:
+  virus-scan:
+    enabled: true
+    host: 127.0.0.1
+    port: 3310
+    timeout-ms: 30000
+    max-bytes: 104857600

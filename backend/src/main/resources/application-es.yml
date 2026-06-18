@@ -1,0 +1,15 @@
+# ElasticSearch 全文检索 profile
+# 激活: --spring.profiles.active=local,es
+spring:
+  config:
+    activate:
+      on-profile: es
+  autoconfigure:
+    exclude: []
+  elasticsearch:
+    uris: http://127.0.0.1:9200
+
+clouddisk:
+  elasticsearch:
+    enabled: true
+    index-name: cloud_disk_file

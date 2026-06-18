@@ -1,0 +1,29 @@
+# 监控 profile：Spring Boot Admin 客户端
+# 激活: --spring.profiles.active=local,monitoring
+spring:
+  config:
+    activate:
+      on-profile: monitoring
+
+clouddisk:
+  monitoring:
+    admin-client-enabled: true
+    admin-server-url: http://127.0.0.1:8090
+
+spring.boot.admin.client:
+  enabled: true
+  url: ${clouddisk.monitoring.admin-server-url}
+  instance:
+    service-host-type: IP
+    metadata:
+      tags:
+        environment: dev
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,loggers,threaddump,heapdump
+  endpoint:
+    health:
+      show-details: always

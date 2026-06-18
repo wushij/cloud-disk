@@ -1,0 +1,14 @@
+spring:
+  config:
+    activate:
+      on-profile: xxl
+  autoconfigure:
+    exclude: []
+
+xxl:
+  job:
+    enabled: true
+
+clouddisk:
+  schedule:
+    enabled: false
