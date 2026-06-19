@@ -27,7 +27,7 @@ public class VideoProcessService {
     private final CloudDiskProperties properties;
     private final NotificationDispatcher notificationDispatcher;
 
-    @Async
+    @Async("mediaExecutor")
     public void processAsync(Long fileId) {
         processVideo(fileId);
     }
@@ -77,7 +77,7 @@ public class VideoProcessService {
                     "视频转码完成", file.getFileName() + " 已转码完成", String.valueOf(fileId));
         } catch (Exception e) {
             log.error("视频处理失败 fileId={}: {}", fileId, e.getMessage());
-            file = fileMapper.selectById(fileId);
+            // 复用已加载的 file 记录，避免重复查询
             if (file != null) {
                 file.setTranscodeStatus(TranscodeStatus.FAILED);
                 fileMapper.updateById(file);

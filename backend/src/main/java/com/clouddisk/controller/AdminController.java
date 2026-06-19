@@ -24,6 +24,13 @@ public class AdminController {
         return adminService.listUsers();
     }
 
+    @GetMapping("/users/{id}/avatar")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> userAvatar(
+            @PathVariable Long id,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return adminService.loadUserAvatar(id, request);
+    }
+
     @PutMapping("/users/{id}/status")
     public Map<String, String> setUserStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         Integer status = body.get("status");

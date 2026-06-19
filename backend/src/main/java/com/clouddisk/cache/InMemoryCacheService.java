@@ -36,14 +36,16 @@ public class InMemoryCacheService implements CacheService {
         long expireAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000 : 0;
         Entry entry = store.compute(key, (k, old) -> {
             long next = 1;
+            long currentExpire = expireAt;
             if (old != null && (old.expireAt == 0 || System.currentTimeMillis() <= old.expireAt)) {
                 try {
                     next = Long.parseLong(old.value) + 1;
+                    currentExpire = old.expireAt;
                 } catch (NumberFormatException ignored) {
                     next = 1;
                 }
             }
-            return new Entry(String.valueOf(next), expireAt);
+            return new Entry(String.valueOf(next), currentExpire);
         });
         return entry != null ? Long.parseLong(entry.value) : 1;
     }

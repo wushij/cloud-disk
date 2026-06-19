@@ -8,6 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.springframework.scheduling.annotation.Scheduled;
+
 /**
  * 多级缓存服务：L1（本地 ConcurrentHashMap）+ L2（Redis）
  * <ul>
@@ -141,6 +143,20 @@ public class MultiLevelCacheService implements CacheService {
             }
         } catch (Exception e) {
             log.warn("Redis evictByPrefix 失败 prefix={}: {}", prefix, e.getMessage());
+        }
+    }
+
+    /**
+     * 定时清理 L1 过期条目（每 5 分钟），避免内存中积压无效缓存
+     */
+    @Scheduled(fixedRate = 300000)
+    public void cleanupExpiredL1() {
+        long now = System.currentTimeMillis();
+        int before = l1Cache.size();
+        l1Cache.entrySet().removeIf(e -> e.getValue().expireAt > 0 && e.getValue().expireAt <= now);
+        int removed = before - l1Cache.size();
+        if (removed > 0) {
+            log.debug("L1 定时清理: 移除 {} 条过期缓存，剩余 {} 条", removed, l1Cache.size());
         }
     }
 

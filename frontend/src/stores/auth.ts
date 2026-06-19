@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY } from '@/api/http'
-
-const AVATAR_VERSION_KEY = 'cd_avatar_v'
+import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY } from '@/api/http'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -17,7 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const avatarSrc = computed(() => {
     const t = token.value || localStorage.getItem(TOKEN_KEY)
-    if (!t || !hasAvatar.value) return ''
+    if (!t) return ''
     const base = import.meta.env.VITE_API_BASE || ''
     return `${base}/api/auth/avatar/view?access_token=${encodeURIComponent(t)}&v=${avatarVersion.value}`
   })

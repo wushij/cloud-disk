@@ -51,7 +51,7 @@ public class ThumbnailService {
         }
     }
 
-    @Async
+    @Async("mediaExecutor")
     public void generateAsync(Long fileId) {
         generate(fileId);
     }

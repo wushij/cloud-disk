@@ -98,9 +98,7 @@ public class FileController {
             return ResponseEntity.badRequest().build();
         }
         Resource resource = fileService.download(id, userId);
-        MediaType mediaType = file.getFileType() != null
-                ? MediaType.parseMediaType(file.getFileType())
-                : MediaType.APPLICATION_OCTET_STREAM;
+        MediaType mediaType = resolveMediaType(file.getFileType());
         return ResponseEntity.ok().contentType(mediaType).body(resource);
     }
 
@@ -133,5 +131,17 @@ public class FileController {
         }
         // ES 未启用时回退到 MySQL LIKE 查询
         return fileService.list(0L, page, size, keyword, fileType);
+    }
+
+    /** 安全解析 MediaType，避免非法 MIME 字符串导致 500 */
+    private MediaType resolveMediaType(String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        try {
+            return MediaType.parseMediaType(mimeType);
+        } catch (Exception e) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 }

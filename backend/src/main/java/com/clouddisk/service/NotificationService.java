@@ -2,6 +2,7 @@ package com.clouddisk.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.clouddisk.entity.Notification;
 import com.clouddisk.mapper.NotificationMapper;
 import lombok.RequiredArgsConstructor;
@@ -16,18 +17,18 @@ public class NotificationService {
     private final NotificationMapper notificationMapper;
 
     /**
-     * 获取当前用户的通知列表
+     * 获取当前用户的通知列表（使用 MyBatis-Plus Page 分页，避免 SQL 注入）
      */
     public List<Map<String, Object>> listNotifications(int page, int size) {
         long userId = AuthService.currentUserId();
-        List<Notification> list = notificationMapper.selectList(
+        Page<Notification> p = notificationMapper.selectPage(
+                new Page<>(page + 1, size),
                 new LambdaQueryWrapper<Notification>()
                         .eq(Notification::getUserId, userId)
-                        .orderByDesc(Notification::getCreateTime)
-                        .last("LIMIT " + size + " OFFSET " + (page * size)));
+                        .orderByDesc(Notification::getCreateTime));
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Notification n : list) {
+        for (Notification n : p.getRecords()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", n.getId());
             m.put("type", n.getType());

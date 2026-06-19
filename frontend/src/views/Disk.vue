@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http, { TOKEN_KEY } from '@/api/http'
-import { fmtSize } from '@/utils/md5'
+import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
+import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
 import { useFileStore, type FileItem } from '@/stores/file'
 import { useUploadStore, promptCreateFolder } from '@/stores/upload'
 import ShareDialog from '@/components/ShareDialog.vue'
@@ -35,23 +36,10 @@ const previewName = ref('')
 const onlyOfficeConfig = ref<{ documentServerUrl: string; config: Record<string, unknown> } | null>(null)
 const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
 const treeCollapsed = ref(false)
+const dragOver = ref(false)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
-
-function transcodeLabel(status?: string) {
-  switch (status) {
-    case 'PENDING':
-    case 'PROCESSING':
-      return '转码中'
-    case 'DONE':
-      return '已转码'
-    case 'FAILED':
-      return '转码失败'
-    default:
-      return ''
-  }
-}
 
 function tokenParam() {
   return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
@@ -85,7 +73,19 @@ function onFolderChange(e: Event) {
 
 function onDrop(e: DragEvent) {
   e.preventDefault()
+  dragOver.value = false
   if (e.dataTransfer?.files?.length) void processFiles(Array.from(e.dataTransfer.files))
+}
+
+function onDragEnter() {
+  dragOver.value = true
+}
+
+function onDragLeave(e: DragEvent) {
+  const related = e.relatedTarget as Node | null
+  if (!related || !(e.currentTarget as HTMLElement).contains(related)) {
+    dragOver.value = false
+  }
 }
 
 function download(row: FileItem) {
@@ -140,11 +140,6 @@ async function preview(row: FileItem) {
   }
   previewUrl.value = await resolvePreviewUrl(row.id)
   previewVisible.value = true
-}
-
-function thumbUrl(row: FileItem) {
-  if (!row.hasThumbnail) return ''
-  return `/api/files/${row.id}/thumbnail?access_token=${tokenParam()}`
 }
 
 function openShare(row: FileItem) {
@@ -208,19 +203,6 @@ const isVideo = computed(() => previewType.value.startsWith('video/'))
 const isPdf = computed(() => previewType.value.includes('pdf'))
 const isOffice = computed(() => !!onlyOfficeConfig.value)
 
-function fileIconColor(row: FileItem): string {
-  if (row.type === 'folder') return 'var(--cd-file-folder)'
-  const mime = (row.mimeType || '').toLowerCase()
-  if (mime.startsWith('image/')) return 'var(--cd-file-image)'
-  if (mime.startsWith('video/')) return 'var(--cd-file-video)'
-  if (mime.includes('pdf')) return 'var(--cd-file-pdf)'
-  if (mime.includes('word') || mime.includes('document')) return 'var(--cd-file-doc)'
-  if (mime.includes('sheet') || mime.includes('excel')) return 'var(--cd-file-excel)'
-  if (mime.includes('presentation') || mime.includes('powerpoint')) return 'var(--cd-file-ppt)'
-  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z') || mime.includes('tar')) return 'var(--cd-file-archive)'
-  return 'var(--cd-file-default)'
-}
-
 onMounted(() => {
   fileStore.loadList()
   connectUploadWs(onWsProgress)
@@ -243,7 +225,20 @@ onUnmounted(disconnectUploadWs)
     </aside>
 
     <!-- 右侧主内容 -->
-    <div class="cd-disk-main" @dragover.prevent @drop="onDrop">
+    <div
+      class="cd-disk-main"
+      :class="{ 'is-dragover': dragOver }"
+      @dragover.prevent
+      @dragenter.prevent="onDragEnter"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
+      <div v-if="dragOver" class="cd-drop-overlay">
+        <div class="cd-drop-overlay-inner">
+          <el-icon :size="40"><UploadFilled /></el-icon>
+          <p>释放文件以上传到当前目录</p>
+        </div>
+      </div>
       <div class="cd-disk-panel">
         <div class="cd-disk-toolbar">
           <div class="cd-toolbar-row cd-toolbar-main">
@@ -278,6 +273,9 @@ onUnmounted(disconnectUploadWs)
             </div>
           </div>
           <div class="cd-toolbar-row cd-toolbar-sub">
+            <span class="cd-stat-pill">
+              共 <strong>{{ items.length }}</strong> 项
+            </span>
             <div class="cd-search-box">
               <el-icon :size="14"><Search /></el-icon>
               <el-input
@@ -367,7 +365,21 @@ onUnmounted(disconnectUploadWs)
             <el-table-column label="名称" min-width="320">
               <template #default="{ row }">
                 <div class="cd-name-cell">
-                  <img v-if="row.hasThumbnail" :src="thumbUrl(row)" class="cd-thumb" alt="" />
+                  <img
+                    v-if="fileCoverKind(row) === 'image'"
+                    :src="fileCoverUrl(row)"
+                    class="cd-thumb"
+                    alt=""
+                    loading="lazy"
+                  />
+                  <video
+                    v-else-if="fileCoverKind(row) === 'video'"
+                    :src="fileCoverUrl(row)"
+                    class="cd-thumb cd-list-thumb-video"
+                    muted
+                    preload="metadata"
+                    playsinline
+                  />
                   <div v-else class="cd-file-icon" :style="{ color: fileIconColor(row) }">
                     <el-icon :size="22">
                       <Folder v-if="row.type === 'folder'" />
@@ -507,7 +519,7 @@ onUnmounted(disconnectUploadWs)
         @done="refreshAfterChange"
       />
 
-      <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh">
+      <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh" class="cd-preview-dialog">
         <OnlyOfficeEditor
           v-if="isOffice && onlyOfficeConfig"
           :document-server-url="onlyOfficeConfig.documentServerUrl"
@@ -549,13 +561,14 @@ onUnmounted(disconnectUploadWs)
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 700;
   color: var(--cd-text-secondary);
   border-bottom: 1px solid var(--theme-border, var(--cd-border-light));
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--theme-bg) 35%, #fff) 100%);
 }
 
 .cd-disk-tree-body {
@@ -573,6 +586,37 @@ onUnmounted(disconnectUploadWs)
   flex-direction: column;
   overflow: hidden;
   background: #fff;
+  position: relative;
+}
+
+.cd-disk-main.is-dragover .cd-disk-panel {
+  filter: blur(1px);
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.cd-drop-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 20;
+  border-radius: var(--cd-radius-lg);
+  border: 2px dashed var(--cd-primary);
+  background: color-mix(in srgb, var(--cd-primary) 8%, rgba(255, 255, 255, 0.92));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cd-drop-overlay-inner {
+  text-align: center;
+  color: var(--cd-primary);
+}
+
+.cd-drop-overlay-inner p {
+  margin: 12px 0 0;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .cd-disk-panel {
@@ -598,11 +642,11 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-toolbar-main {
-  min-height: 52px;
+  min-height: 56px;
 }
 
 .cd-toolbar-sub {
-  min-height: 44px;
+  min-height: 46px;
   padding-bottom: 10px;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   gap: 10px;
@@ -613,7 +657,7 @@ onUnmounted(disconnectUploadWs)
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px 24px;
+  padding: 18px 20px 24px;
   background: color-mix(in srgb, var(--theme-bg) 35%, #fff);
 }
 
@@ -661,15 +705,16 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-disk-empty-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
   background: var(--theme-primary-muted);
   color: var(--cd-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  animation: gentleFloat 3s ease-in-out infinite;
 }
 
 .cd-disk-empty h3 {
@@ -726,7 +771,7 @@ onUnmounted(disconnectUploadWs)
 
 .cd-search-box:focus-within {
   border-color: var(--cd-primary);
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+  box-shadow: 0 0 0 3px var(--theme-primary-muted), 0 0 12px var(--theme-primary-muted);
 }
 
 .cd-search-box .el-icon {
@@ -748,32 +793,32 @@ onUnmounted(disconnectUploadWs)
   background: var(--cd-bg);
   border: 1px solid var(--cd-border);
   border-radius: var(--cd-radius);
-  padding: 2px;
+  padding: 3px;
 }
 
 .cd-view-btn {
-  width: 32px;
+  width: 34px;
   height: 28px;
   border: none;
   background: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--cd-text-placeholder);
-  transition: var(--cd-transition-fast);
+  transition: var(--cd-transition);
 }
 
 .cd-view-btn.active {
-  background: var(--cd-primary);
+  background: var(--cd-primary-gradient);
   color: #fff;
-  box-shadow: 0 1px 3px var(--theme-primary-muted-strong);
+  box-shadow: 0 1px 4px var(--theme-primary-muted-strong);
 }
 
 .cd-view-btn:not(.active):hover {
   color: var(--cd-text-secondary);
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .cd-toolbar-divider {
@@ -799,15 +844,21 @@ onUnmounted(disconnectUploadWs)
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: var(--cd-radius);
+  border-radius: 10px;
   flex-shrink: 0;
+  box-shadow: var(--cd-shadow-sm);
+}
+
+.cd-list-thumb-video {
+  pointer-events: none;
+  background: #000;
 }
 
 .cd-file-icon {
   width: 40px;
   height: 40px;
-  border-radius: var(--cd-radius);
-  background: var(--cd-bg);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--cd-bg) 0%, color-mix(in srgb, var(--theme-primary) 6%, var(--cd-bg)) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -840,74 +891,14 @@ onUnmounted(disconnectUploadWs)
   gap: 2px;
 }
 
-/* ============================================
-
-   上传进度
-
-   ============================================ */
-
-.cd-upload-card {
-  flex-shrink: 0;
-  margin: 0;
-  border-left: none;
-  border-top: 1px solid var(--theme-border, var(--cd-border-light));
-  border-radius: 0 !important;
-  box-shadow: none !important;
+/* 预览对话框 */
+.cd-preview-dialog :deep(.el-dialog__header) {
+  padding-bottom: 8px !important;
 }
 
-.cd-upload-card :deep(.el-card__header) {
-  padding: 12px 16px !important;
+.cd-preview-dialog :deep(.el-dialog__body) {
+  padding-top: 0 !important;
 }
-
-.cd-upload-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.cd-upload-count {
-  font-size: 12px;
-  color: var(--cd-text-placeholder);
-  font-weight: 400;
-  margin-left: auto;
-}
-
-.cd-upload-task {
-  margin-bottom: 16px;
-}
-
-.cd-upload-task:last-child {
-  margin-bottom: 0;
-}
-
-.cd-task-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.cd-task-name {
-  font-size: 13px;
-  color: var(--cd-text-primary);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.cd-instant-tag {
-  animation: pulse 1.5s ease-in-out;
-}
-
-/* ============================================
-
-   预览
-
-   ============================================ */
 
 .cd-preview-media {
   max-width: 100%;

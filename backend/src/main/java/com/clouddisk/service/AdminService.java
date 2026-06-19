@@ -13,8 +13,12 @@ import com.clouddisk.mapper.FileMapper;
 import com.clouddisk.mapper.UserMapper;
 import com.clouddisk.search.FileSearchService;
 import com.clouddisk.storage.StorageService;
+import com.clouddisk.util.AuthHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -57,10 +61,16 @@ public class AdminService {
     }
 
     public List<Map<String, Object>> listUsers() {
+        return listUsers(0, Integer.MAX_VALUE);
+    }
+
+    public List<Map<String, Object>> listUsers(int page, int size) {
         requireAdmin();
-        List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>().orderByDesc(User::getCreateTime));
+        Page<User> p = userMapper.selectPage(
+                new Page<>(page + 1, size),
+                new LambdaQueryWrapper<User>().orderByDesc(User::getCreateTime));
         List<Map<String, Object>> result = new ArrayList<>();
-        for (User u : users) {
+        for (User u : p.getRecords()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", u.getId());
             row.put("username", u.getUsername());
@@ -71,9 +81,24 @@ public class AdminService {
             row.put("storageQuota", u.getStorageQuota() != null ? u.getStorageQuota() : 0);
             row.put("storageUsed", u.getStorageUsed() != null ? u.getStorageUsed() : 0);
             row.put("createTime", u.getCreateTime());
+            row.put("hasAvatar", u.getAvatar() != null && !u.getAvatar().isBlank());
             result.add(row);
         }
         return result;
+    }
+
+    public ResponseEntity<Resource> loadUserAvatar(Long userId, jakarta.servlet.http.HttpServletRequest request) {
+        long callerId = AuthHelper.requireUserId(request);
+        User caller = userMapper.selectById(callerId);
+        if (caller == null || !"ADMIN".equalsIgnoreCase(caller.getRole())) {
+            throw new BusinessException("需要管理员权限");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null || user.getAvatar() == null || user.getAvatar().isBlank()) {
+            throw new BusinessException("头像不存在");
+        }
+        Resource resource = storageService.loadAsResource(user.getAvatar());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
     }
 
     public void setUserStatus(Long userId, int status) {
@@ -122,20 +147,26 @@ public class AdminService {
     public Map<String, Object> storageStats() {
         requireAdmin();
         Map<String, Object> result = new LinkedHashMap<>();
-        // 全局总用量
-        Long totalUsed = fileMapper.selectList(
+        // 使用 selectMaps 只映射 file_size 列，避免全量 FileRecord 加载到内存
+        // 更优方案：使用 MyBatis XML 或 @Select 注解写 SELECT SUM(file_size) SQL
+        Long totalUsed = 0L;
+        List<Map<String, Object>> sumResult = fileMapper.selectMaps(
                 new LambdaQueryWrapper<FileRecord>()
                         .select(FileRecord::getFileSize)
-                        .eq(FileRecord::getStatus, 1))
-                .stream()
-                .mapToLong(f -> f.getFileSize() != null ? f.getFileSize() : 0)
-                .sum();
+                        .eq(FileRecord::getStatus, 1));
+        for (Map<String, Object> row : sumResult) {
+            Object sizeObj = row.get("file_size");
+            if (sizeObj instanceof Number) {
+                totalUsed += ((Number) sizeObj).longValue();
+            }
+        }
         result.put("totalUsedBytes", totalUsed);
-        // 各用户用量排行
-        List<User> users = userMapper.selectList(
+        // 各用户用量排行（使用 Page 替代 .last("LIMIT 50")）
+        List<User> users = userMapper.selectPage(
+                new Page<>(1, 50),
                 new LambdaQueryWrapper<User>()
-                        .orderByDesc(User::getStorageUsed)
-                        .last("LIMIT 50"));
+                        .orderByDesc(User::getStorageUsed))
+                .getRecords();
         List<Map<String, Object>> userStats = new ArrayList<>();
         for (User u : users) {
             Map<String, Object> row = new LinkedHashMap<>();

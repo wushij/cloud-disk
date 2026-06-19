@@ -1,15 +1,10 @@
 package com.clouddisk.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.clouddisk.common.BusinessException;
-import com.clouddisk.entity.FileRecord;
-import com.clouddisk.entity.Folder;
-import com.clouddisk.entity.TeamMember;
-import com.clouddisk.entity.TeamSpace;
-import com.clouddisk.mapper.FileMapper;
-import com.clouddisk.mapper.FolderMapper;
-import com.clouddisk.mapper.TeamMemberMapper;
-import com.clouddisk.mapper.TeamSpaceMapper;
+import com.clouddisk.entity.*;
+import com.clouddisk.mapper.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,7 +21,9 @@ public class TeamSpaceService {
     private final TeamMemberMapper teamMemberMapper;
     private final FolderMapper folderMapper;
     private final FileMapper fileMapper;
+    private final UserMapper userMapper;
     private final NotificationDispatcher notificationDispatcher;
+    private final FolderTreeHelper folderTreeHelper;
 
     // ==================== 团队空间 CRUD ====================
 
@@ -180,10 +177,20 @@ public class TeamSpaceService {
 
         List<TeamMember> members = teamMemberMapper.selectList(
                 new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getSpaceId, spaceId));
+
+        // 批量查询用户信息
+        List<Long> userIds = members.stream().map(TeamMember::getUserId).collect(Collectors.toList());
+        Map<Long, User> userMap = userMapper.selectBatchIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (TeamMember m : members) {
+            User user = userMap.get(m.getUserId());
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("userId", m.getUserId());
+            item.put("username", user != null ? user.getUsername() : null);
+            item.put("nickname", user != null ? user.getNickname() : null);
+            item.put("avatar", user != null ? user.getAvatar() : null);
             item.put("role", m.getRole());
             item.put("joinTime", m.getJoinTime());
             result.add(item);
@@ -254,6 +261,7 @@ public class TeamSpaceService {
         member.setSpaceId(spaceId);
         member.setUserId(userId);
         member.setRole(role);
+        member.setJoinTime(java.time.LocalDateTime.now());
         teamMemberMapper.insert(member);
     }
 
@@ -265,6 +273,62 @@ public class TeamSpaceService {
         if (member == null || (!"OWNER".equals(member.getRole()) && !"ADMIN".equals(member.getRole()))) {
             throw new BusinessException("需要管理员权限");
         }
+    }
+
+    /**
+     * 解散/删除团队空间
+     */
+    public void deleteSpace(Long spaceId) {
+        long currentUserId = AuthService.currentUserId();
+        TeamSpace space = getSpace(spaceId);
+        if (!Objects.equals(space.getOwnerId(), currentUserId)) {
+            throw new BusinessException("只有创建者可以解散团队空间");
+        }
+
+        // 1. 设置团队空间状态为 0 (停用/删除)
+        space.setStatus(0);
+        teamSpaceMapper.updateById(space);
+
+        // 2. 删除对应的团队成员记录
+        teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getSpaceId, spaceId));
+
+        // 3. 删除/回收团队对应的根文件夹及其所有子文件
+        if (space.getRootFolderId() != null && space.getRootFolderId() > 0) {
+            try {
+                Folder rootFolder = folderMapper.selectById(space.getRootFolderId());
+                if (rootFolder != null) {
+                    rootFolder.setDeleted(1);
+                    folderMapper.updateById(rootFolder);
+
+                    List<Long> subfolderIds = folderTreeHelper.collectActiveSubtreeIds(space.getRootFolderId());
+                    folderMapper.update(null, new LambdaUpdateWrapper<Folder>()
+                            .in(Folder::getId, subfolderIds)
+                            .set(Folder::getDeleted, 1));
+
+                    fileMapper.update(null, new LambdaUpdateWrapper<FileRecord>()
+                            .in(FileRecord::getFolderId, subfolderIds)
+                            .set(FileRecord::getStatus, 0));
+                }
+            } catch (Exception e) {
+                log.error("删除团队根文件夹失败", e);
+            }
+        }
+    }
+
+    /**
+     * 退出团队空间
+     */
+    public void leaveSpace(Long spaceId) {
+        long currentUserId = AuthService.currentUserId();
+        TeamSpace space = getSpace(spaceId);
+        if (Objects.equals(space.getOwnerId(), currentUserId)) {
+            throw new BusinessException("创建者不能退出团队空间，请选择解散团队");
+        }
+
+        // 移除成员记录
+        teamMemberMapper.delete(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getSpaceId, spaceId)
+                .eq(TeamMember::getUserId, currentUserId));
     }
 
     private void sendNotification(Long userId, String type, String title, String content, String refId) {

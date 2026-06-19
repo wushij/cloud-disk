@@ -128,10 +128,26 @@ public class FileService {
         return file;
     }
 
+    public FileRecord getOwnedOrShared(Long id, long userId) {
+        FileRecord file = fileCacheService.getById(id);
+        if (file == null) {
+            throw new BusinessException("文件不存在");
+        }
+        if (file.getUserId().equals(userId)) {
+            return file;
+        }
+        if (file.getFolderId() != null && file.getFolderId() > 0) {
+            if (folderService.hasAccessToFolder(file.getFolderId(), userId)) {
+                return file;
+            }
+        }
+        throw new BusinessException("没有权限访问该文件");
+    }
+
     public FileRecord createRecord(long userId, Long folderId, String fileName, long size,
                                    String mimeType, String md5, String storagePath) {
         if (folderId != null && folderId > 0) {
-            folderService.getOwned(folderId, userId);
+            folderService.getOwnedOrShared(folderId, userId);
         }
         fileValidator.validate(fileName, size);
         quotaService.checkQuota(userId, size);
@@ -193,7 +209,7 @@ public class FileService {
 
     public FileRecord rename(Long id, RenameRequest req) {
         long userId = AuthService.currentUserId();
-        FileRecord file = getOwned(id, userId);
+        FileRecord file = getOwnedOrShared(id, userId);
         if (file.getStatus() != 1) throw new BusinessException("文件在回收站中");
         String name = req.getName();
         if (name == null || name.isBlank()) throw new BusinessException("名称不能为空");
@@ -211,10 +227,10 @@ public class FileService {
 
     public FileRecord move(Long id, MoveRequest req) {
         long userId = AuthService.currentUserId();
-        FileRecord file = getOwned(id, userId);
+        FileRecord file = getOwnedOrShared(id, userId);
         if (file.getStatus() != 1) throw new BusinessException("文件在回收站中");
         Long targetId = req.getTargetFolderId() != null ? req.getTargetFolderId() : 0L;
-        if (targetId > 0) folderService.getOwned(targetId, userId);
+        if (targetId > 0) folderService.getOwnedOrShared(targetId, userId);
         checkDuplicateFileName(userId, targetId, file.getFileName(), id);
         file.setFolderId(targetId);
         fileMapper.updateById(file);
@@ -228,10 +244,10 @@ public class FileService {
 
     public FileRecord copy(Long id, MoveRequest req) {
         long userId = AuthService.currentUserId();
-        FileRecord src = getOwned(id, userId);
+        FileRecord src = getOwnedOrShared(id, userId);
         if (src.getStatus() != 1) throw new BusinessException("文件在回收站中");
         Long targetId = req.getTargetFolderId() != null ? req.getTargetFolderId() : src.getFolderId();
-        if (targetId > 0) folderService.getOwned(targetId, userId);
+        if (targetId > 0) folderService.getOwnedOrShared(targetId, userId);
         String copyName = generateCopyName(userId, targetId, src.getFileName());
         return createRecord(userId, targetId, copyName, src.getFileSize(),
                 src.getFileType(), src.getFileMd5(), src.getStoragePath());
@@ -239,7 +255,7 @@ public class FileService {
 
     public void deleteToRecycle(Long id) {
         long userId = AuthService.currentUserId();
-        FileRecord file = getOwned(id, userId);
+        FileRecord file = getOwnedOrShared(id, userId);
         file.setStatus(0);
         fileMapper.updateById(file);
         fileCacheService.evict(file.getId());
@@ -251,12 +267,12 @@ public class FileService {
     }
 
     public Resource download(Long id, long userId) {
-        FileRecord file = getOwned(id, userId);
+        FileRecord file = getOwnedOrShared(id, userId);
         String path = resolvePlayPath(file);
         return storageService.loadAsResource(path);
     }
 
-    /** 视频转码完成后优先返回转码文件 */
+    /** 视频转码完成后优先返回转码 file */
     public String resolvePlayPath(FileRecord file) {
         if (TranscodeStatus.DONE.equals(file.getTranscodeStatus())
                 && StringUtils.hasText(file.getTranscodePath())) {
@@ -266,10 +282,13 @@ public class FileService {
     }
 
     public Resource loadThumbnail(Long id, long userId) {
-        FileRecord file = getOwned(id, userId);
+        FileRecord file = getOwnedOrShared(id, userId);
         String path = StringUtils.hasText(file.getThumbnailPath()) ? file.getThumbnailPath()
                 : (StringUtils.hasText(file.getPosterPath()) ? file.getPosterPath() : null);
         if (!StringUtils.hasText(path)) {
+            if (file.getFileType() != null && file.getFileType().startsWith("image/")) {
+                return storageService.loadAsResource(file.getStoragePath());
+            }
             throw new BusinessException("缩略图不存在");
         }
         return storageService.loadAsResource(path);
@@ -306,7 +325,7 @@ public class FileService {
     }
 
     public Map<String, Object> presignedDownloadUrl(Long fileId, long userId) {
-        FileRecord file = getOwned(fileId, userId);
+        FileRecord file = getOwnedOrShared(fileId, userId);
         return presignedUrlForPath(resolvePlayPath(file));
     }
 
@@ -346,7 +365,6 @@ public class FileService {
 
     private void checkDuplicateFileName(long userId, Long folderId, String name, Long excludeId) {
         LambdaQueryWrapper<FileRecord> q = new LambdaQueryWrapper<FileRecord>()
-                .eq(FileRecord::getUserId, userId)
                 .eq(FileRecord::getFolderId, folderId)
                 .eq(FileRecord::getFileName, name)
                 .eq(FileRecord::getStatus, 1);
@@ -368,7 +386,6 @@ public class FileService {
         int n = 2;
         while (true) {
             LambdaQueryWrapper<FileRecord> q = new LambdaQueryWrapper<FileRecord>()
-                    .eq(FileRecord::getUserId, userId)
                     .eq(FileRecord::getFolderId, folderId)
                     .eq(FileRecord::getFileName, candidate)
                     .eq(FileRecord::getStatus, 1);

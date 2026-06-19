@@ -1,0 +1,125 @@
+// 与 PC 端 CloudDisk Pro 视觉语言对齐的移动端主题令牌
+// 设计理念：石墨黑 · 极简商务 · 卡片层级 · 柔和阴影
+// PC 端默认主题：slate（石墨黑 #010710）
+
+page {
+  /* 主色系 - 与 PC 端 slate 主题一致：石墨黑 */
+  --cd-primary: #010710;
+  --cd-primary-light: #0f1a2e;
+  --cd-primary-dark: #000000;
+  --cd-primary-muted: rgba(1, 7, 16, 0.06);
+  --cd-primary-muted-strong: rgba(1, 7, 16, 0.12);
+  --cd-primary-glow: rgba(1, 7, 16, 0.15);
+  --cd-primary-gradient: linear-gradient(135deg, #010710 0%, #0f1a2e 50%, #1e293b 100%);
+  --cd-primary-gradient-soft: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  --cd-primary-gradient-reverse: linear-gradient(225deg, #334155 0%, #010710 60%, #000000 100%);
+
+  /* 背景色 - 与 PC 端 slate 一致的浅灰 */
+  --cd-bg: #f3f5f8;
+  --cd-bg-card: #ffffff;
+  --cd-bg-elevated: #ffffff;
+  --cd-bg-surface: #f8f9fd;
+  --cd-bg-glass: rgba(255, 255, 255, 0.86);
+
+  /* 文字层级 */
+  --cd-text: #0f172a;
+  --cd-text-regular: #334155;
+  --cd-text-secondary: #64748b;
+  --cd-text-muted: #94a3b8;
+  --cd-text-placeholder: #b0bdc9;
+
+  /* 边框 */
+  --cd-border: #e2e8f0;
+  --cd-border-light: #f1f5f9;
+  --cd-border-focus: rgba(1, 7, 16, 0.15);
+
+  /* 功能色 */
+  --cd-success: #22c55e;
+  --cd-success-bg: rgba(34, 197, 94, 0.08);
+  --cd-warning: #f59e0b;
+  --cd-warning-bg: rgba(245, 158, 11, 0.08);
+  --cd-danger: #ef4444;
+  --cd-danger-bg: rgba(239, 68, 68, 0.08);
+  --cd-info: #3b82f6;
+  --cd-info-bg: rgba(59, 130, 246, 0.08);
+
+  /* 文件类型色 */
+  --cd-file-folder: #f59e0b;
+  --cd-file-image: #22c55e;
+  --cd-file-video: #a855f7;
+  --cd-file-audio: #ec4899;
+  --cd-file-pdf: #ef4444;
+  --cd-file-doc: #3b82f6;
+  --cd-file-excel: #22c55e;
+  --cd-file-ppt: #f97316;
+  --cd-file-archive: #8b92a5;
+  --cd-file-code: #06b6d4;
+  --cd-file-default: #6b7280;
+
+  /* 圆角系统 */
+  --cd-radius-xs: 8rpx;
+  --cd-radius-sm: 14rpx;
+  --cd-radius: 20rpx;
+  --cd-radius-lg: 28rpx;
+  --cd-radius-xl: 36rpx;
+  --cd-radius-2xl: 44rpx;
+  --cd-radius-full: 9999rpx;
+
+  /* 阴影系统 - 多层柔和阴影 */
+  --cd-shadow-xs: 0 1rpx 4rpx rgba(15, 23, 42, 0.03);
+  --cd-shadow-sm: 0 2rpx 10rpx rgba(15, 23, 42, 0.05), 0 1rpx 3rpx rgba(15, 23, 42, 0.03);
+  --cd-shadow: 0 4rpx 20rpx rgba(15, 23, 42, 0.06), 0 1rpx 4rpx rgba(15, 23, 42, 0.04);
+  --cd-shadow-md: 0 8rpx 30rpx rgba(15, 23, 42, 0.07), 0 2rpx 6rpx rgba(15, 23, 42, 0.04);
+  --cd-shadow-lg: 0 12rpx 40rpx rgba(15, 23, 42, 0.09), 0 4rpx 10rpx rgba(15, 23, 42, 0.05);
+  --cd-shadow-xl: 0 20rpx 56rpx rgba(15, 23, 42, 0.11), 0 6rpx 16rpx rgba(15, 23, 42, 0.05);
+  --cd-shadow-glow: 0 0 32rpx rgba(1, 7, 16, 0.15);
+  --cd-shadow-card: 0 2rpx 12rpx rgba(15, 23, 42, 0.04), 0 0 0 1rpx rgba(15, 23, 42, 0.03);
+
+  /* 过渡动画 */
+  --cd-transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition-slow: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition-bounce: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 布局尺寸 */
+  --cd-tab-height: 120rpx;
+  --cd-action-bar-height: 128rpx;
+  --cd-header-height: 88rpx;
+  --cd-page-bottom: calc(var(--cd-tab-height) + var(--cd-action-bar-height) + env(safe-area-inset-bottom));
+}
+
+@mixin cd-card {
+  background: var(--cd-bg-card);
+  border-radius: var(--cd-radius-lg);
+  box-shadow: var(--cd-shadow-card);
+  border: 1px solid var(--cd-border-light);
+}
+
+@mixin cd-card-interactive {
+  @include cd-card;
+  transition: transform var(--cd-transition-bounce), box-shadow var(--cd-transition);
+  &:active {
+    transform: scale(0.985);
+    box-shadow: var(--cd-shadow);
+  }
+}
+
+@mixin cd-page-shell {
+  min-height: 100vh;
+  background: var(--cd-bg);
+  padding-bottom: calc(var(--cd-tab-height) + env(safe-area-inset-bottom));
+}
+
+@mixin cd-gradient-text {
+  background: var(--cd-primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@mixin cd-scroll-view {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}

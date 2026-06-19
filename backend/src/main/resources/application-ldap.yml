@@ -1,6 +1,6 @@
 # LDAP 企业目录认证 profile
 # 激活: --spring.profiles.active=local,ldap
-# 本地测试可用 osixia/openldap（见 deploy/docker-compose.yml）
+# 本地测试可用 osixia/openldap（见 docs/docker-compose.yml）
 spring:
   config:
     activate:

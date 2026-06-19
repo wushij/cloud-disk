@@ -62,4 +62,18 @@ public class TeamSpaceController {
             @RequestParam(required = false) Long folderId) {
         return teamSpaceService.listFiles(id, folderId);
     }
+
+    /** 解散/删除团队空间 */
+    @DeleteMapping("/{id}")
+    public Map<String, String> delete(@PathVariable Long id) {
+        teamSpaceService.deleteSpace(id);
+        return Map.of("message", "已解散并删除团队空间");
+    }
+
+    /** 退出团队空间 */
+    @PostMapping("/{id}/leave")
+    public Map<String, String> leave(@PathVariable Long id) {
+        teamSpaceService.leaveSpace(id);
+        return Map.of("message", "已退出团队空间");
+    }
 }

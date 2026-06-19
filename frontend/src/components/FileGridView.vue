@@ -2,9 +2,9 @@
 
 import { computed } from 'vue'
 
-import { fmtSize } from '@/utils/md5'
+import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
+import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
 import type { FileItem } from '@/stores/file'
-import { TOKEN_KEY } from '@/api/http'
 
 export type { FileItem }
 
@@ -42,48 +42,6 @@ const emit = defineEmits<{
 
 
 
-function tokenParam() {
-
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
-
-}
-
-
-
-function thumbUrl(row: FileItem) {
-
-  if (!row.hasThumbnail) return ''
-
-  return `/api/files/${row.id}/thumbnail?access_token=${tokenParam()}`
-
-}
-
-
-
-function fileIconColor(row: FileItem): string {
-
-  if (row.type === 'folder') return 'var(--cd-file-folder)'
-
-  const mime = (row.mimeType || '').toLowerCase()
-
-  if (mime.startsWith('image/')) return 'var(--cd-file-image)'
-
-  if (mime.startsWith('video/')) return 'var(--cd-file-video)'
-
-  if (mime.includes('pdf')) return 'var(--cd-file-pdf)'
-
-  if (mime.includes('word') || mime.includes('document')) return 'var(--cd-file-doc)'
-
-  if (mime.includes('sheet') || mime.includes('excel')) return 'var(--cd-file-excel)'
-
-  if (mime.includes('presentation') || mime.includes('powerpoint')) return 'var(--cd-file-ppt)'
-
-  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z') || mime.includes('tar')) return 'var(--cd-file-archive)'
-
-  return 'var(--cd-file-default)'
-
-}
-
 
 
 function fileExt(row: FileItem): string {
@@ -99,22 +57,6 @@ function fileExt(row: FileItem): string {
 }
 
 
-
-function transcodeLabel(status?: string) {
-
-  switch (status) {
-
-    case 'PENDING': case 'PROCESSING': return '转码中'
-
-    case 'DONE': return '已转码'
-
-    case 'FAILED': return '转码失败'
-
-    default: return ''
-
-  }
-
-}
 
 
 
@@ -161,6 +103,7 @@ function onMoreCommand(command: string, row: FileItem) {
         :key="row.id"
 
         class="cd-grid-card"
+        :class="{ 'cd-grid-card-folder': row.type === 'folder' }"
 
         @dblclick="emit('open', row)"
 
@@ -171,17 +114,20 @@ function onMoreCommand(command: string, row: FileItem) {
         <div class="cd-grid-thumb">
 
           <img
-
-            v-if="row.hasThumbnail"
-
-            :src="thumbUrl(row)"
-
+            v-if="fileCoverKind(row) === 'image'"
+            :src="fileCoverUrl(row)"
             class="cd-grid-thumb-img"
-
             alt=""
-
+            loading="lazy"
           />
-
+          <video
+            v-else-if="fileCoverKind(row) === 'video'"
+            :src="fileCoverUrl(row)"
+            class="cd-grid-thumb-img cd-grid-thumb-video"
+            muted
+            preload="metadata"
+            playsinline
+          />
           <div v-else class="cd-grid-icon" :style="{ color: fileIconColor(row) }">
 
             <el-icon :size="40">
@@ -388,11 +334,35 @@ function onMoreCommand(command: string, row: FileItem) {
 
   display: grid;
 
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
 
-  gap: 16px;
+  gap: 18px;
 
   padding: 4px 0;
+
+}
+
+
+
+.cd-grid-card-folder {
+
+  border-color: color-mix(in srgb, var(--cd-file-folder) 22%, var(--cd-border-light));
+
+}
+
+
+
+.cd-grid-card-folder .cd-grid-thumb {
+
+  background: color-mix(in srgb, var(--cd-file-folder) 10%, #f8f9fc);
+
+}
+
+
+
+.cd-grid-card-folder:hover {
+
+  border-color: color-mix(in srgb, var(--cd-file-folder) 45%, var(--cd-primary-light));
 
 }
 
@@ -446,7 +416,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   border: 1px solid var(--cd-border-light);
 
-  border-radius: var(--cd-radius-lg);
+  border-radius: 14px;
 
   overflow: visible;
 
@@ -466,13 +436,53 @@ function onMoreCommand(command: string, row: FileItem) {
 
 
 
+.cd-grid-card::before {
+
+  content: '';
+
+  position: absolute;
+
+  inset: 0;
+
+  border-radius: 14px;
+
+  padding: 1px;
+
+  background: linear-gradient(135deg, var(--cd-primary-light) 0%, transparent 50%);
+
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+
+  -webkit-mask-composite: xor;
+
+  mask-composite: exclude;
+
+  opacity: 0;
+
+  transition: opacity 0.25s ease;
+
+  pointer-events: none;
+
+  z-index: 3;
+
+}
+
+
+
 .cd-grid-card:hover {
 
-  border-color: var(--cd-primary-light);
+  border-color: transparent;
 
-  box-shadow: var(--cd-shadow-md);
+  box-shadow: var(--cd-shadow-lg), 0 0 0 1px var(--theme-primary-muted);
 
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+
+}
+
+
+
+.cd-grid-card:hover::before {
+
+  opacity: 1;
 
 }
 
@@ -488,9 +498,9 @@ function onMoreCommand(command: string, row: FileItem) {
 
   width: 100%;
 
-  height: 140px;
+  height: 152px;
 
-  background: #F8F9FC;
+  background: linear-gradient(135deg, #F8F9FC 0%, color-mix(in srgb, var(--theme-primary) 4%, #F8F9FC) 100%);
 
   display: flex;
 
@@ -502,7 +512,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   overflow: hidden;
 
-  border-radius: var(--cd-radius-lg) var(--cd-radius-lg) 0 0;
+  border-radius: 14px 14px 0 0;
 
 }
 
@@ -517,6 +527,16 @@ function onMoreCommand(command: string, row: FileItem) {
   object-fit: cover;
 
   transition: var(--cd-transition-slow);
+
+}
+
+
+
+.cd-grid-thumb-video {
+
+  pointer-events: none;
+
+  background: #000;
 
 }
 
@@ -554,13 +574,17 @@ function onMoreCommand(command: string, row: FileItem) {
 
   color: var(--cd-text-secondary);
 
-  background: #F0F2F6;
+  background: rgba(255, 255, 255, 0.85);
 
-  padding: 1px 6px;
+  backdrop-filter: blur(4px);
 
-  border-radius: 3px;
+  padding: 2px 8px;
+
+  border-radius: var(--cd-radius-full);
 
   letter-spacing: 0.5px;
+
+  box-shadow: var(--cd-shadow-sm);
 
 }
 
@@ -602,7 +626,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-info {
 
-  padding: 10px 12px;
+  padding: 11px 13px 14px;
 
   flex: 1;
 
@@ -643,7 +667,18 @@ function onMoreCommand(command: string, row: FileItem) {
   color: var(--cd-text-placeholder);
 
   margin-top: 4px;
+  line-height: 1.5;
+  gap: 8px;
+  min-width: 0;
 
+}
+
+.cd-grid-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 
@@ -664,7 +699,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   right: 0;
 
-  height: 140px;
+  height: 145px;
 
   display: flex;
 
@@ -672,21 +707,23 @@ function onMoreCommand(command: string, row: FileItem) {
 
   justify-content: center;
 
-  gap: 4px;
+  gap: 5px;
 
-  background: rgba(0, 0, 0, 0.45);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(15, 23, 42, 0.1) 85%, transparent 100%);
 
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+
+  -webkit-backdrop-filter: blur(8px);
 
   opacity: 0;
 
-  transition: var(--cd-transition-fast);
+  transition: var(--cd-transition);
 
   padding: 8px;
 
   flex-wrap: wrap;
 
-  border-radius: var(--cd-radius-lg) var(--cd-radius-lg) 0 0;
+  border-radius: 14px 14px 0 0;
 
   z-index: 2;
 
@@ -712,7 +749,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   border: none;
 
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
 
   color: var(--cd-text-primary);
 
@@ -724,9 +761,11 @@ function onMoreCommand(command: string, row: FileItem) {
 
   cursor: pointer;
 
-  transition: var(--cd-transition-fast);
+  transition: var(--cd-transition-bounce);
 
   font-size: 16px;
+
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 
 }
 
@@ -734,11 +773,13 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-action-btn:hover {
 
-  background: var(--cd-primary);
+  background: var(--cd-primary-gradient);
 
   color: #fff;
 
-  transform: scale(1.1);
+  transform: scale(1.15);
+
+  box-shadow: 0 4px 12px var(--theme-primary-muted-strong);
 
 }
 

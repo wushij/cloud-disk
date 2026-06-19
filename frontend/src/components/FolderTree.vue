@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import http from '@/api/http'
 
 export interface TreeNode {
@@ -25,7 +25,6 @@ function onNodeClick(node: TreeNode) {
 }
 
 onMounted(loadTree)
-watch(() => props.currentId, () => {})
 defineExpose({ reload: loadTree })
 </script>
 

@@ -27,12 +27,8 @@ export function calcFileMd5(file: File, onProgress?: (ratio: number) => void): P
   })
 }
 
-export function fmtSize(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
-}
+/** @deprecated 请使用 @/utils/fileMeta 中的 fmtSize */
+export { fmtSize } from './fileMeta'
 
 export function pickChunkSize(fileSize: number): number {
   const MB = 1024 * 1024

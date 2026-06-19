@@ -17,6 +17,8 @@ export interface FileItem {
   createdAt?: string
 }
 
+const DEFAULT_PAGE_SIZE = 50
+
 export const useFileStore = defineStore('file', () => {
   const currentFolderId = ref(0)
   const breadcrumb = ref<{ id: number; name: string }[]>([{ id: 0, name: '全部文件' }])
@@ -24,23 +26,41 @@ export const useFileStore = defineStore('file', () => {
   const loading = ref(false)
   const keyword = ref('')
   const fileType = ref('')
+  const page = ref(0)
+  const totalElements = ref(0)
+  const hasMore = ref(false)
 
-  async function loadList() {
+  const pageSize = DEFAULT_PAGE_SIZE
+
+  async function loadList(resetPage = true) {
     loading.value = true
     try {
+      if (resetPage) page.value = 0
       const { data } = await http.get('/api/files', {
         params: {
           folderId: currentFolderId.value,
-          page: 0,
-          size: 200,
+          page: page.value,
+          size: pageSize,
           q: keyword.value.trim() || undefined,
           fileType: fileType.value || undefined
         }
       })
-      items.value = data.content
+      if (resetPage) {
+        items.value = data.content
+      } else {
+        items.value = [...items.value, ...data.content]
+      }
+      totalElements.value = data.totalElements
+      hasMore.value = items.value.length < totalElements.value
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadMore() {
+    if (loading.value || !hasMore.value) return
+    page.value++
+    await loadList(false)
   }
 
   function navigateToFolder(id: number, name: string, crumbs?: { id: number; name: string }[]) {
@@ -80,7 +100,12 @@ export const useFileStore = defineStore('file', () => {
     loading,
     keyword,
     fileType,
+    page,
+    totalElements,
+    hasMore,
+    pageSize,
     loadList,
+    loadMore,
     navigateToFolder,
     onTreeSelect,
     enterFolder,

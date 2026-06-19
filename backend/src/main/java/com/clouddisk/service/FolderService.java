@@ -18,9 +18,17 @@ import com.clouddisk.entity.FileRecord;
 
 import com.clouddisk.entity.Folder;
 
+import com.clouddisk.entity.TeamSpace;
+
+import com.clouddisk.entity.TeamMember;
+
 import com.clouddisk.mapper.FileMapper;
 
 import com.clouddisk.mapper.FolderMapper;
+
+import com.clouddisk.mapper.TeamSpaceMapper;
+
+import com.clouddisk.mapper.TeamMemberMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -49,6 +57,10 @@ public class FolderService {
     private final FileMapper fileMapper;
 
     private final FolderTreeHelper folderTreeHelper;
+
+    private final TeamSpaceMapper teamSpaceMapper;
+
+    private final TeamMemberMapper teamMemberMapper;
 
 
 
@@ -116,7 +128,7 @@ public class FolderService {
 
         if (parentId > 0) {
 
-            Folder parent = getOwned(parentId, userId);
+            Folder parent = getOwnedOrShared(parentId, userId);
 
             if (parent.getDeleted() != 0) throw new BusinessException("父目录不存在");
 
@@ -152,7 +164,7 @@ public class FolderService {
 
         long userId = AuthService.currentUserId();
 
-        Folder folder = getOwned(id, userId);
+        Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹在回收站中");
 
@@ -178,7 +190,7 @@ public class FolderService {
 
         long userId = AuthService.currentUserId();
 
-        Folder folder = getOwned(id, userId);
+        Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹在回收站中");
 
@@ -192,7 +204,7 @@ public class FolderService {
 
         if (targetId > 0) {
 
-            Folder target = getOwned(targetId, userId);
+            Folder target = getOwnedOrShared(targetId, userId);
 
             if (target.getDeleted() != 0) throw new BusinessException("目标目录不存在");
 
@@ -222,7 +234,7 @@ public class FolderService {
 
         long userId = AuthService.currentUserId();
 
-        Folder folder = getOwned(id, userId);
+        Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹已在回收站");
 
@@ -239,8 +251,6 @@ public class FolderService {
 
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
-
-                .eq(FileRecord::getUserId, userId)
 
                 .in(FileRecord::getFolderId, folderIds)
 
@@ -259,6 +269,86 @@ public class FolderService {
             }
 
         }
+
+    }
+
+
+
+    public boolean hasAccessToFolder(Long folderId, long userId) {
+
+        if (folderId == null || folderId <= 0) return false;
+
+        Folder folder = folderMapper.selectById(folderId);
+
+        if (folder == null) return false;
+
+        if (folder.getUserId().equals(userId)) return true;
+
+
+
+        Folder current = folder;
+
+        int depth = 0;
+
+        while (current != null && depth < 20) {
+
+            TeamSpace space = teamSpaceMapper.selectOne(new LambdaQueryWrapper<TeamSpace>()
+
+                    .eq(TeamSpace::getRootFolderId, current.getId()));
+
+            if (space != null) {
+
+                TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+
+                        .eq(TeamMember::getSpaceId, space.getId())
+
+                        .eq(TeamMember::getUserId, userId));
+
+                return member != null;
+
+            }
+
+            if (current.getParentId() == null || current.getParentId() <= 0) {
+
+                break;
+
+            }
+
+            current = folderMapper.selectById(current.getParentId());
+
+            depth++;
+
+        }
+
+        return false;
+
+    }
+
+
+
+    public Folder getOwnedOrShared(Long id, long userId) {
+
+        Folder folder = folderMapper.selectById(id);
+
+        if (folder == null) {
+
+            throw new BusinessException("文件夹不存在");
+
+        }
+
+        if (folder.getUserId().equals(userId)) {
+
+            return folder;
+
+        }
+
+        if (hasAccessToFolder(id, userId)) {
+
+            return folder;
+
+        }
+
+        throw new BusinessException("没有权限访问该文件夹");
 
     }
 
@@ -283,8 +373,6 @@ public class FolderService {
     private void checkDuplicateName(long userId, Long parentId, String name, Long excludeId) {
 
         LambdaQueryWrapper<Folder> q = new LambdaQueryWrapper<Folder>()
-
-                .eq(Folder::getUserId, userId)
 
                 .eq(Folder::getParentId, parentId)
 
@@ -313,8 +401,6 @@ public class FolderService {
             if (Objects.equals(current.getParentId(), ancestorId)) return true;
 
             current = folderMapper.selectById(current.getParentId());
-
-            if (current == null || !Objects.equals(current.getUserId(), userId)) break;
 
         }
 

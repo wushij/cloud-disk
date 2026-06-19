@@ -8,11 +8,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 @Service
 @RequiredArgsConstructor
 public class UserCacheService {
 
-    private static final long TTL = 3600;
+    private static final String NULL_MARKER = "NULL";
+    private static final long TTL_BASE = 3600;
+    private static final long TTL_JITTER = 600;
+    private static final long NULL_TTL = 30;
 
     private final CacheService cacheService;
     private final UserMapper userMapper;
@@ -23,6 +28,9 @@ public class UserCacheService {
         String key = "user:" + id;
         String cached = cacheService.get(key);
         if (cached != null) {
+            if (NULL_MARKER.equals(cached)) {
+                return null;
+            }
             try {
                 return objectMapper.readValue(cached, User.class);
             } catch (JsonProcessingException ignored) {
@@ -32,9 +40,12 @@ public class UserCacheService {
         User user = userMapper.selectById(id);
         if (user != null) {
             try {
-                cacheService.set(key, objectMapper.writeValueAsString(user), TTL);
+                long ttl = TTL_BASE + ThreadLocalRandom.current().nextLong(TTL_JITTER);
+                cacheService.set(key, objectMapper.writeValueAsString(user), ttl);
             } catch (JsonProcessingException ignored) {
             }
+        } else {
+            cacheService.set(key, NULL_MARKER, NULL_TTL);
         }
         return user;
     }

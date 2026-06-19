@@ -1,11 +1,14 @@
 server:
   port: 8088
+  shutdown: graceful
 
 spring:
   application:
     name: clouddisk-pro
   profiles:
     default: prod
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   web:
     locale: zh_CN
     locale-resolver: fixed
@@ -29,6 +32,15 @@ spring:
     multipart:
       max-file-size: 128MB
       max-request-size: 128MB
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 10000
+      max-lifetime: 1800000
+      pool-name: clouddisk-hikari
+      leak-detection-threshold: 60000
 
 mybatis-plus:
   configuration:
@@ -68,10 +80,10 @@ clouddisk:
     type: local
     local-root: ${CLOUDDISK_STORAGE:${user.home}/clouddisk-data}
   minio:
-    endpoint: http://127.0.0.1:9000
-    access-key: minioadmin
-    secret-key: minioadmin
-    bucket: cloud-disk
+    endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:cloud-disk}
   chunk:
     default-size: 8388608
     max-size: 67108864
@@ -81,11 +93,11 @@ clouddisk:
     max-file-size: 21474836480
     allowed-extensions: jpg,jpeg,png,gif,webp,bmp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,webm,mkv,mp3,wav,json,xml,csv,md
   onlyoffice:
-    enabled: false
-    document-server-url: http://127.0.0.1:8082
-    jwt-secret: clouddisk-onlyoffice-jwt-secret-change-me
-    callback-base-url: http://127.0.0.1:8088
-    edit-mode: edit
+    enabled: ${ONLYOFFICE_ENABLED:false}
+    document-server-url: ${ONLYOFFICE_DOC_SERVER_URL:http://127.0.0.1:8082}
+    jwt-secret: ${ONLYOFFICE_JWT_SECRET:clouddisk-onlyoffice-jwt-secret-change-me}
+    callback-base-url: ${ONLYOFFICE_CALLBACK_URL:http://127.0.0.1:8088}
+    edit-mode: ${ONLYOFFICE_EDIT_MODE:edit}
   schedule:
     enabled: true
     recycle-retain-days: 30
@@ -125,7 +137,11 @@ clouddisk:
     audio-codec: aac
     transcode-suffix: _720p.mp4
   ldap:
-    enabled: false
+    enabled: ${LDAP_ENABLED:false}
+    urls: ${LDAP_URLS:ldap://127.0.0.1:389}
+    base: ${LDAP_BASE:dc=example,dc=com}
+    user-dn: ${LDAP_USER_DN:cn=admin,dc=example,dc=com}
+    password: ${LDAP_PASSWORD:}
   sso:
     enabled: false
   monitoring:
@@ -160,7 +176,9 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,env,loggers
   endpoint:
     health:
       show-details: when_authorized
+      probes:
+        enabled: true

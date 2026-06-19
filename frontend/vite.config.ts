@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+// @ts-ignore
+import { lanAccessBanner } from '../scripts/vite-lan-banner.mjs'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -11,14 +13,16 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: '/',
-    plugins: [vue()],
+    plugins: [vue(), lanAccessBanner('CloudDisk PC') as any],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
       }
     },
     server: {
+      host: true,
       port: 5173,
+      strictPort: true,
       proxy: {
         '/api': {
           target: apiTarget,
@@ -26,7 +30,7 @@ export default defineConfig(({ mode }) => {
           timeout: 3_600_000,
           proxyTimeout: 3_600_000
         },
-        '/share': {
+        '/share/': {
           target: apiTarget,
           changeOrigin: true
         },

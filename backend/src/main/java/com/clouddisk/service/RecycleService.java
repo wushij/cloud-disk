@@ -86,6 +86,10 @@ public class RecycleService {
 
             m.put("deletedAt", f.getUpdateTime());
 
+            m.put("mimeType", f.getFileType());
+
+            m.put("hasThumbnail", org.springframework.util.StringUtils.hasText(f.getThumbnailPath()) || org.springframework.util.StringUtils.hasText(f.getPosterPath()));
+
             items.add(m);
 
         }

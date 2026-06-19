@@ -1,0 +1,86 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^u-(.*)": "uview-plus/components/u-$1/u-$1.vue"
+    }
+  },
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/disk/index",
+      "style": {
+        "navigationBarTitleText": "我的云盘",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/shares/index",
+      "style": {
+        "navigationBarTitleText": "我的分享",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/recycle/index",
+      "style": {
+        "navigationBarTitleText": "回收站",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "个人中心",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/share/view",
+      "style": {
+        "navigationBarTitleText": "分享详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/preview/image",
+      "style": {
+        "navigationBarTitleText": "图片预览",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/preview/video",
+      "style": {
+        "navigationBarTitleText": "视频播放",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teams/index",
+      "style": {
+        "navigationBarTitleText": "团队空间",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teams/files",
+      "style": {
+        "navigationBarTitleText": "团队文件",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "CloudDisk Pro",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f6fa"
+  }
+}

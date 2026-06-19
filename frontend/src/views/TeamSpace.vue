@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import http from '@/api/http'
+import { UserFilled } from '@element-plus/icons-vue'
+import http, { TOKEN_KEY } from '@/api/http'
+import { fmtSize } from '@/utils/fileMeta'
+import PageHeader from '@/components/PageHeader.vue'
 
 interface TeamSpace {
   id: number
@@ -16,6 +19,8 @@ interface TeamSpace {
 interface TeamMember {
   userId: number
   username?: string
+  nickname?: string
+  avatar?: string
   role: string
   joinTime: string
 }
@@ -112,16 +117,11 @@ function backToList() {
   members.value = []
 }
 
-function fmtSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
-  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
-}
-
 function downloadFile(row: FileItem) {
+  const token = localStorage.getItem(TOKEN_KEY)
   const a = document.createElement('a')
-  a.href = `/api/files/${row.id}/download`
+  const params = token ? `?access_token=${encodeURIComponent(token)}` : ''
+  a.href = `/api/files/${row.id}/download${params}`
   a.download = row.name
   a.click()
 }
@@ -157,6 +157,52 @@ async function removeMember(userId: number) {
   }
 }
 
+async function disbandSpace() {
+  if (!currentSpace.value) return
+  await ElMessageBox.confirm(
+    `确定解散团队「${currentSpace.value.name}」吗？所有成员将被移除，团队关联文件将被移入回收站！`,
+    '提示',
+    { type: 'warning' }
+  )
+  try {
+    await http.delete(`/api/teams/${currentSpace.value.id}`)
+    ElMessage.success('已解散该团队空间')
+    backToList()
+    loadSpaces()
+  } catch {
+    /* global toast */
+  }
+}
+
+async function leaveSpace() {
+  if (!currentSpace.value) return
+  await ElMessageBox.confirm(
+    `确定退出团队「${currentSpace.value.name}」吗？退出后您将无法再访问其共享文件！`,
+    '提示',
+    { type: 'warning' }
+  )
+  try {
+    await http.post(`/api/teams/${currentSpace.value.id}/leave`)
+    ElMessage.success('已成功退出该团队空间')
+    backToList()
+    loadSpaces()
+  } catch {
+    /* global toast */
+  }
+}
+
+async function deleteItem(row: FileItem) {
+  await ElMessageBox.confirm('确定删除吗？文件/目录将被移至回收站', '提示', { type: 'warning' })
+  const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
+  try {
+    await http.delete(url)
+    ElMessage.success('已移至回收站')
+    loadFiles()
+  } catch {
+    /* global toast */
+  }
+}
+
 const teamColors = ['#4F7CFF', '#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#A855F7']
 
 function teamColor(index: number): string {
@@ -170,19 +216,22 @@ onMounted(loadSpaces)
   <div class="cd-page">
     <!-- 团队列表 -->
     <el-card v-if="!currentSpace" shadow="never" class="cd-page-card">
-        <template #header>
-          <div class="cd-card-header">
-            <div class="cd-card-title">
-              <el-icon :size="16" color="var(--cd-primary)"><UserFilled /></el-icon>
-              <span>我的团队空间</span>
-            </div>
+        <PageHeader
+          title="我的团队空间"
+          description="创建或加入团队，与成员共享文件与目录"
+          :icon="UserFilled"
+          :count="spaces.length"
+          count-label="个团队"
+        >
+          <template #actions>
             <el-button type="primary" @click="createSpace">
               <el-icon><Plus /></el-icon>
               创建团队
             </el-button>
-          </div>
-        </template>
-        <el-empty v-if="!spaces.length" description="还没有加入任何团队空间" />
+          </template>
+        </PageHeader>
+        <div class="cd-team-body">
+        <el-empty v-if="!spaces.length" description="还没有加入任何团队空间" class="cd-page-empty" />
         <div v-else class="cd-team-grid">
           <div
             v-for="(space, index) in spaces"
@@ -203,6 +252,7 @@ onMounted(loadSpaces)
               </div>
             </div>
           </div>
+        </div>
         </div>
       </el-card>
 
@@ -225,10 +275,30 @@ onMounted(loadSpaces)
                 <el-icon><Back /></el-icon>返回根目录
               </el-button>
             </div>
-            <el-button @click="loadMembers">
-              <el-icon><User /></el-icon>
-              成员管理
-            </el-button>
+            <div class="cd-action-buttons">
+              <el-button @click="loadMembers" style="margin-right: 8px;">
+                <el-icon><User /></el-icon>
+                成员管理
+              </el-button>
+              <el-button
+                v-if="currentSpace.myRole === 'OWNER'"
+                type="danger"
+                plain
+                @click="disbandSpace"
+              >
+                <el-icon><Delete /></el-icon>
+                解散团队
+              </el-button>
+              <el-button
+                v-else
+                type="danger"
+                plain
+                @click="leaveSpace"
+              >
+                <el-icon><SwitchButton /></el-icon>
+                退出团队
+              </el-button>
+            </div>
           </div>
         </template>
 
@@ -254,7 +324,7 @@ onMounted(loadSpaces)
               <span class="cd-cell-text">{{ row.createdAt ? new Date(row.createdAt).toLocaleString() : '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="120">
+          <el-table-column label="操作" width="180">
             <template #default="{ row }">
               <el-button v-if="row.type === 'folder'" link type="primary" @click="enterFolder(row)">
                 <el-icon><FolderOpened /></el-icon>打开
@@ -262,13 +332,16 @@ onMounted(loadSpaces)
               <el-button v-else link type="primary" @click="downloadFile(row)">
                 <el-icon><Download /></el-icon>下载
               </el-button>
+              <el-button link type="danger" @click="deleteItem(row)">
+                <el-icon><Delete /></el-icon>删除
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
       </el-card>
 
     <!-- 成员管理弹窗 -->
-    <el-drawer v-model="showMembers" title="成员管理" size="420px">
+    <el-drawer v-model="showMembers" title="成员管理" size="500px">
       <template #header>
         <div class="cd-member-header">
           <span class="cd-notify-title">成员管理</span>
@@ -284,13 +357,13 @@ onMounted(loadSpaces)
         </div>
       </template>
       <el-table :data="members">
-        <el-table-column label="用户" min-width="120">
+        <el-table-column label="用户" min-width="160">
           <template #default="{ row }">
             <div class="cd-member-name">
-              <el-avatar :size="28" class="cd-member-avatar">
-                {{ (row.username || 'U').charAt(0).toUpperCase() }}
+              <el-avatar :size="36" :src="row.avatar" class="cd-member-avatar">
+                {{ (row.nickname || row.username || 'U').charAt(0).toUpperCase() }}
               </el-avatar>
-              <span>{{ row.username || '用户' + row.userId }}</span>
+              <span>{{ row.nickname || row.username || '用户' + row.userId }}</span>
             </div>
           </template>
         </el-table-column>
@@ -301,7 +374,7 @@ onMounted(loadSpaces)
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="加入时间" prop="joinTime" width="120">
+        <el-table-column label="加入时间" width="120">
           <template #default="{ row }">{{ new Date(row.joinTime).toLocaleDateString() }}</template>
         </el-table-column>
         <el-table-column label="操作" width="80">
@@ -338,7 +411,12 @@ onMounted(loadSpaces)
 .cd-team-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  gap: 18px;
+  padding: 16px 20px 20px;
+}
+
+.cd-team-body {
+  min-height: 0;
 }
 
 .cd-team-card {
@@ -439,6 +517,7 @@ onMounted(loadSpaces)
   background: var(--cd-primary-gradient) !important;
   color: #fff !important;
   font-weight: 600 !important;
-  font-size: 12px !important;
+  font-size: 14px !important;
+  flex-shrink: 0;
 }
 </style>

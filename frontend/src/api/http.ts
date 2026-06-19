@@ -5,6 +5,7 @@ const TOKEN_KEY = 'cd_token'
 const USER_KEY = 'cd_username'
 const NICKNAME_KEY = 'cd_nickname'
 const ROLE_KEY = 'cd_role'
+const AVATAR_VERSION_KEY = 'cd_avatar_v'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
@@ -64,5 +65,5 @@ http.interceptors.response.use(
   }
 )
 
-export { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY }
+export { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY }
 export default http

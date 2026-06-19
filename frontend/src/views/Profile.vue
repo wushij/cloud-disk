@@ -240,12 +240,28 @@ async function save() {
 
 .profile-hero-banner {
   height: 120px;
-  background: linear-gradient(
-    135deg,
-    var(--theme-primary-muted-strong) 0%,
-    color-mix(in srgb, var(--theme-primary) 12%, var(--theme-bg)) 50%,
-    var(--theme-bg) 100%
-  );
+  background:
+    radial-gradient(ellipse at 20% 0%, var(--theme-primary-muted-strong) 0%, transparent 55%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--theme-primary) 14%, var(--theme-bg)) 0%,
+      color-mix(in srgb, var(--theme-primary) 8%, var(--theme-bg)) 45%,
+      var(--theme-bg) 100%
+    );
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-hero-banner::after {
+  content: '';
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--theme-primary-muted-strong) 0%, transparent 70%);
+  opacity: 0.6;
 }
 
 .profile-hero-main {
@@ -276,7 +292,7 @@ async function save() {
   font-weight: 700 !important;
   background: var(--cd-primary-gradient) !important;
   border: 4px solid #fff !important;
-  box-shadow: 0 8px 28px var(--theme-primary-muted-strong) !important;
+  box-shadow: 0 8px 28px var(--theme-primary-muted-strong), 0 0 0 1px var(--theme-primary-muted) !important;
   transition: transform 0.2s ease;
 }
 
@@ -352,11 +368,13 @@ async function save() {
   font-weight: 600;
   color: #475569;
   background: #f1f5f9;
+  border: 1px solid transparent;
 }
 
 .profile-role-badge.admin {
   color: #b45309;
   background: #fffbeb;
+  border-color: #fde68a;
 }
 
 .profile-storage-panel {

@@ -1,13 +1,11 @@
 package com.clouddisk.config;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-@Slf4j
 @Component
 public class StartupSuccessListener {
 
@@ -29,16 +27,24 @@ public class StartupSuccessListener {
         boolean redisEnabled = env.getProperty("clouddisk.redis.enabled", Boolean.class, false);
         String storageType = env.getProperty("clouddisk.storage.type", "local");
 
-        log.info("");
-        log.info("================================================================");
-        log.info("  CloudDisk Pro 启动成功");
-        log.info("  Profile   : {}", profileText);
-        log.info("  存储      : {} | Redis: {}", storageType, redisEnabled ? "已启用" : "未启用");
-        log.info("  API       : {}", baseUrl);
-        log.info("  接口文档  : {}/doc.html", baseUrl);
-        log.info("  健康检查  : {}/actuator/health", baseUrl);
-        log.info("  默认账号  : admin / admin123");
-        log.info("================================================================");
-        log.info("");
+        String c = "\033[36m";  // 青色
+        String g = "\033[32m";  // 绿色
+        String y = "\033[33m";  // 黄色
+        String b = "\033[34m";  // 蓝色
+        String r = "\033[0m";   // 重置
+
+        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+        System.out.println();
+        System.out.println(c + line + r);
+        System.out.println(g + "  CloudDisk Pro 启动成功" + r);
+        System.out.println(c + "  ─────────────────────────────────────────────" + r);
+        System.out.println("  " + b + "Profile" + r + "    : " + y + profileText + r);
+        System.out.println("  " + b + "存储" + r + "       : " + y + storageType + r + " | Redis: " + (redisEnabled ? g + "已启用" + r : r + "未启用"));
+        System.out.println("  " + b + "API" + r + "        : " + y + baseUrl + r);
+        System.out.println("  " + b + "接口文档" + r + "   : " + y + baseUrl + "/doc.html" + r);
+        System.out.println("  " + b + "健康检查" + r + "   : " + y + baseUrl + "/actuator/health" + r);
+        System.out.println("  " + b + "默认账号" + r + "   : " + y + "admin / admin123" + r);
+        System.out.println(c + line + r);
+        System.out.println();
     }
 }

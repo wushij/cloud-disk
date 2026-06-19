@@ -64,11 +64,13 @@
   --cd-radius-full: 9999px;
 
   /* ---- 阴影 ---- */
-  --cd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --cd-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --cd-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --cd-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08), 0 4px 6px rgba(0, 0, 0, 0.04);
-  --cd-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.06);
+  --cd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --cd-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --cd-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --cd-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+  --cd-shadow-xl: 0 20px 32px rgba(0, 0, 0, 0.1), 0 8px 16px rgba(0, 0, 0, 0.06);
+  --cd-shadow-soft: 0 2px 16px rgba(0, 0, 0, 0.06);
+  --cd-shadow-glow: 0 0 20px var(--theme-primary-muted-strong);
 
   /* ---- 间距 ---- */
   --cd-gap-xs: 4px;
@@ -83,6 +85,7 @@
   --cd-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   --cd-transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --cd-transition-slow: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --cd-transition-bounce: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* ============================================
@@ -91,7 +94,11 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #D1D5DB transparent;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: #C1C7D0 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -104,12 +111,17 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #D1D5DB;
+  background-color: transparent;
   border-radius: 3px;
+  transition: background-color 0.25s ease;
 }
 
 *::-webkit-scrollbar-thumb:hover {
   background-color: #9CA3AF;
+}
+
+*::-webkit-scrollbar:hover > ::-webkit-scrollbar-thumb {
+  background-color: #D1D5DB;
 }
 
 /* ============================================
@@ -129,7 +141,7 @@
 .el-button--primary:focus {
   background: var(--cd-primary-gradient-hover) !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 124, 255, 0.35);
+  box-shadow: 0 4px 14px var(--theme-primary-muted-strong);
 }
 
 .el-button--primary:active {
@@ -159,7 +171,7 @@
 }
 
 .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px var(--cd-primary) inset, 0 0 0 3px var(--theme-primary-muted) !important;
+  box-shadow: 0 0 0 1px var(--cd-primary) inset, 0 0 0 3px var(--theme-primary-muted), 0 0 12px var(--theme-primary-muted) !important;
 }
 
 /* ---- 卡片 ---- */
@@ -185,7 +197,7 @@
 .el-table {
   --el-table-border-color: var(--cd-border-light);
   --el-table-header-bg-color: #F8F9FC;
-  --el-table-row-hover-bg-color: #F5F7FC;
+  --el-table-row-hover-bg-color: color-mix(in srgb, var(--theme-primary) 5%, #fff);
   border-radius: var(--cd-radius-lg);
   overflow: hidden;
 }
@@ -206,6 +218,10 @@
   background: var(--theme-primary-muted) !important;
 }
 
+.el-table .el-table__row {
+  transition: background-color 0.2s ease;
+}
+
 /* ---- 标签 ---- */
 .el-tag {
   border-radius: var(--cd-radius-full) !important;
@@ -217,11 +233,23 @@
 .el-dialog {
   border-radius: var(--cd-radius-xl) !important;
   overflow: hidden;
+  box-shadow: var(--cd-shadow-xl), 0 0 0 1px var(--cd-border-light) !important;
 }
 
 .el-dialog__header {
   padding: var(--cd-gap-lg) var(--cd-gap-xl) var(--cd-gap) !important;
   border-bottom: 1px solid var(--cd-border-light);
+  position: relative;
+}
+
+.el-dialog__header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(135deg, var(--cd-primary-light) 0%, color-mix(in srgb, var(--cd-primary-light) 60%, #818cf8) 100%);
 }
 
 .el-dialog__body {
@@ -294,6 +322,12 @@
   background: var(--cd-primary) !important;
   border: 2px solid #fff !important;
   font-weight: 600;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--theme-primary-muted); }
+  50% { box-shadow: 0 0 0 4px transparent; }
 }
 
 /* ---- Statistic ---- */
@@ -352,6 +386,23 @@
 @keyframes floatUp {
   0% { opacity: 0; transform: translateY(20px); }
   100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes bellRing {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-12deg); }
+  30% { transform: rotate(10deg); }
+  40% { transform: rotate(-8deg); }
+  50% { transform: rotate(6deg); }
+  60% { transform: rotate(-4deg); }
+  70% { transform: rotate(2deg); }
+  80% { transform: rotate(0deg); }
 }
 
 .fade-enter-active,
