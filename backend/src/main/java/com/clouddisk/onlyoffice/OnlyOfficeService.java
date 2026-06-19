@@ -40,7 +40,7 @@ public class OnlyOfficeService {
 
     public Map<String, Object> buildEditorConfig(Long fileId, long userId, String username) {
         ensureEnabled();
-        FileRecord file = fileService.getOwned(fileId, userId);
+        FileRecord file = fileService.getOwnedOrShared(fileId, userId);
         if (!fileService.isOfficeFile(file.getFileType(), file.getFileName())) {
             throw new BusinessException("该文件不是 Office 格式文档");
         }

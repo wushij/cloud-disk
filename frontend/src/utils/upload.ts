@@ -51,7 +51,8 @@ export async function uploadFile(
   file: File,
   folderId: number,
   fileMd5: string | null,
-  onProgress: (ratio: number) => void
+  onProgress: (ratio: number) => void,
+  signal?: AbortSignal
 ): Promise<{ instant?: boolean; fileId?: number; uploadId?: string }> {
   onProgress(0)
 
@@ -61,7 +62,7 @@ export async function uploadFile(
       fileName: file.name,
       fileSize: file.size,
       folderId
-    })
+    }, { signal })
     if (check.exists && check.instant) {
       onProgress(1)
       return { instant: true, fileId: check.fileId }
@@ -76,6 +77,7 @@ export async function uploadFile(
         fd.append('folderId', String(folderId))
         return fd
       })(), {
+        signal,
         onUploadProgress: (e) => {
           if (e.total) onProgress(Math.min(0.99, e.loaded / e.total))
         }
@@ -92,7 +94,7 @@ export async function uploadFile(
     chunkSize,
     fileMd5: fileMd5 || undefined,
     folderId
-  })
+  }, { signal })
 
   const uploaded = new Set<number>((init.uploadedChunks as number[]) || [])
   const totalChunks = init.totalChunks as number
@@ -109,14 +111,15 @@ export async function uploadFile(
       fd.append('uploadId', uploadId)
       fd.append('chunkIndex', String(i))
       fd.append('file', file.slice(start, end), `part-${i}`)
-      await withRetry(() => http.post('/api/upload/chunk', fd))
+      await withRetry(() => http.post('/api/upload/chunk', fd, { signal }))
     },
     (r) => onProgress(0.05 + r * 0.9)
   )
 
   await withRetry(() =>
-    http.post('/api/upload/merge', { uploadId, mimeType: file.type || undefined })
+    http.post('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal })
   )
   onProgress(1)
   return { uploadId }
 }
+

@@ -1,9 +1,41 @@
 <script setup lang="ts">
-import { onLaunch } from '@dcloudio/uni-app'
+import { ref, computed } from 'vue'
+import { onLaunch, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
+import { subscribeWs } from '@/utils/ws'
+
+let unsubscribeWs: (() => void) | null = null
+
+function setupNotifications() {
+  const auth = useAuthStore()
+  const notifyStore = useNotificationStore()
+  if (!auth.isLoggedIn) {
+    unsubscribeWs?.()
+    unsubscribeWs = null
+    return
+  }
+  notifyStore.loadFromApi().catch(() => {})
+  if (unsubscribeWs) return
+  unsubscribeWs = subscribeWs((data) => {
+    if (data.type === 'notification') {
+      notifyStore.push({
+        id: data.notifyId,
+        type: data.notifyType,
+        title: data.title,
+        content: data.content,
+        refId: data.refId
+      })
+    }
+  })
+}
 
 onLaunch(() => {
   useAuthStore().restore()
+})
+
+onShow(() => {
+  setupNotifications()
 })
 </script>
 

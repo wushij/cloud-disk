@@ -1,6 +1,5 @@
 # ===== IDE =====
 .idea/
-.vscode/
 .cursor/
 *.iml
 *.iws
@@ -10,7 +9,7 @@
 .settings/
 
 # ===== 本地文档 / 笔记（不提交） =====
-docs/*.txt
+docs/
 
 # ===== Java / Maven =====
 **/target/

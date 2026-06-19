@@ -48,6 +48,8 @@ public class RecycleService {
 
     private final StorageQuotaService quotaService;
 
+    private final FolderService folderService;
+
 
 
     @Autowired(required = false)
@@ -62,6 +64,12 @@ public class RecycleService {
 
         List<Map<String, Object>> items = new ArrayList<>();
 
+        Set<Long> seenFileIds = new HashSet<>();
+
+        Set<Long> seenFolderIds = new HashSet<>();
+
+        Set<Long> teamFolderScope = teamFolderScope(userId);
+
 
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
@@ -74,23 +82,27 @@ public class RecycleService {
 
         for (FileRecord f : files) {
 
-            Map<String, Object> m = new LinkedHashMap<>();
+            appendFileItem(items, seenFileIds, f);
 
-            m.put("id", f.getId());
+        }
 
-            m.put("name", f.getFileName());
 
-            m.put("type", "file");
 
-            m.put("sizeBytes", f.getFileSize());
+        if (!teamFolderScope.isEmpty()) {
 
-            m.put("deletedAt", f.getUpdateTime());
+            List<FileRecord> teamFiles = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 
-            m.put("mimeType", f.getFileType());
+                    .eq(FileRecord::getStatus, 0)
 
-            m.put("hasThumbnail", org.springframework.util.StringUtils.hasText(f.getThumbnailPath()) || org.springframework.util.StringUtils.hasText(f.getPosterPath()));
+                    .in(FileRecord::getFolderId, teamFolderScope)
 
-            items.add(m);
+                    .orderByDesc(FileRecord::getUpdateTime));
+
+            for (FileRecord f : teamFiles) {
+
+                appendFileItem(items, seenFileIds, f);
+
+            }
 
         }
 
@@ -106,19 +118,47 @@ public class RecycleService {
 
         for (Folder f : folders) {
 
-            Map<String, Object> m = new LinkedHashMap<>();
-
-            m.put("id", f.getId());
-
-            m.put("name", f.getFolderName());
-
-            m.put("type", "folder");
-
-            m.put("deletedAt", f.getUpdateTime());
-
-            items.add(m);
+            appendFolderItem(items, seenFolderIds, f);
 
         }
+
+
+
+        if (!teamFolderScope.isEmpty()) {
+
+            List<Folder> teamFolders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+
+                    .eq(Folder::getDeleted, 1)
+
+                    .in(Folder::getId, teamFolderScope)
+
+                    .orderByDesc(Folder::getUpdateTime));
+
+            for (Folder f : teamFolders) {
+
+                appendFolderItem(items, seenFolderIds, f);
+
+            }
+
+        }
+
+
+
+        items.sort((a, b) -> {
+
+            Object ta = a.get("deletedAt");
+
+            Object tb = b.get("deletedAt");
+
+            if (ta == null && tb == null) return 0;
+
+            if (ta == null) return 1;
+
+            if (tb == null) return -1;
+
+            return ((Comparable) tb).compareTo(ta);
+
+        });
 
         return items;
 
@@ -132,7 +172,13 @@ public class RecycleService {
 
         FileRecord file = fileMapper.selectById(id);
 
-        if (file == null || !Objects.equals(file.getUserId(), userId)) {
+        if (file == null || file.getStatus() == null || file.getStatus() != 0) {
+
+            throw new BusinessException("文件不存在");
+
+        }
+
+        if (!canAccessRecycledFile(userId, file)) {
 
             throw new BusinessException("文件不存在");
 
@@ -154,7 +200,7 @@ public class RecycleService {
 
         fileMapper.updateById(file);
 
-        quotaService.addUsage(userId, file.getFileSize() != null ? file.getFileSize() : 0);
+        quotaService.addUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
 
         syncSearch(file);
 
@@ -168,7 +214,7 @@ public class RecycleService {
 
         Folder folder = folderMapper.selectById(id);
 
-        if (folder == null || !Objects.equals(folder.getUserId(), userId)) {
+        if (folder == null || !canAccessRecycledFolder(userId, folder)) {
 
             throw new BusinessException("文件夹不存在");
 
@@ -206,8 +252,6 @@ public class RecycleService {
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 
-                .eq(FileRecord::getUserId, userId)
-
                 .in(FileRecord::getFolderId, folderIds)
 
                 .eq(FileRecord::getStatus, 0));
@@ -217,6 +261,8 @@ public class RecycleService {
             file.setStatus(1);
 
             fileMapper.updateById(file);
+
+            quotaService.addUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
 
             syncSearch(file);
 
@@ -232,7 +278,13 @@ public class RecycleService {
 
         FileRecord file = fileMapper.selectById(id);
 
-        if (file == null || !Objects.equals(file.getUserId(), userId)) {
+        if (file == null || file.getStatus() == null || file.getStatus() != 0) {
+
+            throw new BusinessException("文件不存在");
+
+        }
+
+        if (!canAccessRecycledFile(userId, file)) {
 
             throw new BusinessException("文件不存在");
 
@@ -265,7 +317,7 @@ public class RecycleService {
         // 永久删除时扣减用量（如果文件在回收站中 status=0，用量已在移入回收站时扣减，
         // 这里只处理状态为1的文件被直接永久删除的情况）
         if (file.getStatus() != null && file.getStatus() == 1) {
-            quotaService.subtractUsage(userId, file.getFileSize() != null ? file.getFileSize() : 0);
+            quotaService.subtractUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
         }
 
     }
@@ -278,7 +330,7 @@ public class RecycleService {
 
         Folder folder = folderMapper.selectById(id);
 
-        if (folder == null || !Objects.equals(folder.getUserId(), userId)) {
+        if (folder == null || !canAccessRecycledFolder(userId, folder)) {
 
             throw new BusinessException("文件夹不存在");
 
@@ -287,8 +339,6 @@ public class RecycleService {
         List<Long> folderIds = folderTreeHelper.collectRecycledSubtreeIds(userId, id);
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
-
-                .eq(FileRecord::getUserId, userId)
 
                 .in(FileRecord::getFolderId, folderIds)
 
@@ -316,6 +366,10 @@ public class RecycleService {
 
         long userId = AuthService.currentUserId();
 
+        Set<Long> teamFolderScope = teamFolderScope(userId);
+
+
+
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 
                 .eq(FileRecord::getUserId, userId)
@@ -328,11 +382,63 @@ public class RecycleService {
 
         }
 
-        folderMapper.delete(new LambdaQueryWrapper<Folder>()
+
+
+        if (!teamFolderScope.isEmpty()) {
+
+            List<FileRecord> teamFiles = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
+
+                    .eq(FileRecord::getStatus, 0)
+
+                    .in(FileRecord::getFolderId, teamFolderScope));
+
+            for (FileRecord f : teamFiles) {
+
+                if (!Objects.equals(f.getUserId(), userId)) {
+
+                    permanentDeleteFile(f.getId());
+
+                }
+
+            }
+
+        }
+
+
+
+        List<Folder> folders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
 
                 .eq(Folder::getUserId, userId)
 
                 .eq(Folder::getDeleted, 1));
+
+        for (Folder folder : folders) {
+
+            permanentDeleteFolder(folder.getId());
+
+        }
+
+
+
+        if (!teamFolderScope.isEmpty()) {
+
+            List<Folder> teamFolders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+
+                    .eq(Folder::getDeleted, 1)
+
+                    .in(Folder::getId, teamFolderScope));
+
+            for (Folder folder : teamFolders) {
+
+                if (!Objects.equals(folder.getUserId(), userId)) {
+
+                    permanentDeleteFolder(folder.getId());
+
+                }
+
+            }
+
+        }
 
     }
 
@@ -345,6 +451,106 @@ public class RecycleService {
             fileSearchBridge.onFileRecycled(file);
 
         }
+
+    }
+
+
+
+    private Set<Long> teamFolderScope(long userId) {
+
+        Set<Long> scope = new HashSet<>();
+
+        for (Folder root : folderService.listTeamRootFoldersForUser(userId)) {
+
+            scope.addAll(folderTreeHelper.collectAllSubtreeIds(root.getId()));
+
+        }
+
+        return scope;
+
+    }
+
+
+
+    private boolean canAccessRecycledFile(long userId, FileRecord file) {
+
+        if (Objects.equals(file.getUserId(), userId)) {
+
+            return true;
+
+        }
+
+        Long folderId = file.getFolderId();
+
+        return folderId != null && folderId > 0 && folderService.hasAccessToFolder(folderId, userId);
+
+    }
+
+
+
+    private boolean canAccessRecycledFolder(long userId, Folder folder) {
+
+        if (Objects.equals(folder.getUserId(), userId)) {
+
+            return true;
+
+        }
+
+        return folderService.hasAccessToFolder(folder.getId(), userId);
+
+    }
+
+
+
+    private void appendFileItem(List<Map<String, Object>> items, Set<Long> seenFileIds, FileRecord f) {
+
+        if (!seenFileIds.add(f.getId())) {
+
+            return;
+
+        }
+
+        Map<String, Object> m = new LinkedHashMap<>();
+
+        m.put("id", f.getId());
+
+        m.put("name", f.getFileName());
+
+        m.put("type", "file");
+
+        m.put("sizeBytes", f.getFileSize());
+
+        m.put("deletedAt", f.getUpdateTime());
+
+        m.put("mimeType", f.getFileType());
+
+        m.put("hasThumbnail", org.springframework.util.StringUtils.hasText(f.getThumbnailPath()) || org.springframework.util.StringUtils.hasText(f.getPosterPath()));
+
+        items.add(m);
+
+    }
+
+
+
+    private void appendFolderItem(List<Map<String, Object>> items, Set<Long> seenFolderIds, Folder f) {
+
+        if (!seenFolderIds.add(f.getId())) {
+
+            return;
+
+        }
+
+        Map<String, Object> m = new LinkedHashMap<>();
+
+        m.put("id", f.getId());
+
+        m.put("name", f.getFolderName());
+
+        m.put("type", "folder");
+
+        m.put("deletedAt", f.getUpdateTime());
+
+        items.add(m);
 
     }
 

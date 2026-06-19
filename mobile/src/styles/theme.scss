@@ -15,7 +15,7 @@ page {
   --cd-primary-gradient-reverse: linear-gradient(225deg, #334155 0%, #010710 60%, #000000 100%);
 
   /* 背景色 - 与 PC 端 slate 一致的浅灰 */
-  --cd-bg: #f3f5f8;
+  --cd-bg: #ffffff;
   --cd-bg-card: #ffffff;
   --cd-bg-elevated: #ffffff;
   --cd-bg-surface: #f8f9fd;
@@ -32,6 +32,11 @@ page {
   --cd-border: #e2e8f0;
   --cd-border-light: #f1f5f9;
   --cd-border-focus: rgba(1, 7, 16, 0.15);
+
+  /* 顶部/底部导航卡片：淡粉描边 + 半透明毛玻璃 */
+  --cd-accent-surface: rgba(255, 251, 251, 0.88);
+  --cd-accent-border: rgba(240, 212, 212, 0.72);
+  --cd-accent-shadow: 0 6rpx 28rpx rgba(239, 68, 68, 0.08), 0 2rpx 10rpx rgba(239, 68, 68, 0.05);
 
   /* 功能色 */
   --cd-success: #22c55e;

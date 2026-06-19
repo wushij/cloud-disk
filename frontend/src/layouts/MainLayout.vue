@@ -4,13 +4,23 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 
 import { useRoute, useRouter } from 'vue-router'
 
+import { storeToRefs } from 'pinia'
+
 import { useAuthStore } from '@/stores/auth'
 
 import { useNotificationStore } from '@/stores/notification'
 
 import ThemePicker from '@/components/ThemePicker.vue'
 
+import { useTransferStore } from '@/stores/transfer'
+
+import TransferPanel from '@/components/TransferPanel.vue'
+
+import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
+
 import http from '@/api/http'
+
+import { ElMessage } from 'element-plus'
 
 import { subscribeWs } from '@/utils/ws'
 
@@ -24,7 +34,19 @@ const auth = useAuthStore()
 
 const notifyStore = useNotificationStore()
 
+const transferStore = useTransferStore()
+
+const { runningCount: runningTransfersCount } = storeToRefs(transferStore)
+
 const storageLabel = ref('')
+
+function toggleTransferList() {
+  if (transferStore.tasks.length === 0) {
+    ElMessage.info('暂无传输任务')
+    return
+  }
+  transferStore.toggleCollapse()
+}
 
 
 
@@ -53,7 +75,7 @@ const avatarBroken = ref(false)
 const navItems = [
   { path: '/disk', label: '我的云盘', icon: 'FolderOpened' },
   { path: '/shares', label: '我的分享', icon: 'Share' },
-  { path: '/teams', label: '团队空间', icon: 'UserFilled' },
+  { path: '/teams', label: '团队空间', icon: TeamSpaceIcon },
   { path: '/recycle', label: '回收站', icon: 'Delete' },
   { path: '/profile', label: '个人中心', icon: 'User' },
   { path: '/admin', label: '系统管理', icon: 'Setting', admin: true as const }
@@ -182,10 +204,31 @@ function logout() {
 
 
 
-function openNotify(item: { id: string; read: boolean }) {
-
+function openNotify(item: { id: string; read: boolean; type: string }) {
+  if (item.type === 'TEAM_INVITED') return
   notifyStore.markRead(item.id)
+}
 
+async function acceptTeamInvite(item: { id: string; refId?: string }) {
+  if (!item.refId) return
+  try {
+    await notifyStore.acceptTeamInvite(item.refId)
+    await notifyStore.markRead(item.id)
+    ElMessage.success('已加入团队')
+  } catch {
+    /* global toast */
+  }
+}
+
+async function rejectTeamInvite(item: { id: string; refId?: string }) {
+  if (!item.refId) return
+  try {
+    await notifyStore.rejectTeamInvite(item.refId)
+    await notifyStore.markRead(item.id)
+    ElMessage.info('已拒绝邀请')
+  } catch {
+    /* global toast */
+  }
 }
 
 </script>
@@ -296,6 +339,17 @@ function openNotify(item: { id: string; read: boolean }) {
 
         <div class="cd-header-right">
 
+          <div class="cd-header-transfer-wrap" @click="toggleTransferList">
+            <button class="cd-header-btn cd-transfer-btn" :class="{ active: runningTransfersCount > 0 }">
+              <svg viewBox="0 0 24 24" fill="none" class="cd-transfer-btn-icon">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor"/>
+              </svg>
+            </button>
+            <span v-if="runningTransfersCount > 0" class="cd-transfer-btn-badge">
+              {{ runningTransfersCount > 99 ? '99+' : runningTransfersCount }}
+            </span>
+          </div>
+
           <el-badge :value="unread" :hidden="unread === 0" :max="99">
 
             <el-button class="cd-header-btn" circle @click="notifyVisible = true">
@@ -398,34 +452,33 @@ function openNotify(item: { id: string; read: boolean }) {
       <div v-else class="cd-notify-list">
 
         <div
-
           v-for="item in notifyStore.items"
-
           :key="item.id"
-
           class="cd-notify-item"
-
           :class="{ unread: !item.read }"
-
           @click="openNotify(item)"
-
         >
-
           <div v-if="!item.read" class="cd-notify-dot" />
-
           <div class="cd-notify-content">
-
             <div class="cd-notify-item-title">{{ item.title }}</div>
-
             <div class="cd-notify-item-text">{{ item.content }}</div>
-
+            <div
+              v-if="item.type === 'TEAM_INVITED' && item.refId && !item.read"
+              class="cd-notify-actions"
+              @click.stop
+            >
+              <el-button size="small" type="primary" @click="acceptTeamInvite(item)">接受</el-button>
+              <el-button size="small" @click="rejectTeamInvite(item)">拒绝</el-button>
+            </div>
           </div>
-
         </div>
 
       </div>
 
     </el-drawer>
+
+    <!-- 全局传输进度面板 -->
+    <TransferPanel />
 
   </el-container>
 
@@ -573,6 +626,78 @@ function openNotify(item: { id: string; read: boolean }) {
 
   color: var(--cd-primary) !important;
 
+}
+
+
+
+/* ============================================
+   Header 传输按钮
+   ============================================ */
+.cd-header-transfer-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cd-transfer-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border: none !important;
+  color: var(--cd-text-secondary) !important;
+  transition: var(--cd-transition-fast);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  background: transparent !important;
+  cursor: pointer;
+  border-radius: 10px !important;
+}
+
+.cd-transfer-btn:hover {
+  background: var(--cd-primary-bg) !important;
+  color: var(--cd-primary) !important;
+}
+
+.cd-transfer-btn.active {
+  color: var(--cd-primary) !important;
+}
+
+.cd-transfer-btn-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.cd-transfer-btn-badge {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 99px;
+  background: var(--theme-primary-gradient, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%));
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.25);
+  animation: badgePopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes badgePopIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 
@@ -825,6 +950,12 @@ function openNotify(item: { id: string; read: boolean }) {
 
   -webkit-box-orient: vertical;
 
+}
+
+.cd-notify-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 </style>

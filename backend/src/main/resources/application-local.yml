@@ -18,6 +18,10 @@ spring:
 clouddisk:
   redis:
     enabled: true
+  rate-limit:
+    enabled: false
+  sentinel:
+    enabled: false
   storage:
     type: minio
   minio:

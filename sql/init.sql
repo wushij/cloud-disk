@@ -1,5 +1,10 @@
 -- CloudDisk Pro 完整数据库脚本（MySQL 8.x，utf8mb4）
--- 含 cloud_disk 业务库 + xxl_job 调度库
+-- 唯一入口：新环境直接执行本文件；已有库可重复执行（CREATE IF NOT EXISTS）
+--
+-- cloud_disk 业务表：tb_user, tb_folder, tb_file, tb_share, tb_upload_session,
+--   tb_file_chunk, tb_audit_log, tb_team_space, tb_team_member, tb_team_invitation,
+--   tb_notification
+-- xxl_job 调度库（可选）
 
 -- =============================================================================
 -- cloud_disk 业务库
@@ -176,6 +181,24 @@ CREATE TABLE IF NOT EXISTS `tb_team_member` (
   KEY `idx_member_user` (`user_id`),
   CONSTRAINT `fk_member_space` FOREIGN KEY (`space_id`) REFERENCES `tb_team_space` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_member_user` FOREIGN KEY (`user_id`) REFERENCES `tb_user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 团队邀请（需被邀请人确认）
+CREATE TABLE IF NOT EXISTS `tb_team_invitation` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `space_id` BIGINT NOT NULL,
+  `inviter_id` BIGINT NOT NULL,
+  `invitee_id` BIGINT NOT NULL,
+  `role` VARCHAR(16) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/ADMIN/MEMBER',
+  `status` VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/ACCEPTED/REJECTED',
+  `create_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_invitee_status` (`invitee_id`, `status`),
+  KEY `idx_space_invitee` (`space_id`, `invitee_id`),
+  CONSTRAINT `fk_inv_space` FOREIGN KEY (`space_id`) REFERENCES `tb_team_space` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_inv_inviter` FOREIGN KEY (`inviter_id`) REFERENCES `tb_user` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_inv_invitee` FOREIGN KEY (`invitee_id`) REFERENCES `tb_user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 通知

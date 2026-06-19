@@ -18,6 +18,9 @@ public class IpRateLimitInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        if (!properties.getRateLimit().isEnabled()) {
+            return true;
+        }
         String uri = request.getRequestURI();
         String bucket = bucket(uri);
         if (bucket == null) {

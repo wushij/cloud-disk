@@ -21,6 +21,9 @@ public class GlobalApiRateLimitInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        if (!properties.getRateLimit().isEnabled()) {
+            return true;
+        }
         String uri = request.getRequestURI();
         if (!uri.startsWith("/api/")) {
             return true;

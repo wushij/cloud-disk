@@ -12,10 +12,6 @@ onLoad((query) => {
   name.value = decodeURIComponent((query?.name as string) || '图片预览')
 })
 
-function goBack() {
-  uni.navigateBack()
-}
-
 function handleDoubleClick() {
   if (scale.value > 1) {
     scale.value = 1
@@ -32,9 +28,6 @@ function toggleUI() {
 <template>
   <view class="page">
     <view class="top-bar" :class="{ 'top-bar-hidden': !showUI }">
-      <view class="back" @click="goBack">
-        <u-icon name="arrow-left" size="20" color="#fff" />
-      </view>
       <text class="title">{{ name }}</text>
     </view>
     <view class="preview-container">
@@ -75,7 +68,7 @@ function toggleUI() {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  justify-content: center;
   padding: calc(var(--status-bar-height, 0px) + 20rpx) 24rpx 20rpx;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -87,19 +80,8 @@ function toggleUI() {
   pointer-events: none;
 }
 
-.back {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(10rpx);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .title {
-  flex: 1;
+  max-width: 100%;
   font-size: 28rpx;
   color: #fff;
   overflow: hidden;

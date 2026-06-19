@@ -5,6 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
+import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const auth = useAuthStore()
@@ -21,6 +23,8 @@ interface TeamSpace {
 
 const teams = ref<TeamSpace[]>([])
 const loading = ref(false)
+const createVisible = ref(false)
+const creating = ref(false)
 
 onShow(async () => {
   if (!auth.requireLogin()) return
@@ -30,7 +34,7 @@ onShow(async () => {
 async function loadTeams() {
   loading.value = true
   try {
-    teams.value = await request<TeamSpace[]>({ url: '/api/teams' })
+    teams.value = (await request<TeamSpace[]>({ url: '/api/teams' })) ?? []
   } catch {
     /* handled */
   } finally {
@@ -38,9 +42,35 @@ async function loadTeams() {
   }
 }
 
+const gradients = [
+  'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', // 靛蓝
+  'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)', // 蔚蓝
+  'linear-gradient(135deg, #10b981 0%, #059669 100%)', // 翡翠
+  'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // 琥珀
+  'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', // 玫瑰
+  'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'  // 罗兰
+]
+
+const shadowColors = [
+  'rgba(79, 70, 229, 0.22)',
+  'rgba(14, 165, 233, 0.22)',
+  'rgba(16, 185, 129, 0.22)',
+  'rgba(245, 158, 11, 0.22)',
+  'rgba(236, 72, 153, 0.22)',
+  'rgba(139, 92, 246, 0.22)'
+]
+
+function getAvatarStyle(teamId: number) {
+  const idx = teamId % gradients.length
+  return {
+    background: gradients[idx],
+    boxShadow: `0 8rpx 20rpx ${shadowColors[idx]}`
+  }
+}
+
 function enterTeam(team: TeamSpace) {
   uni.navigateTo({
-    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}`
+    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}&myRole=${team.myRole}`
   })
 }
 
@@ -60,34 +90,58 @@ function roleColor(role: string) {
   }
 }
 
-async function createTeam() {
-  uni.showModal({
-    title: '创建团队空间',
-    editable: true,
-    placeholderText: '输入团队名称',
-    success: async (res) => {
-      if (!res.confirm || !res.content?.trim()) return
-      try {
-        await request({ url: '/api/teams', method: 'POST', data: { name: res.content.trim() } })
-        uni.showToast({ title: '创建成功', icon: 'success' })
-        await loadTeams()
-      } catch {
-        /* handled */
-      }
-    }
-  })
+function createTeam() {
+  createVisible.value = true
+}
+
+async function submitCreateTeam(name: string) {
+  if (!name) {
+    uni.showToast({ title: '请输入团队名称', icon: 'none' })
+    return
+  }
+  if (creating.value) return
+  creating.value = true
+  try {
+    await request({ url: '/api/teams', method: 'POST', data: { name } })
+    createVisible.value = false
+    uni.showToast({ title: '创建成功', icon: 'success' })
+    await loadTeams()
+  } catch {
+    /* handled */
+  } finally {
+    creating.value = false
+  }
 }
 
 const actionVisible = ref(false)
 const selectedTeam = ref<TeamSpace | null>(null)
+const confirmVisible = ref(false)
+const confirmMode = ref<'dissolve' | 'leave'>('dissolve')
+const renameVisible = ref(false)
+const renaming = ref(false)
+
+const confirmTitle = computed(() => (confirmMode.value === 'dissolve' ? '解散团队' : '退出团队'))
+const confirmMessage = computed(() => {
+  const team = selectedTeam.value
+  if (!team) return ''
+  if (confirmMode.value === 'dissolve') {
+    return `确认解散团队「${team.name}」吗？所有成员将被移除，团队文件将被移入回收站！`
+  }
+  return `确认退出团队「${team.name}」吗？退出后您将无法再访问其共享文件。`
+})
 
 const actionList = computed(() => {
   if (!selectedTeam.value) return []
-  if (selectedTeam.value.myRole === 'OWNER') {
-    return [{ name: '解散团队', color: '#ef4444' }]
-  } else {
-    return [{ name: '退出团队', color: '#ef4444' }]
+  const list: { name: string; color?: string }[] = [{ name: '成员管理' }]
+  if (selectedTeam.value.myRole === 'OWNER' || selectedTeam.value.myRole === 'ADMIN') {
+    list.push({ name: '重命名团队' })
   }
+  if (selectedTeam.value.myRole === 'OWNER') {
+    list.push({ name: '解散团队', color: '#ef4444' })
+  } else {
+    list.push({ name: '退出团队', color: '#ef4444' })
+  }
+  return list
 })
 
 function showTeamActions(team: TeamSpace) {
@@ -95,41 +149,65 @@ function showTeamActions(team: TeamSpace) {
   actionVisible.value = true
 }
 
-async function onActionSelect(item: { name: string }) {
+function onActionSelect(item: { name: string }) {
   const team = selectedTeam.value
   actionVisible.value = false
   if (!team) return
-  
+  if (item.name === '成员管理') {
+    uni.navigateTo({
+      url: `/pages/teams/members?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&myRole=${team.myRole}`
+    })
+    return
+  }
+  if (item.name === '重命名团队') {
+    renameVisible.value = true
+    return
+  }
   if (item.name === '解散团队') {
-    uni.showModal({
-      title: '解散团队',
-      content: `确认解散团队「${team.name}」吗？所有成员将被移除，团队文件将被移入回收站！`,
-      success: async (res) => {
-        if (!res.confirm) return
-        try {
-          await request({ url: `/api/teams/${team.id}`, method: 'DELETE' })
-          uni.showToast({ title: '已解散团队', icon: 'success' })
-          loadTeams()
-        } catch {
-          /* handled */
-        }
-      }
-    })
+    confirmMode.value = 'dissolve'
+    confirmVisible.value = true
   } else if (item.name === '退出团队') {
-    uni.showModal({
-      title: '退出团队',
-      content: `确认退出团队「${team.name}」吗？退出后您将无法再访问其共享文件。`,
-      success: async (res) => {
-        if (!res.confirm) return
-        try {
-          await request({ url: `/api/teams/${team.id}/leave`, method: 'POST' })
-          uni.showToast({ title: '已退出团队', icon: 'success' })
-          loadTeams()
-        } catch {
-          /* handled */
-        }
-      }
-    })
+    confirmMode.value = 'leave'
+    confirmVisible.value = true
+  }
+}
+
+async function submitRenameTeam(name: string) {
+  const team = selectedTeam.value
+  const trimmed = name.trim()
+  if (!team || !trimmed) {
+    uni.showToast({ title: '请输入团队名称', icon: 'none' })
+    return
+  }
+  if (renaming.value) return
+  renaming.value = true
+  try {
+    await request({ url: `/api/teams/${team.id}`, method: 'PUT', data: { name: trimmed } })
+    renameVisible.value = false
+    uni.showToast({ title: '已重命名', icon: 'success' })
+    await loadTeams()
+  } catch {
+    /* handled */
+  } finally {
+    renaming.value = false
+  }
+}
+
+async function onConfirmAction() {
+  const team = selectedTeam.value
+  if (!team) return
+  try {
+    if (confirmMode.value === 'dissolve') {
+      await request({ url: `/api/teams/${team.id}`, method: 'DELETE' })
+      uni.showToast({ title: '已解散团队', icon: 'success' })
+      await loadTeams()
+      return
+    }
+    await request({ url: `/api/teams/${team.id}/leave`, method: 'POST' })
+    uni.showToast({ title: '已退出团队', icon: 'success' })
+    await loadTeams()
+  } catch {
+    /* handled */
   }
 }
 </script>
@@ -138,8 +216,10 @@ async function onActionSelect(item: { name: string }) {
   <view class="page">
     <MobileHeader title="团队空间" :subtitle="`${teams.length} 个团队`" gradient icon-type="team">
       <template #right>
-        <view class="add-btn cd-pressable" @click="createTeam">
-          <u-icon name="plus" size="20" color="#fff" />
+        <view class="header-actions">
+          <view class="add-btn cd-pressable" @click="createTeam">
+            <u-icon name="plus" size="16" color="#000000" bold />
+          </view>
         </view>
       </template>
     </MobileHeader>
@@ -153,7 +233,14 @@ async function onActionSelect(item: { name: string }) {
         icon="account-fill"
         title="还没有团队"
         description="创建团队空间，与成员共享文件"
-      />
+      >
+        <template #action>
+          <view class="create-btn cd-pressable" @click="createTeam">
+            <u-icon name="plus" size="14" color="#fff" />
+            <text class="create-btn-text">创建团队</text>
+          </view>
+        </template>
+      </EmptyState>
       <view v-else class="team-list">
         <view
           v-for="team in teams"
@@ -163,14 +250,14 @@ async function onActionSelect(item: { name: string }) {
           @longpress="showTeamActions(team)"
         >
           <view class="team-card-left">
-            <view class="team-avatar">
+            <view class="team-avatar" :style="getAvatarStyle(team.id)">
               <text class="team-avatar-text">{{ team.name.charAt(0) }}</text>
             </view>
           </view>
           <view class="team-card-info">
             <text class="team-name">{{ team.name }}</text>
             <view class="team-meta">
-              <view class="team-role-badge" :style="{ background: roleColor(team.myRole) + '1a', color: roleColor(team.myRole) }">
+              <view class="team-role-badge" :style="{ background: roleColor(team.myRole) + '12', color: roleColor(team.myRole), border: '1rpx solid ' + roleColor(team.myRole) + '2a' }">
                 <text>{{ roleLabel(team.myRole) }}</text>
               </view>
               <text class="team-members">{{ team.memberCount }} 位成员</text>
@@ -192,7 +279,35 @@ async function onActionSelect(item: { name: string }) {
       @select="onActionSelect"
     />
 
-    <MobileTabBar active="disk" />
+    <MobilePromptDialog
+      v-model:show="createVisible"
+      title="创建团队空间"
+      placeholder="输入团队名称"
+      confirm-text="创建"
+      @confirm="submitCreateTeam"
+    >
+      <template #desc>与成员共享和管理文件</template>
+    </MobilePromptDialog>
+
+    <MobileConfirmDialog
+      v-model:show="confirmVisible"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirm-text="confirmMode === 'dissolve' ? '解散' : '退出'"
+      danger
+      @confirm="onConfirmAction"
+    />
+
+    <MobilePromptDialog
+      v-model:show="renameVisible"
+      title="重命名团队"
+      placeholder="输入新的团队名称"
+      confirm-text="保存"
+      :initial-value="selectedTeam?.name || ''"
+      @confirm="submitRenameTeam"
+    />
+
+    <MobileTabBar active="teams" />
   </view>
 </template>
 
@@ -204,19 +319,22 @@ async function onActionSelect(item: { name: string }) {
 }
 
 .add-btn {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10rpx);
+  width: 44rpx;
+  height: 44rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--cd-transition-fast);
+  background: transparent;
+  transition: opacity var(--cd-transition-fast);
+
   &:active {
-    background: rgba(255, 255, 255, 0.32);
-    transform: scale(0.9);
+    opacity: 0.55;
   }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
 }
 
 .content-scroll {
@@ -240,7 +358,7 @@ async function onActionSelect(item: { name: string }) {
   display: flex;
   align-items: center;
   gap: 18rpx;
-  padding: 24rpx 22rpx;
+  padding: 28rpx 24rpx;
   background: var(--cd-bg-card);
   border-radius: var(--cd-radius-lg);
   box-shadow: var(--cd-shadow-card);
@@ -249,20 +367,19 @@ async function onActionSelect(item: { name: string }) {
 }
 
 .team-card:active {
-  transform: scale(0.98);
-  box-shadow: var(--cd-shadow);
+  transform: scale(0.985);
+  box-shadow: var(--cd-shadow-sm);
+  border-color: rgba(1, 7, 16, 0.08);
 }
 
 .team-avatar {
   width: 82rpx;
   height: 82rpx;
   border-radius: 22rpx;
-  background: var(--cd-primary-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.12);
 }
 
 .team-avatar-text {
@@ -294,10 +411,11 @@ async function onActionSelect(item: { name: string }) {
 }
 
 .team-role-badge {
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
+  padding: 4rpx 14rpx;
+  border-radius: var(--cd-radius-full);
   font-size: 18rpx;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.5rpx;
 }
 
 .team-members {
@@ -310,5 +428,29 @@ async function onActionSelect(item: { name: string }) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 36rpx;
+  background: var(--cd-primary-gradient);
+  border-radius: var(--cd-radius-full);
+  margin-top: 10rpx;
+  box-shadow: 0 8rpx 20rpx rgba(1, 7, 16, 0.16);
+  transition: all var(--cd-transition-fast);
+}
+
+.create-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 4rpx 10rpx rgba(1, 7, 16, 0.1);
+}
+
+.create-btn-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #fff;
 }
 </style>

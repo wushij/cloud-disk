@@ -85,7 +85,17 @@ export const useNotificationStore = defineStore('notification', () => {
     })
   }
 
+  async function acceptTeamInvite(refId?: string) {
+    if (!refId) throw new Error('邀请无效')
+    await http.post(`/api/team-invitations/${refId}/accept`)
+  }
+
+  async function rejectTeamInvite(refId?: string) {
+    if (!refId) throw new Error('邀请无效')
+    await http.post(`/api/team-invitations/${refId}/reject`)
+  }
+
   const unreadCount = () => items.value.filter((n) => !n.read).length
 
-  return { items, loaded, loadFromApi, push, markRead, markAllRead, unreadCount }
+  return { items, loaded, loadFromApi, push, markRead, markAllRead, acceptTeamInvite, rejectTeamInvite, unreadCount }
 })

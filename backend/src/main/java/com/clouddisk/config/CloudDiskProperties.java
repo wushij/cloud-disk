@@ -82,6 +82,8 @@ public class CloudDiskProperties {
 
     @Data
     public static class RateLimit {
+        /** 是否启用 API/上传/IP 滑动窗口限流（local 开发可关） */
+        private boolean enabled = true;
         private int uploadPerMinute = 60;
         private int loginPerMinute = 20;
         private int registerPerMinute = 10;

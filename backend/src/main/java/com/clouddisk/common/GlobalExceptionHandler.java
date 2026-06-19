@@ -1,6 +1,8 @@
 package com.clouddisk.common;
 
 import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotPermissionException;
+import cn.dev33.satoken.exception.NotRoleException;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
@@ -35,13 +37,29 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiErrorResponse handleBusiness(BusinessException e, HttpServletRequest request) {
+        log.debug("业务异常 path={} code={}: {}", request.getRequestURI(), e.getCode(), e.getMessage());
         return build(HttpStatus.BAD_REQUEST, e.getMessage(), e.getCode(), request);
     }
 
     @ExceptionHandler(NotLoginException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiErrorResponse handleNotLogin(NotLoginException e, HttpServletRequest request) {
+        log.debug("未登录访问 path={}", request.getRequestURI());
         return build(HttpStatus.UNAUTHORIZED, "未登录或登录已过期", "UNAUTHORIZED", request);
+    }
+
+    @ExceptionHandler(NotPermissionException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ApiErrorResponse handleNotPermission(NotPermissionException e, HttpServletRequest request) {
+        log.debug("权限不足 path={}", request.getRequestURI());
+        return build(HttpStatus.FORBIDDEN, "没有权限执行此操作", "FORBIDDEN", request);
+    }
+
+    @ExceptionHandler(NotRoleException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ApiErrorResponse handleNotRole(NotRoleException e, HttpServletRequest request) {
+        log.debug("角色不足 path={}", request.getRequestURI());
+        return build(HttpStatus.FORBIDDEN, "没有权限执行此操作", "FORBIDDEN", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

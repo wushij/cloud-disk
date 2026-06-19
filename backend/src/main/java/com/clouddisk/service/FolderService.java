@@ -74,13 +74,7 @@ public class FolderService {
 
         long userId = AuthService.currentUserId();
 
-        List<Folder> all = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
-
-                .eq(Folder::getUserId, userId)
-
-                .eq(Folder::getDeleted, 0)
-
-                .orderByAsc(Folder::getFolderName));
+        List<Folder> all = listAllFoldersForTree(userId);
 
         Map<Long, List<Folder>> byParent = all.stream()
 
@@ -88,6 +82,82 @@ public class FolderService {
 
         return buildTree(0L, byParent);
 
+    }
+
+
+
+    /** 个人目录 + 已加入团队的目录树（供左侧树与云盘列表使用） */
+    public List<Folder> listAllFoldersForTree(long userId) {
+        List<Folder> owned = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+                .eq(Folder::getUserId, userId)
+                .eq(Folder::getDeleted, 0)
+                .orderByAsc(Folder::getFolderName));
+        Map<Long, Folder> byId = new LinkedHashMap<>();
+        for (Folder folder : owned) {
+            byId.put(folder.getId(), folder);
+        }
+        for (Folder root : listTeamRootFoldersForUser(userId)) {
+            for (Long folderId : folderTreeHelper.collectActiveSubtreeIds(root.getId())) {
+                if (byId.containsKey(folderId)) continue;
+                Folder folder = folderMapper.selectById(folderId);
+                if (folder != null && folder.getDeleted() == 0) {
+                    byId.put(folderId, folder);
+                }
+            }
+        }
+        return new ArrayList<>(byId.values());
+    }
+
+
+
+    /** 当前用户可访问的团队根目录（文件夹 owner 为创建者） */
+    public List<Folder> listTeamRootFoldersForUser(long userId) {
+        List<TeamMember> memberships = teamMemberMapper.selectList(
+                new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getUserId, userId));
+        if (memberships.isEmpty()) return List.of();
+
+        List<Long> spaceIds = memberships.stream().map(TeamMember::getSpaceId).distinct().toList();
+        List<TeamSpace> spaces = teamSpaceMapper.selectList(
+                new LambdaQueryWrapper<TeamSpace>().in(TeamSpace::getId, spaceIds).eq(TeamSpace::getStatus, 1));
+        if (spaces.isEmpty()) return List.of();
+
+        List<Long> rootIds = spaces.stream()
+                .map(TeamSpace::getRootFolderId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (rootIds.isEmpty()) return List.of();
+
+        return folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+                .in(Folder::getId, rootIds)
+                .eq(Folder::getDeleted, 0)
+                .orderByAsc(Folder::getFolderName));
+    }
+
+
+
+    /** 团队空间目录：团队成员（含创建者）可访问的团队根或其子目录 */
+    public boolean isSharedTeamFolder(long folderId, long userId) {
+        if (folderId <= 0) return false;
+        if (!hasAccessToFolder(folderId, userId)) return false;
+        return isFolderUnderTeamSpace(folderId);
+    }
+
+    private boolean isFolderUnderTeamSpace(long folderId) {
+        Folder current = folderMapper.selectById(folderId);
+        if (current == null) return false;
+        int depth = 0;
+        while (current != null && depth < 30) {
+            TeamSpace space = teamSpaceMapper.selectOne(new LambdaQueryWrapper<TeamSpace>()
+                    .eq(TeamSpace::getRootFolderId, current.getId())
+                    .eq(TeamSpace::getStatus, 1));
+            if (space != null) return true;
+            Long parentId = current.getParentId();
+            if (parentId == null || parentId <= 0) break;
+            current = folderMapper.selectById(parentId);
+            depth++;
+        }
+        return false;
     }
 
 

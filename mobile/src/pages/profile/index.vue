@@ -2,12 +2,17 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 import { request } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fmtSize } from '@/utils/fileCover'
 
 const auth = useAuthStore()
+const notifyStore = useNotificationStore()
 const usage = ref<{ usedBytes?: number; quotaBytes?: number } | null>(null)
+
+const unreadCount = computed(() => notifyStore.unreadCount())
 
 const storagePercent = computed(() => {
   if (!usage.value?.quotaBytes) return 0
@@ -16,11 +21,14 @@ const storagePercent = computed(() => {
 
 const avatarInitial = computed(() => (auth.displayName || 'U').charAt(0).toUpperCase())
 const avatarLoadFailed = ref(false)
+const aboutVisible = ref(false)
+const logoutVisible = ref(false)
 
 onShow(async () => {
   if (!auth.requireLogin()) return
   try {
     auth.fetchProfile().catch(() => {})
+    notifyStore.loadFromApi().catch(() => {})
     usage.value = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
   } catch {
     usage.value = null
@@ -53,23 +61,24 @@ function changeAvatar() {
 }
 
 function logout() {
-  uni.showModal({
-    title: '退出登录',
-    content: '确定退出当前账号？',
-    success: (res) => {
-      if (!res.confirm) return
-      auth.logout()
-      uni.reLaunch({ url: '/pages/login/index' })
-    }
-  })
+  logoutVisible.value = true
 }
 
-function goBack() {
-  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/disk/index' }) })
+function confirmLogout() {
+  auth.logout()
+  uni.reLaunch({ url: '/pages/login/index' })
 }
 
 function goTeams() {
   uni.navigateTo({ url: '/pages/teams/index' })
+}
+
+function goNotifications() {
+  uni.navigateTo({ url: '/pages/notifications/index' })
+}
+
+function goTransfer() {
+  uni.navigateTo({ url: '/pages/transfer/index' })
 }
 
 function goShares() {
@@ -77,24 +86,11 @@ function goShares() {
 }
 
 function goRecycle() {
-  uni.reLaunch({ url: '/pages/recycle/index' })
-}
-
-function clearCache() {
-  uni.showLoading({ title: '清理缓存中...' })
-  setTimeout(() => {
-    uni.hideLoading()
-    uni.showToast({ title: '清理完成', icon: 'success' })
-  }, 1200)
+  uni.navigateTo({ url: '/pages/recycle/index' })
 }
 
 function showAbout() {
-  uni.showModal({
-    title: '关于 CloudDisk Pro',
-    content: '版本号: v1.2.0\n个人专属的高性能云端存储系统',
-    showCancel: false,
-    confirmColor: '#010710'
-  })
+  aboutVisible.value = true
 }
 </script>
 
@@ -171,6 +167,38 @@ function showAbout() {
     <!-- 菜单分组 -->
     <view class="section-label">管理与设置</view>
     <view class="menu-group-card">
+      <!-- 消息通知 -->
+      <view class="menu-item cd-pressable" @click="goNotifications">
+        <view class="menu-icon-box blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.9.49-.08.99-.1 1.5-.1s1.01.02 1.5.1c2.49.4 4 2.42 4 4.9v6z" fill="#2563eb"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">消息通知</text>
+          <text class="menu-desc">团队邀请与系统消息</text>
+        </view>
+        <view v-if="unreadCount > 0" class="menu-badge">
+          <text>{{ unreadCount > 99 ? '99+' : unreadCount }}</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
+      <!-- 传输列表 -->
+      <view class="menu-item cd-pressable" @click="goTransfer">
+        <view class="menu-icon-box orange">
+          <!-- 📥 传输 -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" fill="#f97316"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">传输列表</text>
+          <text class="menu-desc">查看上传与下载进度</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
       <!-- 团队空间 -->
       <view class="menu-item cd-pressable" @click="goTeams">
         <view class="menu-icon-box teal">
@@ -216,21 +244,6 @@ function showAbout() {
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>
 
-      <!-- 清除缓存 -->
-      <view class="menu-item cd-pressable" @click="clearCache">
-        <view class="menu-icon-box slate">
-          <!-- 🧹 扫帚/清理 -->
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M15 16h4v2h-4zm0-8h7v2h-7zm0 4h6v2h-6zM3 18c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V8H3v10zM14 5h-3l-1-1H6L5 5H2v2h12V5z" fill="#64748b"/>
-          </svg>
-        </view>
-        <view class="menu-body">
-          <text class="menu-name">清除缓存</text>
-          <text class="menu-desc">释放本地占用的临时缓存空间</text>
-        </view>
-        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
-      </view>
-
       <!-- 关于我们 -->
       <view class="menu-item cd-pressable" @click="showAbout">
         <view class="menu-icon-box violet">
@@ -253,6 +266,33 @@ function showAbout() {
     </view>
 
     <MobileTabBar active="profile" />
+
+    <MobileConfirmDialog
+      v-model:show="logoutVisible"
+      title="退出登录"
+      message="确定退出当前账号？"
+      confirm-text="退出"
+      danger
+      @confirm="confirmLogout"
+    />
+
+    <!-- 关于我们 -->
+    <view v-if="aboutVisible" class="about-root" @touchmove.stop.prevent>
+      <view class="about-mask" @click="aboutVisible = false" />
+      <view class="about-panel cd-scale-in" @click.stop>
+        <view class="about-logo">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="#ffffff"/>
+          </svg>
+        </view>
+        <text class="about-name">CloudDisk Pro</text>
+        <text class="about-version">版本 v1.2.0</text>
+        <text class="about-desc">个人专属的高性能云端存储系统</text>
+        <view class="about-btn cd-pressable" @click="aboutVisible = false">
+          <text>知道了</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -276,22 +316,15 @@ function showAbout() {
   overflow: hidden;
   padding: 44rpx 36rpx;
   border-radius: 32rpx;
-  background: linear-gradient(135deg, #010710 0%, #0f1a2e 55%, #1e293b 100%);
-  border: 1rpx solid rgba(255, 255, 255, 0.06);
-  box-shadow:
-    0 20rpx 56rpx rgba(1, 7, 16, 0.5),
-    0 4rpx 12rpx rgba(1, 7, 16, 0.3),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.06);
+  background: var(--cd-accent-surface);
+  backdrop-filter: blur(24rpx);
+  -webkit-backdrop-filter: blur(24rpx);
+  border: 1rpx solid var(--cd-accent-border);
+  box-shadow: var(--cd-accent-shadow);
 }
 
-/* 装饰光效：径向柔和发光，完全对齐 MobileHeader 风格 */
 .hero-glow {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 60% 60% at 90% -10%, rgba(100, 116, 139, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 50% at 0% 110%, rgba(15, 26, 46, 0.4) 0%, transparent 65%);
+  display: none;
 }
 
 .hero-content {
@@ -315,14 +348,14 @@ function showAbout() {
   position: relative;
   padding: 6rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1rpx solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 12rpx 36rpx rgba(1, 7, 16, 0.3);
+  background: #f1f5f9;
+  border: 1rpx solid var(--cd-border);
+  box-shadow: var(--cd-shadow-sm);
   transition: all var(--cd-transition);
-  
+
   &:active {
     transform: scale(0.96);
-    background: rgba(255, 255, 255, 0.25);
+    background: #e2e8f0;
   }
 }
 
@@ -373,19 +406,19 @@ function showAbout() {
 .hero-name {
   font-size: 38rpx;
   font-weight: 800;
-  color: #fff;
+  color: var(--cd-text);
   letter-spacing: 0.5rpx;
 }
 
 .hero-dot {
   font-size: 32rpx;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--cd-text-muted);
 }
 
 .hero-account {
   font-size: 26rpx;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--cd-text-secondary);
   font-weight: 500;
 }
 
@@ -533,16 +566,16 @@ function showAbout() {
   background: rgba(13, 148, 136, 0.08);
 }
 
+.menu-icon-box.blue {
+  background: rgba(37, 99, 235, 0.08);
+}
+
 .menu-icon-box.indigo {
   background: rgba(59, 130, 246, 0.08);
 }
 
 .menu-icon-box.orange {
   background: rgba(249, 115, 22, 0.08);
-}
-
-.menu-icon-box.slate {
-  background: rgba(100, 116, 139, 0.08);
 }
 
 .menu-icon-box.violet {
@@ -568,6 +601,25 @@ function showAbout() {
   color: var(--cd-text-muted);
 }
 
+.menu-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8rpx;
+
+  text {
+    font-size: 20rpx;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+  }
+}
+
 /* ==========================================
    5. 退出登录按钮
    ========================================== */
@@ -590,5 +642,98 @@ function showAbout() {
     box-shadow: 0 4rpx 12rpx rgba(239, 68, 68, 0.2);
     opacity: 0.95;
   }
+}
+
+/* 关于弹窗 */
+.about-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+}
+
+.about-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6rpx);
+}
+
+.about-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 580rpx;
+  padding: 48rpx 40rpx 36rpx;
+  background: var(--cd-bg-card);
+  border-radius: 32rpx;
+  box-shadow:
+    0 24rpx 64rpx rgba(15, 23, 42, 0.18),
+    0 0 0 1rpx rgba(255, 255, 255, 0.6) inset;
+  border: 1rpx solid var(--cd-border-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.about-logo {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #010710 0%, #1e293b 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 32rpx rgba(1, 7, 16, 0.25);
+  margin-bottom: 28rpx;
+}
+
+.about-name {
+  font-size: 36rpx;
+  font-weight: 800;
+  color: var(--cd-text);
+  letter-spacing: -0.5rpx;
+}
+
+.about-version {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: var(--cd-text-muted);
+  font-weight: 500;
+}
+
+.about-desc {
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: var(--cd-text-secondary);
+  padding: 0 12rpx;
+}
+
+.about-btn {
+  margin-top: 36rpx;
+  width: 100%;
+  height: 88rpx;
+  border-radius: 999rpx;
+  background: var(--cd-primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10rpx 28rpx rgba(1, 7, 16, 0.2);
+
+  text {
+    font-size: 28rpx;
+    font-weight: 700;
+    color: #fff;
+  }
+}
+
+.about-btn:active {
+  transform: scale(0.98);
+  opacity: 0.95;
 }
 </style>

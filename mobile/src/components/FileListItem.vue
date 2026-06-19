@@ -18,11 +18,11 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'click'): void
   (e: 'longpress'): void
+  (e: 'more'): void
 }>()
 
-function onMoreClick(e: MouseEvent) {
-  // 阻止冒泡，避免触发父级 click（打开文件）
-  e.stopPropagation && e.stopPropagation()
+function onMoreClick() {
+  emit('more')
   emit('longpress')
 }
 </script>
@@ -72,7 +72,7 @@ function onMoreClick(e: MouseEvent) {
       </view>
     </view>
 
-    <view class="file-more" @click.stop="onMoreClick" @touchstart.stop>
+    <view class="file-more" @tap.stop="onMoreClick" @click.stop="onMoreClick">
       <u-icon name="more-dot-fill" color="#94a3b8" size="18" />
     </view>
   </view>

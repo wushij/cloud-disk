@@ -36,6 +36,23 @@ public class FolderTreeHelper {
         return result;
     }
 
+    /** 收集子树内所有文件夹 ID（含 root，不区分 deleted 状态） */
+    public List<Long> collectAllSubtreeIds(long rootFolderId) {
+        List<Long> result = new ArrayList<>();
+        Queue<Long> queue = new LinkedList<>();
+        queue.offer(rootFolderId);
+        while (!queue.isEmpty()) {
+            Long pid = queue.poll();
+            result.add(pid);
+            List<Folder> children = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+                    .eq(Folder::getParentId, pid));
+            for (Folder child : children) {
+                queue.offer(child.getId());
+            }
+        }
+        return result;
+    }
+
     /** 收集子树内所有已回收文件夹 ID（含 root，deleted=1） */
     public List<Long> collectRecycledSubtreeIds(long userId, long rootFolderId) {
         return collectRecycledSubtreeIds(rootFolderId);

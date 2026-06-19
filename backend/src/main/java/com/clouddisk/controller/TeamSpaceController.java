@@ -4,6 +4,8 @@ import com.clouddisk.entity.TeamMember;
 import com.clouddisk.entity.TeamSpace;
 import com.clouddisk.service.TeamSpaceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,7 +33,13 @@ public class TeamSpaceController {
     /** 获取团队详情 */
     @GetMapping("/{id}")
     public TeamSpace detail(@PathVariable Long id) {
-        return teamSpaceService.getSpace(id);
+        return teamSpaceService.getDetailForMember(id);
+    }
+
+    /** 重命名团队空间 */
+    @PutMapping("/{id}")
+    public TeamSpace rename(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        return teamSpaceService.renameSpace(id, body.get("name"));
     }
 
     /** 列出团队成员 */
@@ -40,12 +48,27 @@ public class TeamSpaceController {
         return teamSpaceService.listMembers(id);
     }
 
-    /** 邀请成员 */
+    /** 邀请成员（仅支持用户名，需对方确认） */
     @PostMapping("/{id}/members")
-    public TeamMember invite(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        Long userId = Long.valueOf(body.get("userId").toString());
+    public Map<String, Object> invite(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         String role = body.get("role") != null ? body.get("role").toString() : "MEMBER";
-        return teamSpaceService.inviteMember(id, userId, role);
+        if (body.get("username") == null) {
+            throw new com.clouddisk.common.BusinessException("请输入用户名");
+        }
+        String username = body.get("username").toString().trim();
+        if (username.isEmpty()) {
+            throw new com.clouddisk.common.BusinessException("请输入用户名");
+        }
+        return teamSpaceService.inviteMemberByUsername(id, username, role);
+    }
+
+    /** 团队成员头像（同团队成员可查看） */
+    @GetMapping("/{id}/members/{userId}/avatar")
+    public ResponseEntity<Resource> memberAvatar(
+            @PathVariable Long id,
+            @PathVariable Long userId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return teamSpaceService.loadMemberAvatar(id, userId, request);
     }
 
     /** 移除成员 */

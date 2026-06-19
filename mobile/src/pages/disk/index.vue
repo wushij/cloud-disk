@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/file'
+import { useTransferStore } from '@/stores/transfer'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobileActionBar from '@/components/MobileActionBar.vue'
@@ -11,19 +12,28 @@ import BreadcrumbBar from '@/components/BreadcrumbBar.vue'
 import FileListItem from '@/components/FileListItem.vue'
 import FileGridCard from '@/components/FileGridCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import { uploadSimpleFile } from '@/utils/upload'
+import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import { fileApiUrl } from '@/api/http'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
 
 const auth = useAuthStore()
 const fileStore = useFileStore()
+const transferStore = useTransferStore()
 const { breadcrumb, items, loading, keyword } = storeToRefs(fileStore)
+const { activeTaskCount } = storeToRefs(transferStore)
 
 const viewMode = ref<'grid' | 'list'>('list')
 const actionVisible = ref(false)
 const actionItem = ref<FileItem | null>(null)
-const uploading = ref(false)
-const uploadPercent = ref(0)
+const renameVisible = ref(false)
+const renameTarget = ref<FileItem | null>(null)
+const renaming = ref(false)
+const createFolderVisible = ref(false)
+const creatingFolder = ref(false)
+
+function goTransfer() {
+  uni.navigateTo({ url: '/pages/transfer/index' })
+}
 
 const actionList = computed(() => {
   const row = actionItem.value
@@ -46,6 +56,18 @@ onShow(async () => {
   if (!auth.requireLogin()) return
   await fileStore.loadList()
 })
+
+onMounted(() => {
+  uni.$on('refresh-file-list', refreshList)
+})
+
+onUnmounted(() => {
+  uni.$off('refresh-file-list')
+})
+
+async function refreshList() {
+  await fileStore.loadList()
+}
 
 function onSearch() {
   fileStore.loadList()
@@ -117,39 +139,34 @@ function previewVideo(row: FileItem) {
 }
 
 function downloadFile(row: FileItem) {
-  const url = fileApiUrl(`/api/files/${row.id}/download`)
-  // #ifdef H5
-  window.open(url, '_blank')
-  // #endif
-  // #ifndef H5
-  uni.showLoading({ title: '下载中' })
-  uni.downloadFile({
-    url,
-    success: (res) => {
-      if (res.statusCode === 200) {
-        uni.saveFile({
-          tempFilePath: res.tempFilePath,
-          success: () => uni.showToast({ title: '已保存', icon: 'success' }),
-          fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
-        })
-      }
-    },
-    complete: () => uni.hideLoading()
-  })
-  // #endif
+  transferStore.addDownloadTask(row.id, row.name, row.size || 0)
+  uni.showToast({ title: '已加入下载队列', icon: 'none' })
 }
 
 function promptRename(row: FileItem) {
-  uni.showModal({
-    title: '重命名',
-    editable: true,
-    placeholderText: row.name,
-    success: async (res) => {
-      if (!res.confirm || !res.content?.trim()) return
-      await fileStore.renameItem(row, res.content.trim())
-      uni.showToast({ title: '已重命名', icon: 'success' })
-    }
-  })
+  renameTarget.value = row
+  renameVisible.value = true
+}
+
+async function submitRename(name: string) {
+  const row = renameTarget.value
+  if (!row) return
+  if (!name) {
+    uni.showToast({ title: '请输入名称', icon: 'none' })
+    return
+  }
+  if (renaming.value) return
+  renaming.value = true
+  try {
+    await fileStore.renameItem(row, name)
+    renameVisible.value = false
+    renameTarget.value = null
+    uni.showToast({ title: '已重命名', icon: 'success' })
+  } catch {
+    /* handled */
+  } finally {
+    renaming.value = false
+  }
 }
 
 function confirmDelete(row: FileItem) {
@@ -165,16 +182,25 @@ function confirmDelete(row: FileItem) {
 }
 
 function promptCreateFolder() {
-  uni.showModal({
-    title: '新建文件夹',
-    editable: true,
-    placeholderText: '文件夹名称',
-    success: async (res) => {
-      if (!res.confirm || !res.content?.trim()) return
-      await fileStore.createFolder(res.content.trim())
-      uni.showToast({ title: '创建成功', icon: 'success' })
-    }
-  })
+  createFolderVisible.value = true
+}
+
+async function submitCreateFolder(name: string) {
+  if (!name) {
+    uni.showToast({ title: '请输入文件夹名称', icon: 'none' })
+    return
+  }
+  if (creatingFolder.value) return
+  creatingFolder.value = true
+  try {
+    await fileStore.createFolder(name)
+    createFolderVisible.value = false
+    uni.showToast({ title: '创建成功', icon: 'success' })
+  } catch {
+    /* handled */
+  } finally {
+    creatingFolder.value = false
+  }
 }
 
 async function chooseAndUpload() {
@@ -182,10 +208,10 @@ async function chooseAndUpload() {
   uni.chooseFile({
     count: 9,
     success: async (res) => {
-      const paths = res.tempFilePaths as string[]
-      for (let i = 0; i < paths.length; i++) {
-        await doUpload(paths[i])
+      for (const file of res.tempFiles) {
+        await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId)
       }
+      uni.showToast({ title: '已添加到上传队列', icon: 'none' })
     }
   })
   // #endif
@@ -195,38 +221,28 @@ async function chooseAndUpload() {
     type: 'all',
     success: async (res) => {
       for (const file of res.tempFiles) {
-        await doUpload(file.path)
+        await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId)
       }
+      uni.showToast({ title: '已添加到上传队列', icon: 'none' })
     },
     fail: () => {
       uni.chooseImage({
         count: 9,
         success: async (res) => {
-          for (const path of res.tempFilePaths) {
-            await doUpload(path)
+          const files = res.tempFiles || []
+          for (let i = 0; i < res.tempFilePaths.length; i++) {
+            const path = res.tempFilePaths[i]
+            const fileInfo = files[i] || {}
+            const size = fileInfo.size || 0
+            const name = path.split('/').pop() || `image_${Date.now()}.jpg`
+            await transferStore.addUploadTask(path, name, size, fileStore.currentFolderId)
           }
+          uni.showToast({ title: '已添加到上传队列', icon: 'none' })
         }
       })
     }
   })
   // #endif
-}
-
-async function doUpload(path: string) {
-  uploading.value = true
-  uploadPercent.value = 0
-  try {
-    await uploadSimpleFile(path, '', fileStore.currentFolderId, (ratio) => {
-      uploadPercent.value = Math.round(ratio * 100)
-    })
-    uni.showToast({ title: '上传成功', icon: 'success' })
-    await fileStore.loadList()
-  } catch {
-    /* handled */
-  } finally {
-    uploading.value = false
-    uploadPercent.value = 0
-  }
 }
 </script>
 
@@ -237,25 +253,35 @@ async function doUpload(path: string) {
       :subtitle="pageSubtitle"
       gradient
       icon-type="cloud"
-      :show-back="breadcrumb.length > 1"
-      @back="fileStore.goBackFolder()"
     >
       <template #right>
-        <view class="view-toggle" @click="toggleView">
-          <u-icon :name="viewMode === 'grid' ? 'list' : 'grid'" size="20" color="rgba(255,255,255,0.9)" />
+        <view class="header-action-group">
+          <view class="header-action-btn cd-pressable" @click="goTransfer">
+            <u-icon name="download" size="22" color="#000000" bold />
+            <view
+              v-if="activeTaskCount > 0"
+              class="action-badge"
+              :class="{ 'has-count': activeTaskCount > 1 }"
+            >
+              <text v-if="activeTaskCount > 1" class="action-badge-num">{{ activeTaskCount > 9 ? '9+' : activeTaskCount }}</text>
+            </view>
+          </view>
+          <view class="header-action-btn cd-pressable" @click="toggleView">
+            <u-icon :name="viewMode === 'grid' ? 'list' : 'grid'" size="22" color="#000000" bold />
+          </view>
         </view>
       </template>
       <template #extra>
         <BreadcrumbBar :crumbs="breadcrumb" @select="fileStore.gotoCrumb" />
         <view class="search-wrap">
           <view class="search-box">
-            <u-icon name="search" size="16" color="rgba(255,255,255,0.5)" class="search-icon" />
+            <u-icon name="search" size="16" color="#94a3b8" class="search-icon" />
             <u-search
               v-model="keyword"
               placeholder="搜索文件名"
               bg-color="transparent"
-              color="#fff"
-              placeholder-color="rgba(255,255,255,0.42)"
+              color="#0f172a"
+              placeholder-color="#b0bdc9"
               :show-action="false"
               shape="round"
               @search="onSearch"
@@ -313,14 +339,7 @@ async function doUpload(path: string) {
       </template>
     </scroll-view>
 
-    <!-- 上传进度条 -->
-    <view v-if="uploading" class="upload-toast">
-      <view class="upload-toast-head">
-        <u-loading-icon size="18" />
-        <text>上传中 {{ uploadPercent }}%</text>
-      </view>
-      <u-line-progress :percentage="uploadPercent" active-color="#010710" height="6" />
-    </view>
+    <!-- 上传进度交由传输列表后台管理 -->
 
     <MobileActionBar @upload="chooseAndUpload" @folder="promptCreateFolder" />
     <MobileTabBar active="disk" />
@@ -332,6 +351,26 @@ async function doUpload(path: string) {
       round="16"
       @close="actionVisible = false"
       @select="onSheetSelect"
+    />
+
+    <MobilePromptDialog
+      v-model:show="renameVisible"
+      title="重命名"
+      :initial-value="renameTarget?.name || ''"
+      :select-stem="renameTarget?.type === 'file'"
+      :maxlength="255"
+      confirm-text="确定"
+      @confirm="submitRename"
+      @cancel="renameTarget = null"
+    />
+
+    <MobilePromptDialog
+      v-model:show="createFolderVisible"
+      title="新建文件夹"
+      placeholder="文件夹名称"
+      :maxlength="64"
+      confirm-text="确定"
+      @confirm="submitCreateFolder"
     />
   </view>
 </template>
@@ -368,8 +407,8 @@ async function doUpload(path: string) {
   display: flex;
   align-items: center;
   gap: 14rpx;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1rpx solid rgba(255, 255, 255, 0.1);
+  background: #f4f7fb;
+  border: 1rpx solid var(--cd-border);
   border-radius: 999rpx;
   padding: 0 28rpx 0 22rpx;
   height: 74rpx;
@@ -461,5 +500,58 @@ async function doUpload(path: string) {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ============ 顶部操作区 ============ */
+.header-action-group {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.header-action-btn {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: transparent;
+  transition: opacity var(--cd-transition-fast);
+
+  &:active {
+    opacity: 0.55;
+  }
+}
+
+.action-badge {
+  position: absolute;
+  top: 8rpx;
+  right: 6rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2rpx rgba(1, 7, 16, 0.55);
+  pointer-events: none;
+}
+
+.action-badge.has-count {
+  top: 2rpx;
+  right: 0;
+  width: auto;
+  min-width: 24rpx;
+  height: 24rpx;
+  padding: 0 5rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-badge-num {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
 }
 </style>

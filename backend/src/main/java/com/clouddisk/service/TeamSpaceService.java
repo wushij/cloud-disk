@@ -5,9 +5,13 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.entity.*;
 import com.clouddisk.mapper.*;
+import com.clouddisk.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -19,9 +23,11 @@ public class TeamSpaceService {
 
     private final TeamSpaceMapper teamSpaceMapper;
     private final TeamMemberMapper teamMemberMapper;
+    private final TeamInvitationMapper teamInvitationMapper;
     private final FolderMapper folderMapper;
     private final FileMapper fileMapper;
     private final UserMapper userMapper;
+    private final StorageService storageService;
     private final NotificationDispatcher notificationDispatcher;
     private final FolderTreeHelper folderTreeHelper;
 
@@ -117,37 +123,175 @@ public class TeamSpaceService {
         return space;
     }
 
+    /**
+     * 重命名团队空间（同步更新云盘根目录文件夹名称）
+     */
+    public TeamSpace renameSpace(Long spaceId, String name) {
+        long userId = AuthService.currentUserId();
+        requireAdmin(spaceId, userId);
+        if (name == null || name.isBlank()) {
+            throw new BusinessException("团队名称不能为空");
+        }
+        name = name.trim();
+        if (name.length() > 64) {
+            throw new BusinessException("团队名称不能超过64个字符");
+        }
+
+        TeamSpace space = getOwnedSpace(spaceId, userId);
+        space.setName(name);
+        teamSpaceMapper.updateById(space);
+
+        if (space.getRootFolderId() != null) {
+            Folder root = folderMapper.selectById(space.getRootFolderId());
+            if (root != null && root.getDeleted() == 0) {
+                root.setFolderName("[团队] " + name);
+                folderMapper.updateById(root);
+            }
+        }
+        return space;
+    }
+
+    /** 获取团队详情（当前登录成员） */
+    public TeamSpace getDetailForMember(Long spaceId) {
+        return getOwnedSpace(spaceId, AuthService.currentUserId());
+    }
+
     // ==================== 成员管理 ====================
 
     /**
-     * 邀请成员
+     * 按用户名邀请成员（需对方确认后才加入）
      */
-    public TeamMember inviteMember(Long spaceId, Long userId, String role) {
+    public Map<String, Object> inviteMemberByUsername(Long spaceId, String username, String role) {
         long currentUserId = AuthService.currentUserId();
         TeamSpace space = getOwnedSpace(spaceId, currentUserId);
         requireAdmin(spaceId, currentUserId);
 
-        // 检查目标用户是否已是成员
+        User invitee = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if (invitee == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (Objects.equals(invitee.getId(), currentUserId)) {
+            throw new BusinessException("不能邀请自己");
+        }
+
         TeamMember existing = teamMemberMapper.selectOne(
                 new LambdaQueryWrapper<TeamMember>()
                         .eq(TeamMember::getSpaceId, spaceId)
-                        .eq(TeamMember::getUserId, userId));
+                        .eq(TeamMember::getUserId, invitee.getId()));
         if (existing != null) {
             throw new BusinessException("该用户已是团队成员");
         }
 
+        TeamInvitation pending = teamInvitationMapper.selectOne(
+                new LambdaQueryWrapper<TeamInvitation>()
+                        .eq(TeamInvitation::getSpaceId, spaceId)
+                        .eq(TeamInvitation::getInviteeId, invitee.getId())
+                        .eq(TeamInvitation::getStatus, "PENDING"));
+        if (pending != null) {
+            throw new BusinessException("已向该用户发送邀请，等待对方确认");
+        }
+
         if (role == null || role.isBlank()) role = "MEMBER";
-        addMember(spaceId, userId, role);
 
-        // 发送通知
-        sendNotification(userId, "TEAM_INVITED", "团队邀请",
-                "你已被邀请加入团队「" + space.getName() + "」", String.valueOf(spaceId));
+        TeamInvitation invitation = new TeamInvitation();
+        invitation.setSpaceId(spaceId);
+        invitation.setInviterId(currentUserId);
+        invitation.setInviteeId(invitee.getId());
+        invitation.setRole(role);
+        invitation.setStatus("PENDING");
+        teamInvitationMapper.insert(invitation);
 
-        TeamMember member = teamMemberMapper.selectOne(
+        User inviter = userMapper.selectById(currentUserId);
+        String inviterName = inviter != null && StringUtils.hasText(inviter.getNickname())
+                ? inviter.getNickname()
+                : (inviter != null ? inviter.getUsername() : "管理员");
+
+        sendNotification(invitee.getId(), "TEAM_INVITED", "团队邀请",
+                inviterName + " 邀请你加入团队「" + space.getName() + "」，请确认是否接受",
+                String.valueOf(invitation.getId()));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", invitation.getId());
+        result.put("spaceId", spaceId);
+        result.put("username", username);
+        result.put("status", "PENDING");
+        return result;
+    }
+
+    /**
+     * 接受团队邀请
+     */
+    public void acceptInvitation(Long invitationId) {
+        long currentUserId = AuthService.currentUserId();
+        TeamInvitation invitation = teamInvitationMapper.selectById(invitationId);
+        if (invitation == null) {
+            throw new BusinessException("邀请不存在");
+        }
+        if (!Objects.equals(invitation.getInviteeId(), currentUserId)) {
+            throw new BusinessException("无权操作此邀请");
+        }
+        if (!"PENDING".equals(invitation.getStatus())) {
+            throw new BusinessException("邀请已处理");
+        }
+
+        TeamSpace space = getSpace(invitation.getSpaceId());
+        if (space.getStatus() != 1) {
+            throw new BusinessException("团队空间已停用");
+        }
+
+        TeamMember existing = teamMemberMapper.selectOne(
                 new LambdaQueryWrapper<TeamMember>()
-                        .eq(TeamMember::getSpaceId, spaceId)
-                        .eq(TeamMember::getUserId, userId));
-        return member;
+                        .eq(TeamMember::getSpaceId, invitation.getSpaceId())
+                        .eq(TeamMember::getUserId, currentUserId));
+        if (existing != null) {
+            invitation.setStatus("ACCEPTED");
+            teamInvitationMapper.updateById(invitation);
+            return;
+        }
+
+        addMember(invitation.getSpaceId(), currentUserId, invitation.getRole());
+        invitation.setStatus("ACCEPTED");
+        teamInvitationMapper.updateById(invitation);
+    }
+
+    /**
+     * 拒绝团队邀请
+     */
+    public void rejectInvitation(Long invitationId) {
+        long currentUserId = AuthService.currentUserId();
+        TeamInvitation invitation = teamInvitationMapper.selectById(invitationId);
+        if (invitation == null) {
+            throw new BusinessException("邀请不存在");
+        }
+        if (!Objects.equals(invitation.getInviteeId(), currentUserId)) {
+            throw new BusinessException("无权操作此邀请");
+        }
+        if (!"PENDING".equals(invitation.getStatus())) {
+            throw new BusinessException("邀请已处理");
+        }
+        invitation.setStatus("REJECTED");
+        teamInvitationMapper.updateById(invitation);
+    }
+
+    public ResponseEntity<org.springframework.core.io.Resource> loadMemberAvatar(
+            Long spaceId, Long targetUserId, jakarta.servlet.http.HttpServletRequest request) {
+        long userId = com.clouddisk.util.AuthHelper.requireUserId(request);
+        getOwnedSpace(spaceId, userId);
+
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getSpaceId, spaceId)
+                .eq(TeamMember::getUserId, targetUserId));
+        if (member == null) {
+            throw new BusinessException("成员不存在");
+        }
+
+        User user = userMapper.selectById(targetUserId);
+        if (user == null || !StringUtils.hasText(user.getAvatar())) {
+            throw new BusinessException("头像不存在");
+        }
+
+        var resource = storageService.loadAsResource(user.getAvatar());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
     }
 
     /**
@@ -191,6 +335,7 @@ public class TeamSpaceService {
             item.put("username", user != null ? user.getUsername() : null);
             item.put("nickname", user != null ? user.getNickname() : null);
             item.put("avatar", user != null ? user.getAvatar() : null);
+            item.put("hasAvatar", user != null && StringUtils.hasText(user.getAvatar()));
             item.put("role", m.getRole());
             item.put("joinTime", m.getJoinTime());
             result.add(item);
@@ -208,20 +353,21 @@ public class TeamSpaceService {
         TeamSpace space = getOwnedSpace(spaceId, userId);
         Long fid = folderId != null ? folderId : space.getRootFolderId();
 
-        // 验证文件夹属于团队空间（简单验证：文件夹的 owner 为空间创建者）
+        if (!isFolderInTeamSpace(space, fid)) {
+            throw new BusinessException("无权访问该目录");
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("spaceId", spaceId);
         result.put("rootFolderId", space.getRootFolderId());
         result.put("currentFolderId", fid);
 
-        // 列出子文件夹
         List<Folder> folders = folderMapper.selectList(
                 new LambdaQueryWrapper<Folder>()
                         .eq(Folder::getParentId, fid)
                         .eq(Folder::getDeleted, 0)
                         .orderByAsc(Folder::getFolderName));
 
-        // 列出文件
         List<FileRecord> files = fileMapper.selectList(
                 new LambdaQueryWrapper<FileRecord>()
                         .eq(FileRecord::getFolderId, fid)
@@ -246,12 +392,44 @@ public class TeamSpaceService {
             item.put("sizeBytes", f.getFileSize());
             item.put("mimeType", f.getFileType());
             item.put("folderId", f.getFolderId());
+            item.put("hasThumbnail", StringUtils.hasText(f.getThumbnailPath()) || StringUtils.hasText(f.getPosterPath()));
+            item.put("previewable", isTeamFilePreviewable(f.getFileType(), f.getFileName()));
             item.put("createdAt", f.getCreateTime());
             items.add(item);
         }
 
         result.put("items", items);
         return result;
+    }
+
+    private boolean isFolderInTeamSpace(TeamSpace space, Long folderId) {
+        if (folderId == null || folderId <= 0) return false;
+        Folder current = folderMapper.selectById(folderId);
+        if (current == null) return false;
+        int depth = 0;
+        while (current != null && depth < 30) {
+            if (Objects.equals(current.getId(), space.getRootFolderId())) {
+                return true;
+            }
+            Long parentId = current.getParentId();
+            if (parentId == null || parentId <= 0) {
+                return false;
+            }
+            current = folderMapper.selectById(parentId);
+            depth++;
+        }
+        return false;
+    }
+
+    private boolean isTeamFilePreviewable(String mimeType, String fileName) {
+        String type = mimeType != null ? mimeType : "";
+        String lower = fileName != null ? fileName.toLowerCase() : "";
+        if (type.startsWith("image/") || type.equals("application/pdf") || type.startsWith("video/")) {
+            return true;
+        }
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                || lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".pdf")
+                || lower.endsWith(".mp4") || lower.endsWith(".webm");
     }
 
     // ==================== 内部方法 ====================

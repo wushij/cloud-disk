@@ -31,9 +31,11 @@ function buildUrl(url: string) {
 }
 
 function getMessage(data: unknown, fallback: string) {
-  if (data && typeof data === 'object' && 'message' in data) {
-    const msg = (data as { message?: string }).message
-    if (msg) return msg
+  if (data && typeof data === 'object') {
+    // 优先读后端 ApiErrorResponse.error 字段，其次读 message
+    const body = data as { error?: string; message?: string }
+    if (body.error) return body.error
+    if (body.message) return body.message
   }
   return fallback
 }
@@ -93,6 +95,7 @@ export function uploadFile(options: {
   name?: string
   formData?: Record<string, string>
   onProgress?: (ratio: number) => void
+  onTaskCreated?: (task: UniApp.UploadTask) => void
 }): Promise<unknown> {
   const token = uni.getStorageSync(TOKEN_KEY)
   return new Promise((resolve, reject) => {
@@ -123,6 +126,7 @@ export function uploadFile(options: {
       },
       fail: reject
     })
+    options.onTaskCreated?.(task)
     task.onProgressUpdate?.((event) => {
       if (options.onProgress && event.totalBytesExpectedToSend > 0) {
         options.onProgress(event.totalBytesSent / event.totalBytesExpectedToSend)

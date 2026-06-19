@@ -6,7 +6,7 @@ import http, { TOKEN_KEY } from '@/api/http'
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
 import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
 import { useFileStore, type FileItem } from '@/stores/file'
-import { useUploadStore, promptCreateFolder } from '@/stores/upload'
+import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import ShareDialog from '@/components/ShareDialog.vue'
 import MoveCopyDialog from '@/components/MoveCopyDialog.vue'
 import FolderTree from '@/components/FolderTree.vue'
@@ -17,9 +17,8 @@ import VideoPreview from '@/components/VideoPreview.vue'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
 
 const fileStore = useFileStore()
-const uploadStore = useUploadStore()
+const transferStore = useTransferStore()
 const { currentFolderId, breadcrumb, items, loading, keyword, fileType } = storeToRefs(fileStore)
-const { tasks: uploadTasks } = storeToRefs(uploadStore)
 
 const viewMode = ref<'list' | 'grid'>('grid')
 const shareVisible = ref(false)
@@ -56,7 +55,7 @@ async function createFolder() {
 }
 
 async function processFiles(files: File[]) {
-  await uploadStore.processFiles(files, currentFolderId.value, refreshAfterChange)
+  await transferStore.processFiles(files, currentFolderId.value, refreshAfterChange)
 }
 
 function onFileChange(e: Event) {
@@ -90,19 +89,11 @@ function onDragLeave(e: DragEvent) {
 
 function download(row: FileItem) {
   if (row.type !== 'file') return
-  const a = document.createElement('a')
-  a.href = `/api/files/${row.id}/download?access_token=${tokenParam()}`
-  a.download = row.name
-  a.click()
+  transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
 }
 
 async function directDownload(row: FileItem) {
-  try {
-    const { data } = await http.get(`/api/files/${row.id}/direct-url`)
-    window.open(data.url, '_blank')
-  } catch {
-    download(row)
-  }
+  download(row)
 }
 
 async function resolvePreviewUrl(fileId: number): Promise<string> {
@@ -195,7 +186,7 @@ function onWsProgress(data: {
     return
   }
   if (!data.taskId) return
-  uploadStore.updateProgress(data.taskId, data.progress ?? 0, data.status)
+  transferStore.updateProgress(data.taskId, data.progress ?? 0, data.status)
 }
 
 const isImage = computed(() => previewType.value.startsWith('image/'))
@@ -273,11 +264,11 @@ onUnmounted(disconnectUploadWs)
             </div>
           </div>
           <div class="cd-toolbar-row cd-toolbar-sub">
-            <span class="cd-stat-pill">
+            <span class="cd-item-count">
               共 <strong>{{ items.length }}</strong> 项
             </span>
             <div class="cd-search-box">
-              <el-icon :size="14"><Search /></el-icon>
+              <el-icon :size="15"><Search /></el-icon>
               <el-input
                 v-model="keyword"
                 placeholder="搜索文件名"
@@ -285,36 +276,39 @@ onUnmounted(disconnectUploadWs)
                 @keyup.enter="fileStore.loadList()"
               />
             </div>
-            <el-select
-              v-model="fileType"
-              class="cd-type-select"
-              placeholder="类型"
-              clearable
-              @change="fileStore.loadList()"
-            >
-              <el-option label="全部" value="" />
-              <el-option label="图片" value="image" />
-              <el-option label="视频" value="video" />
-              <el-option label="文档" value="document" />
-              <el-option label="压缩包" value="archive" />
-            </el-select>
-            <div class="cd-view-toggle">
-              <button
-                class="cd-view-btn"
-                :class="{ active: viewMode === 'grid' }"
-                title="网格视图"
-                @click="viewMode = 'grid'"
+            <div class="cd-toolbar-filters">
+              <el-select
+                v-model="fileType"
+                class="cd-type-select"
+                placeholder="类型"
+                clearable
+                @change="fileStore.loadList()"
               >
-                <el-icon :size="16"><Grid /></el-icon>
-              </button>
-              <button
-                class="cd-view-btn"
-                :class="{ active: viewMode === 'list' }"
-                title="列表视图"
-                @click="viewMode = 'list'"
-              >
-                <el-icon :size="16"><List /></el-icon>
-              </button>
+                <el-option label="全部" value="" />
+                <el-option label="文件夹" value="folder" />
+                <el-option label="图片" value="image" />
+                <el-option label="视频" value="video" />
+                <el-option label="文档" value="document" />
+                <el-option label="压缩包" value="archive" />
+              </el-select>
+              <div class="cd-view-toggle">
+                <button
+                  class="cd-view-btn"
+                  :class="{ active: viewMode === 'grid' }"
+                  title="网格视图"
+                  @click="viewMode = 'grid'"
+                >
+                  <el-icon :size="16"><Grid /></el-icon>
+                </button>
+                <button
+                  class="cd-view-btn"
+                  :class="{ active: viewMode === 'list' }"
+                  title="列表视图"
+                  @click="viewMode = 'list'"
+                >
+                  <el-icon :size="16"><List /></el-icon>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -464,45 +458,7 @@ onUnmounted(disconnectUploadWs)
         </div>
       </div>
 
-      <!-- 上传进度 -->
-      <transition name="fade">
-        <el-card v-if="uploadTasks.length" shadow="never" class="cd-upload-card">
-          <template #header>
-            <div class="cd-upload-header">
-              <el-icon :size="16" color="var(--cd-primary)"><Upload /></el-icon>
-              <span>上传进度</span>
-              <span class="cd-upload-count">{{ uploadTasks.length }} 个任务</span>
-            </div>
-          </template>
-          <div v-for="t in uploadTasks" :key="t.id" class="cd-upload-task">
-            <div class="cd-task-info">
-              <span class="cd-task-name">{{ t.name }}</span>
-              <el-tag
-                v-if="t.status === 'instant'"
-                size="small"
-                type="success"
-                class="cd-instant-tag"
-              >
-                <el-icon><Lightning /></el-icon>
-                秒传
-              </el-tag>
-              <el-tag
-                v-if="t.status === 'done'"
-                size="small"
-                type="success"
-              >
-                <el-icon><Check /></el-icon>
-                完成
-              </el-tag>
-            </div>
-            <el-progress
-              :percentage="Math.round(t.progress * 100)"
-              :status="t.status === 'error' ? 'exception' : t.status === 'done' ? 'success' : undefined"
-              :stroke-width="6"
-            />
-          </div>
-        </el-card>
-      </transition>
+      <!-- 上传进度由全局 TransferPanel 接管 -->
 
       <ShareDialog
         v-model="shareVisible"
@@ -646,18 +602,35 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-toolbar-sub {
-  min-height: 46px;
-  padding-bottom: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  min-height: 52px;
+  padding: 10px 20px 14px;
+  gap: 16px;
+}
+
+.cd-item-count {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--cd-text-secondary);
+  white-space: nowrap;
+}
+
+.cd-item-count strong {
+  color: var(--cd-text-primary);
+  font-weight: 600;
+}
+
+.cd-toolbar-filters {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  justify-content: flex-start;
+  flex-shrink: 0;
 }
 
 .cd-disk-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 18px 20px 24px;
+  padding: 20px 20px 28px;
   background: color-mix(in srgb, var(--theme-bg) 35%, #fff);
 }
 
@@ -690,8 +663,14 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-type-select {
-  width: 112px;
+  width: 108px;
   flex-shrink: 0;
+}
+
+.cd-type-select :deep(.el-select__wrapper) {
+  min-height: 36px;
+  border-radius: 10px;
+  box-shadow: none;
 }
 
 .cd-disk-empty {
@@ -759,13 +738,15 @@ onUnmounted(disconnectUploadWs)
 .cd-search-box {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: min(320px, 100%);
-  flex-shrink: 0;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  height: 36px;
   background: var(--cd-bg);
   border: 1px solid var(--cd-border);
-  border-radius: var(--cd-radius);
-  padding: 0 10px;
+  border-radius: 10px;
+  padding: 0 12px;
   transition: var(--cd-transition-fast);
 }
 
@@ -792,16 +773,17 @@ onUnmounted(disconnectUploadWs)
   display: flex;
   background: var(--cd-bg);
   border: 1px solid var(--cd-border);
-  border-radius: var(--cd-radius);
+  border-radius: 10px;
   padding: 3px;
+  gap: 2px;
 }
 
 .cd-view-btn {
-  width: 34px;
-  height: 28px;
+  width: 36px;
+  height: 30px;
   border: none;
   background: none;
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -811,9 +793,9 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-view-btn.active {
-  background: var(--cd-primary-gradient);
+  background: #1e293b;
   color: #fff;
-  box-shadow: 0 1px 4px var(--theme-primary-muted-strong);
+  box-shadow: none;
 }
 
 .cd-view-btn:not(.active):hover {

@@ -18,6 +18,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        if (!properties.getRateLimit().isEnabled()) {
+            return true;
+        }
         String uri = request.getRequestURI();
         if (!uri.startsWith("/api/upload") && !uri.equals("/api/files/simple")) {
             return true;

@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
-import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { fmtSize, fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
@@ -91,7 +90,12 @@ function confirmClearAll() {
 
 <template>
   <view class="page">
-    <MobileHeader title="回收站" :subtitle="`${list.length} 项待处理`" gradient icon-type="recycle">
+    <MobileHeader
+      title="回收站"
+      :subtitle="`${list.length} 项待处理`"
+      gradient
+      icon-type="recycle"
+    >
       <template #right>
         <view v-if="list.length > 0" class="clear-all-btn cd-pressable" @click="confirmClearAll">
           <u-icon name="trash" size="16" color="#fff" />
@@ -165,15 +169,13 @@ function confirmClearAll() {
         </view>
       </view>
     </scroll-view>
-
-    <MobileTabBar active="recycle" />
   </view>
 </template>
 
 <style scoped lang="scss">
 .page {
   min-height: 100vh;
-  padding-bottom: calc(var(--cd-tab-height) + env(safe-area-inset-bottom));
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24rpx);
   background: var(--cd-bg);
 }
 

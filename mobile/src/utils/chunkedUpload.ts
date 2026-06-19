@@ -55,9 +55,12 @@ export async function uploadChunkedFile(
   fileSize: number,
   folderId: number,
   fileMd5?: string,
-  onProgress?: (ratio: number) => void
+  onProgress?: (ratio: number) => void,
+  signal?: AbortSignal
 ): Promise<UploadResult> {
   onProgress?.(0)
+
+  if (signal?.aborted) throw new Error('Canceled')
 
   // 步骤 1: 秒传检查
   if (fileMd5) {
@@ -80,6 +83,8 @@ export async function uploadChunkedFile(
       // 秒传检查失败，继续普通上传
     }
   }
+
+  if (signal?.aborted) throw new Error('Canceled')
 
   // 步骤 2: 初始化分片上传
   const init = await request<{
@@ -111,6 +116,7 @@ export async function uploadChunkedFile(
 
   const uploadChunk = async (index: number): Promise<void> => {
     if (uploadedSet.has(index)) return
+    if (signal?.aborted) throw new Error('Canceled')
 
     const start = index * serverChunkSize
     const end = Math.min(start + serverChunkSize, fileSize)
@@ -129,11 +135,22 @@ export async function uploadChunkedFile(
       const xhr = new XMLHttpRequest()
       xhr.open('POST', '/api/upload/chunk')
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      
+      const onAbort = () => {
+        xhr.abort()
+        reject(new Error('Canceled'))
+      }
+      if (signal) signal.addEventListener('abort', onAbort)
+      
       xhr.onload = () => {
+        if (signal) signal.removeEventListener('abort', onAbort)
         if (xhr.status >= 200 && xhr.status < 300) resolve()
         else reject(new Error(`分片 ${index} 上传失败: ${xhr.status}`))
       }
-      xhr.onerror = () => reject(new Error(`分片 ${index} 网络错误`))
+      xhr.onerror = () => {
+        if (signal) signal.removeEventListener('abort', onAbort)
+        reject(new Error(`分片 ${index} 网络错误`))
+      }
       xhr.send(fd)
     })
     // #endif
@@ -142,6 +159,12 @@ export async function uploadChunkedFile(
     // 非 H5 环境：读取文件分片并写入临时文件后上传
     const fs = uni.getFileSystemManager()
     const tempPath = `${(uni as any).env?.USER_DATA_PATH || uni.getStorageSync('temp_path') || '/tmp'}/chunk_${uploadId}_${index}`
+    let activeTask: UniApp.UploadTask | null = null
+    const onAbort = () => {
+      activeTask?.abort()
+    }
+    if (signal) signal.addEventListener('abort', onAbort)
+
     try {
       const buffer = fs.readFileSync(filePath, 'binary', start, end - start) as unknown as ArrayBuffer
       fs.writeFileSync(tempPath, buffer, 'binary')
@@ -152,6 +175,10 @@ export async function uploadChunkedFile(
         formData: {
           uploadId,
           chunkIndex: String(index)
+        },
+        onTaskCreated: (t) => {
+          activeTask = t
+          if (signal?.aborted) t.abort()
         }
       })
       // 清理临时文件
@@ -159,6 +186,8 @@ export async function uploadChunkedFile(
     } catch (e) {
       try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
       throw e
+    } finally {
+      if (signal) signal.removeEventListener('abort', onAbort)
     }
     // #endif
   }
@@ -167,9 +196,11 @@ export async function uploadChunkedFile(
   let next = 0
   const worker = async () => {
     for (;;) {
+      if (signal?.aborted) throw new Error('Canceled')
       const i = next++
       if (i >= totalChunks) return
       await uploadChunk(i)
+      if (signal?.aborted) throw new Error('Canceled')
       done++
       onProgress?.(0.05 + (done / totalChunks) * 0.9)
     }
@@ -177,6 +208,8 @@ export async function uploadChunkedFile(
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, totalChunks - uploadedCount) }, () => worker())
   )
+
+  if (signal?.aborted) throw new Error('Canceled')
 
   // 步骤 4: 合并分片
   await request({
@@ -198,19 +231,31 @@ export async function smartUpload(
   fileSize: number,
   folderId: number,
   fileMd5?: string,
-  onProgress?: (ratio: number) => void
+  onProgress?: (ratio: number) => void,
+  signal?: AbortSignal
 ): Promise<UploadResult> {
   if (fileSize <= SIMPLE_MAX) {
     // 小文件使用简单上传
-    await uploadFile({
-      url: '/api/files/simple',
-      filePath,
-      name: 'file',
-      formData: { folderId: String(folderId) },
-      onProgress
-    })
+    let activeTask: UniApp.UploadTask | null = null
+    const onAbort = () => activeTask?.abort()
+    if (signal) signal.addEventListener('abort', onAbort)
+    try {
+      await uploadFile({
+        url: '/api/files/simple',
+        filePath,
+        name: 'file',
+        formData: { folderId: String(folderId) },
+        onProgress,
+        onTaskCreated: (t) => {
+          activeTask = t
+          if (signal?.aborted) t.abort()
+        }
+      })
+    } finally {
+      if (signal) signal.removeEventListener('abort', onAbort)
+    }
     return {}
   }
   // 大文件使用分片上传
-  return uploadChunkedFile(filePath, fileName, fileSize, folderId, fileMd5, onProgress)
+  return uploadChunkedFile(filePath, fileName, fileSize, folderId, fileMd5, onProgress, signal)
 }

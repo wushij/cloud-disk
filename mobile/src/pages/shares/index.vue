@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { request, fileApiUrl } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -15,6 +15,84 @@ interface ShareItem {
   expireTime?: string
   viewCount?: number
   downloadCount?: number
+  fileId?: number
+  folderId?: number
+}
+
+function isImageShare(item: ShareItem) {
+  const name = item.fileName || ''
+  if (!name) return false
+  const parts = name.split('.')
+  if (parts.length <= 1) return false
+  const ext = parts.pop()?.toLowerCase() || ''
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
+}
+
+function getShareImageUrl(item: ShareItem) {
+  if (!item.fileId) return ''
+  return fileApiUrl(`/api/files/${item.fileId}/preview`)
+}
+
+function formatExpireTime(timeStr?: string) {
+  if (!timeStr) return '永久有效'
+  try {
+    return timeStr.replace('T', ' ').substring(0, 16)
+  } catch {
+    return timeStr
+  }
+}
+
+function getShareIcon(item: ShareItem) {
+  const name = item.fileName || ''
+  if (!name) return 'share-fill'
+  const parts = name.split('.')
+  if (parts.length <= 1) return 'folder-fill'
+  const ext = parts.pop()?.toLowerCase() || ''
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'photo-fill'
+  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return 'play-circle-fill'
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'volume-fill'
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'file-zip-fill'
+  if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'].includes(ext)) return 'file-text-fill'
+  return 'file-text-fill'
+}
+
+function getShareIconStyle(item: ShareItem) {
+  const name = item.fileName || ''
+  const gradients = {
+    folder: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // 琥珀
+    image: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', // 翡翠
+    video: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', // 罗兰
+    audio: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', // 玫瑰
+    archive: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', // 橙红
+    document: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', // 蔚蓝
+    default: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)' // 灰色
+  }
+  const shadows = {
+    folder: 'rgba(245, 158, 11, 0.22)',
+    image: 'rgba(16, 185, 129, 0.22)',
+    video: 'rgba(168, 85, 247, 0.22)',
+    audio: 'rgba(236, 72, 153, 0.22)',
+    archive: 'rgba(249, 115, 22, 0.22)',
+    document: 'rgba(59, 130, 246, 0.22)',
+    default: 'rgba(107, 114, 128, 0.2)'
+  }
+
+  if (!name) return { background: gradients.default, boxShadow: `0 8rpx 20rpx ${shadows.default}` }
+  const parts = name.split('.')
+  if (parts.length <= 1) return { background: gradients.folder, boxShadow: `0 8rpx 20rpx ${shadows.folder}` }
+  const ext = parts.pop()?.toLowerCase() || ''
+  
+  let key: keyof typeof gradients = 'default'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) key = 'image'
+  else if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) key = 'video'
+  else if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) key = 'audio'
+  else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) key = 'archive'
+  else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'].includes(ext)) key = 'document'
+  
+  return {
+    background: gradients[key],
+    boxShadow: `0 8rpx 20rpx ${shadows[key]}`
+  }
 }
 
 const auth = useAuthStore()
@@ -73,26 +151,34 @@ async function removeShare(item: ShareItem) {
         />
       </view>
       <view v-for="item in list" :key="item.id" class="share-card">
-        <view class="share-badge">
-          <u-icon name="share-fill" size="18" color="#fff" />
-        </view>
-        <view class="share-main" @click="openShare(item)">
-          <text class="share-name">{{ item.fileName || item.shareCode }}</text>
-          <view class="share-stats">
-            <view class="stat-pill">
-              <u-icon name="eye" size="14" color="#64748b" />
-              <text>{{ item.viewCount || 0 }}</text>
-            </view>
-            <view class="stat-pill">
-              <u-icon name="download" size="14" color="#64748b" />
-              <text>{{ item.downloadCount || 0 }}</text>
-            </view>
-            <view v-if="item.extractCode" class="stat-pill lock">
-              <u-icon name="lock" size="14" color="#1e293b" />
-              <text>加密</text>
-            </view>
+        <view class="share-body" @click="openShare(item)">
+          <view class="share-badge" :style="getShareIconStyle(item)">
+            <image
+              v-if="isImageShare(item) && item.fileId"
+              class="share-cover-img"
+              :src="getShareImageUrl(item)"
+              mode="aspectFill"
+            />
+            <u-icon v-else :name="getShareIcon(item)" size="18" color="#fff" />
           </view>
-          <text v-if="item.expireTime" class="share-expire">过期 {{ item.expireTime }}</text>
+          <view class="share-main">
+            <text class="share-name">{{ item.fileName || item.shareCode }}</text>
+            <view class="share-stats">
+              <view class="stat-pill">
+                <u-icon name="eye" size="14" color="#64748b" />
+                <text>{{ item.viewCount || 0 }}</text>
+              </view>
+              <view class="stat-pill">
+                <u-icon name="download" size="14" color="#64748b" />
+                <text>{{ item.downloadCount || 0 }}</text>
+              </view>
+              <view v-if="item.extractCode" class="stat-pill lock">
+                <u-icon name="lock" size="14" color="#1e293b" />
+                <text>加密</text>
+              </view>
+            </view>
+            <text v-if="item.expireTime" class="share-expire">过期: {{ formatExpireTime(item.expireTime) }}</text>
+          </view>
         </view>
         <view class="share-actions">
           <view class="action-chip" @click="copyLink(item)">
@@ -125,8 +211,8 @@ async function removeShare(item: ShareItem) {
 
 .share-card {
   position: relative;
-  margin: 0 24rpx 16rpx;
-  padding: 24rpx 24rpx 20rpx 72rpx;
+  margin: 0 24rpx 18rpx;
+  padding: 32rpx;
   background: var(--cd-bg-card);
   border-radius: var(--cd-radius-lg);
   box-shadow: var(--cd-shadow-card);
@@ -136,25 +222,43 @@ async function removeShare(item: ShareItem) {
 
 .share-card:active {
   transform: scale(0.985);
+  box-shadow: var(--cd-shadow-xs);
+  border-color: rgba(1, 7, 16, 0.08);
+}
+
+.share-body {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  width: 100%;
 }
 
 .share-badge {
-  position: absolute;
-  left: 22rpx;
-  top: 26rpx;
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 12rpx;
-  background: var(--cd-primary-gradient);
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.share-cover-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 24rpx;
+  background: var(--cd-bg-surface);
+}
+
+.share-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .share-name {
   display: block;
-  font-size: 30rpx;
+  font-size: 26rpx;
   font-weight: 700;
   color: var(--cd-text);
   overflow: hidden;
@@ -165,39 +269,42 @@ async function removeShare(item: ShareItem) {
 .share-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 10rpx;
-  margin-top: 14rpx;
+  gap: 12rpx;
+  margin-top: 10rpx;
 }
 
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4rpx;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  background: #f8fafc;
-  font-size: 20rpx;
+  gap: 6rpx;
+  padding: 4rpx 14rpx;
+  border-radius: var(--cd-radius-full);
+  background: var(--cd-bg-surface);
+  font-size: 18rpx;
   color: var(--cd-text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  border: 1rpx solid var(--cd-border-light);
 }
 
 .stat-pill.lock {
-  background: var(--cd-primary-muted);
-  color: var(--cd-primary);
+  background: var(--cd-warning-bg);
+  color: var(--cd-warning);
+  border-color: rgba(245, 158, 11, 0.12);
 }
 
 .share-expire {
   display: block;
-  margin-top: 10rpx;
-  font-size: 22rpx;
+  margin-top: 8rpx;
+  font-size: 19rpx;
   color: var(--cd-text-muted);
+  font-weight: 500;
 }
 
 .share-actions {
   display: flex;
-  gap: 14rpx;
-  margin-top: 20rpx;
-  padding-top: 18rpx;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  padding-top: 20rpx;
   border-top: 1rpx solid var(--cd-border-light);
 }
 
@@ -206,27 +313,30 @@ async function removeShare(item: ShareItem) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6rpx;
-  padding: 14rpx 0;
-  border-radius: var(--cd-radius);
-  background: #f8fafc;
+  gap: 8rpx;
+  padding: 16rpx 0;
+  border-radius: var(--cd-radius-full);
+  background: var(--cd-primary-muted);
   font-size: 24rpx;
   color: var(--cd-primary);
-  font-weight: 600;
+  font-weight: 700;
   transition: all var(--cd-transition-fast);
+  border: 1rpx solid rgba(1, 7, 16, 0.04);
 }
 
 .action-chip:active {
   transform: scale(0.95);
-  background: var(--cd-primary-muted);
+  background: var(--cd-primary-muted-strong);
 }
 
 .action-chip.danger {
+  background: var(--cd-danger-bg);
   color: var(--cd-danger);
+  border: 1rpx solid rgba(239, 68, 68, 0.08);
 }
 
 .action-chip.danger:active {
-  background: var(--cd-danger-bg);
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .state-box {

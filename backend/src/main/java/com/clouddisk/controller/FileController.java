@@ -81,7 +81,7 @@ public class FileController {
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> download(@PathVariable Long id, HttpServletRequest request) {
         long userId = AuthHelper.requireUserId(request);
-        FileRecord file = fileService.getOwned(id, userId);
+        FileRecord file = fileService.getOwnedOrShared(id, userId);
         Resource resource = fileService.download(id, userId);
         String encoded = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
@@ -93,7 +93,7 @@ public class FileController {
     @GetMapping("/{id}/preview")
     public ResponseEntity<Resource> preview(@PathVariable Long id, HttpServletRequest request) {
         long userId = AuthHelper.requireUserId(request);
-        FileRecord file = fileService.getOwned(id, userId);
+        FileRecord file = fileService.getOwnedOrShared(id, userId);
         if (!fileService.isPreviewable(file.getFileType(), file.getFileName())) {
             return ResponseEntity.badRequest().build();
         }

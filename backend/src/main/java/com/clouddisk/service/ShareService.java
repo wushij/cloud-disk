@@ -57,9 +57,11 @@ public class ShareService {
             m.put("createdAt", s.getCreateTime());
             if (s.isFolderShare()) {
                 Folder folder = folderMapper.selectById(s.getFolderId());
+                m.put("folderId", s.getFolderId());
                 m.put("fileName", folder != null ? folder.getFolderName() + "（文件夹）" : "已删除");
             } else {
                 FileRecord file = fileService.getForDownload(s.getFileId());
+                m.put("fileId", s.getFileId());
                 m.put("fileName", file != null ? file.getFileName() : "已删除");
             }
             result.add(m);

@@ -1,5 +1,7 @@
 package com.clouddisk.common;
 
+import cn.dev33.satoken.exception.NotPermissionException;
+import cn.dev33.satoken.exception.NotRoleException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,5 +47,21 @@ class GlobalExceptionHandlerTest {
         assertEquals("服务器内部错误，请稍后重试", resp.getError());
         assertEquals("INTERNAL_ERROR", resp.getCode());
         assertEquals(500, resp.getStatus());
+    }
+
+    @Test
+    void notPermission_returnsForbidden() {
+        ApiErrorResponse resp = handler.handleNotPermission(new NotPermissionException(""), request);
+        assertEquals("没有权限执行此操作", resp.getError());
+        assertEquals("FORBIDDEN", resp.getCode());
+        assertEquals(403, resp.getStatus());
+    }
+
+    @Test
+    void notRole_returnsForbidden() {
+        ApiErrorResponse resp = handler.handleNotRole(new NotRoleException(""), request);
+        assertEquals("没有权限执行此操作", resp.getError());
+        assertEquals("FORBIDDEN", resp.getCode());
+        assertEquals(403, resp.getStatus());
     }
 }

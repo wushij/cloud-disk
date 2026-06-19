@@ -14,6 +14,9 @@ const props = defineProps<{
 
   loading?: boolean
 
+  /** 精简操作：仅保留打开/下载/预览/删除 */
+  simple?: boolean
+
 }>()
 
 
@@ -79,6 +82,13 @@ function onMoreCommand(command: string, row: FileItem) {
   }
 }
 
+function formatDate(value?: string) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+}
+
 </script>
 
 
@@ -130,7 +140,7 @@ function onMoreCommand(command: string, row: FileItem) {
           />
           <div v-else class="cd-grid-icon" :style="{ color: fileIconColor(row) }">
 
-            <el-icon :size="40">
+            <el-icon :size="32">
 
               <Folder v-if="row.type === 'folder'" />
 
@@ -185,13 +195,11 @@ function onMoreCommand(command: string, row: FileItem) {
           </div>
 
           <div class="cd-grid-meta">
-
-            <span v-if="row.type === 'file'">{{ fmtSize(row.sizeBytes || 0) }}</span>
-
-            <span v-else>文件夹</span>
-
-            <span v-if="row.createdAt">{{ new Date(row.createdAt).toLocaleDateString() }}</span>
-
+            <span class="cd-grid-meta-left">
+              <template v-if="row.type === 'file'">{{ fmtSize(row.sizeBytes || 0) }}</template>
+              <template v-else>文件夹</template>
+            </span>
+            <span v-if="row.createdAt" class="cd-grid-meta-date">{{ formatDate(row.createdAt) }}</span>
           </div>
 
         </div>
@@ -252,6 +260,8 @@ function onMoreCommand(command: string, row: FileItem) {
 
           <button
 
+            v-if="!simple"
+
             class="cd-grid-action-btn"
 
             title="分享"
@@ -265,6 +275,7 @@ function onMoreCommand(command: string, row: FileItem) {
           </button>
 
           <el-dropdown
+            v-if="!simple"
             trigger="click"
             placement="bottom-end"
             :teleported="true"
@@ -302,6 +313,17 @@ function onMoreCommand(command: string, row: FileItem) {
             </template>
           </el-dropdown>
 
+          <button
+            v-if="simple"
+            type="button"
+            class="cd-grid-action-btn cd-grid-action-more"
+            aria-label="删除"
+            title="删除"
+            @click.stop="emit('delete', row)"
+          >
+            <el-icon><Delete /></el-icon>
+          </button>
+
         </div>
 
       </div>
@@ -334,11 +356,11 @@ function onMoreCommand(command: string, row: FileItem) {
 
   display: grid;
 
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 168px));
 
-  gap: 18px;
+  gap: 14px;
 
-  padding: 4px 0;
+  padding: 2px 0;
 
 }
 
@@ -412,17 +434,17 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-card {
 
-  background: var(--cd-bg-white);
+  background: #fff;
 
   border: 1px solid var(--cd-border-light);
 
-  border-radius: 14px;
+  border-radius: 12px;
 
-  overflow: visible;
+  overflow: hidden;
 
   cursor: pointer;
 
-  transition: var(--cd-transition);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 
   position: relative;
 
@@ -436,53 +458,13 @@ function onMoreCommand(command: string, row: FileItem) {
 
 
 
-.cd-grid-card::before {
-
-  content: '';
-
-  position: absolute;
-
-  inset: 0;
-
-  border-radius: 14px;
-
-  padding: 1px;
-
-  background: linear-gradient(135deg, var(--cd-primary-light) 0%, transparent 50%);
-
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-
-  -webkit-mask-composite: xor;
-
-  mask-composite: exclude;
-
-  opacity: 0;
-
-  transition: opacity 0.25s ease;
-
-  pointer-events: none;
-
-  z-index: 3;
-
-}
-
-
-
 .cd-grid-card:hover {
 
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--cd-primary) 25%, var(--cd-border-light));
 
-  box-shadow: var(--cd-shadow-lg), 0 0 0 1px var(--theme-primary-muted);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 
-  transform: translateY(-3px);
-
-}
-
-
-
-.cd-grid-card:hover::before {
-
-  opacity: 1;
+  transform: translateY(-2px);
 
 }
 
@@ -498,7 +480,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   width: 100%;
 
-  height: 152px;
+  height: 96px;
 
   background: linear-gradient(135deg, #F8F9FC 0%, color-mix(in srgb, var(--theme-primary) 4%, #F8F9FC) 100%);
 
@@ -511,8 +493,6 @@ function onMoreCommand(command: string, row: FileItem) {
   position: relative;
 
   overflow: hidden;
-
-  border-radius: 14px 14px 0 0;
 
 }
 
@@ -626,11 +606,13 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-info {
 
-  padding: 11px 13px 14px;
+  padding: 8px 10px 10px;
 
   flex: 1;
 
   min-height: 0;
+
+  background: #fff;
 
 }
 
@@ -640,7 +622,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   font-size: 13px;
 
-  font-weight: 500;
+  font-weight: 600;
 
   color: var(--cd-text-primary);
 
@@ -650,7 +632,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   white-space: nowrap;
 
-  line-height: 1.4;
+  line-height: 1.45;
 
 }
 
@@ -660,25 +642,34 @@ function onMoreCommand(command: string, row: FileItem) {
 
   display: flex;
 
+  align-items: center;
+
   justify-content: space-between;
+
+  gap: 10px;
 
   font-size: 11px;
 
   color: var(--cd-text-placeholder);
 
   margin-top: 4px;
-  line-height: 1.5;
-  gap: 8px;
-  min-width: 0;
+
+  line-height: 1.4;
 
 }
 
-.cd-grid-meta span {
+.cd-grid-meta-left {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
   flex-shrink: 1;
+}
+
+.cd-grid-meta-date {
+  flex-shrink: 0;
+  color: var(--cd-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -699,7 +690,9 @@ function onMoreCommand(command: string, row: FileItem) {
 
   right: 0;
 
-  height: 145px;
+  aspect-ratio: unset;
+
+  height: 85px;
 
   display: flex;
 
@@ -707,23 +700,21 @@ function onMoreCommand(command: string, row: FileItem) {
 
   justify-content: center;
 
-  gap: 5px;
+  gap: 6px;
 
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(15, 23, 42, 0.1) 85%, transparent 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.42) 0%, rgba(15, 23, 42, 0.08) 80%, transparent 100%);
 
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(6px);
 
-  -webkit-backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(6px);
 
   opacity: 0;
 
-  transition: var(--cd-transition);
+  transition: opacity 0.2s ease;
 
-  padding: 8px;
+  padding: 10px;
 
   flex-wrap: wrap;
-
-  border-radius: 14px 14px 0 0;
 
   z-index: 2;
 
@@ -741,15 +732,15 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-action-btn {
 
-  width: 34px;
+  width: 30px;
 
-  height: 34px;
+  height: 30px;
 
-  border-radius: var(--cd-radius);
+  border-radius: 8px;
 
   border: none;
 
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
 
   color: var(--cd-text-primary);
 
@@ -765,7 +756,7 @@ function onMoreCommand(command: string, row: FileItem) {
 
   font-size: 16px;
 
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 
 }
 
@@ -773,13 +764,13 @@ function onMoreCommand(command: string, row: FileItem) {
 
 .cd-grid-action-btn:hover {
 
-  background: var(--cd-primary-gradient);
+  background: #fff;
 
-  color: #fff;
+  color: var(--cd-primary);
 
-  transform: scale(1.15);
+  transform: scale(1.08);
 
-  box-shadow: 0 4px 12px var(--theme-primary-muted-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
 
 }
 

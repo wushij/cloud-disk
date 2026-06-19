@@ -32,8 +32,14 @@ const loading = ref(false)
 const dashboard = ref<Record<string, unknown>>({})
 const users = ref<UserRow[]>([])
 const auditLogs = ref<AuditRow[]>([])
+const auditPageSize = 8
 const rebuilding = ref(false)
 const avatarBroken = ref<Record<number, boolean>>({})
+
+const quotaVisible = ref(false)
+const quotaSaving = ref(false)
+const quotaTarget = ref<UserRow | null>(null)
+const quotaInput = ref('')
 
 const statCards: {
   key: string
@@ -55,7 +61,7 @@ async function loadAll() {
     const [dash, userList, logs] = await Promise.all([
       http.get('/api/admin/dashboard'),
       http.get('/api/admin/users'),
-      http.get('/api/admin/audit-logs', { params: { page: 0, size: 20 } })
+      http.get('/api/admin/audit-logs', { params: { page: 0, size: auditPageSize } })
     ])
     dashboard.value = dash.data
     users.value = userList.data
@@ -129,21 +135,37 @@ function actionTone(action?: string): 'success' | 'warning' | 'danger' | 'info' 
   return 'info'
 }
 
-async function setQuota(row: UserRow) {
+function openQuotaDialog(row: UserRow) {
+  quotaTarget.value = row
   const currentGB = (row.storageQuota || 0) / 1024 / 1024 / 1024
-  const { value } = await ElMessageBox.prompt(
-    `请输入存储配额（GB），0 表示不限`,
-    `设置用户「${row.username}」的配额`,
-    { inputValue: String(currentGB), confirmButtonText: '确定', cancelButtonText: '取消' }
-  ).catch(() => ({ value: null }))
-  if (value === null) return
-  const quotaBytes = Math.round(parseFloat(value) * 1024 * 1024 * 1024)
+  quotaInput.value = String(currentGB)
+  quotaVisible.value = true
+}
+
+async function submitQuota() {
+  if (!quotaTarget.value) return
+  const raw = quotaInput.value.trim()
+  if (raw === '') {
+    ElMessage.warning('请输入存储配额')
+    return
+  }
+  const gb = Number(raw)
+  if (Number.isNaN(gb) || gb < 0) {
+    ElMessage.warning('请输入有效的配额数值')
+    return
+  }
+  if (quotaSaving.value) return
+  quotaSaving.value = true
+  const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
   try {
-    await http.put(`/api/admin/users/${row.id}/quota`, { storageQuota: quotaBytes })
-    row.storageQuota = quotaBytes
+    await http.put(`/api/admin/users/${quotaTarget.value.id}/quota`, { storageQuota: quotaBytes })
+    quotaTarget.value.storageQuota = quotaBytes
+    quotaVisible.value = false
     ElMessage.success('配额设置成功')
   } catch {
     /* global toast */
+  } finally {
+    quotaSaving.value = false
   }
 }
 
@@ -226,19 +248,23 @@ onMounted(loadAll)
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="168" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="setQuota(row)">
-                <el-icon><Coin /></el-icon>配额
-              </el-button>
-              <el-button
-                v-if="row.username !== 'admin'"
-                link
-                :type="row.status === 1 ? 'danger' : 'primary'"
-                @click="toggleUser(row)"
-              >
-                {{ row.status === 1 ? '禁用' : '启用' }}
-              </el-button>
+              <div class="cd-user-actions">
+                <button type="button" class="cd-user-action cd-user-action--quota" @click="openQuotaDialog(row)">
+                  <el-icon :size="14"><Coin /></el-icon>
+                  <span>配额</span>
+                </button>
+                <button
+                  v-if="row.username !== 'admin'"
+                  type="button"
+                  class="cd-user-action"
+                  :class="row.status === 1 ? 'cd-user-action--danger' : 'cd-user-action--primary'"
+                  @click="toggleUser(row)"
+                >
+                  {{ row.status === 1 ? '禁用' : '启用' }}
+                </button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -249,36 +275,40 @@ onMounted(loadAll)
           <div class="cd-card-title">
             <el-icon :size="16" color="var(--cd-primary)"><List /></el-icon>
             <span>最近审计日志</span>
-            <span class="cd-audit-count">{{ auditLogs.length }} 条</span>
+            <span class="cd-audit-count">最近 {{ auditLogs.length }} 条</span>
           </div>
         </template>
 
         <div v-if="!auditLogs.length" class="cd-audit-empty">暂无审计记录</div>
 
-        <el-table v-else :data="auditLogs" class="cd-audit-table" stripe>
-          <el-table-column label="用户" width="120">
+        <el-table
+          v-else
+          :data="auditLogs"
+          class="cd-audit-table"
+        >
+          <el-table-column label="用户" min-width="108" align="center" header-align="center">
             <template #default="{ row }">
               <span class="cd-audit-user">{{ row.username || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="动作" width="100">
+          <el-table-column label="动作" min-width="96" align="center" header-align="center">
             <template #default="{ row }">
-              <el-tag :type="actionTone(row.action)" size="small" round effect="light">
+              <span class="cd-audit-action" :class="`tone-${actionTone(row.action)}`">
                 {{ actionLabel(row.action) }}
-              </el-tag>
+              </span>
             </template>
           </el-table-column>
-          <el-table-column label="详情" min-width="200" show-overflow-tooltip>
+          <el-table-column label="详情" min-width="160" align="center" header-align="center" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="cd-audit-detail">{{ row.detail || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="IP" width="140">
+          <el-table-column label="IP" min-width="132" align="center" header-align="center">
             <template #default="{ row }">
               <span class="cd-audit-ip">{{ row.ip || '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="时间" width="180">
+          <el-table-column label="时间" min-width="168" align="center" header-align="center">
             <template #default="{ row }">
               <span class="cd-audit-time">{{ fmtTime(row.createTime) }}</span>
             </template>
@@ -286,12 +316,53 @@ onMounted(loadAll)
         </el-table>
       </el-card>
     </div>
+
+    <el-dialog
+      v-model="quotaVisible"
+      width="400px"
+      destroy-on-close
+      class="cd-quota-dialog"
+      @closed="quotaTarget = null"
+    >
+      <template #header>
+        <div class="cd-quota-dialog-header">
+          <div class="cd-quota-dialog-icon">
+            <el-icon :size="20"><Coin /></el-icon>
+          </div>
+          <div>
+            <div class="cd-quota-dialog-title">设置存储配额</div>
+            <div v-if="quotaTarget" class="cd-quota-dialog-sub">
+              用户 {{ quotaTarget.username }} · 已用 {{ fmtSize(quotaTarget.storageUsed || 0) }}
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <p class="cd-quota-hint">输入配额大小，0 表示不限</p>
+      <div class="cd-quota-field">
+        <el-input
+          v-model="quotaInput"
+          placeholder="如 10"
+          inputmode="decimal"
+          @keyup.enter="submitQuota"
+        />
+        <span class="cd-quota-unit">GB</span>
+      </div>
+
+      <template #footer>
+        <el-button class="cd-quota-cancel" @click="quotaVisible = false">取消</el-button>
+        <el-button type="primary" :loading="quotaSaving" @click="submitQuota">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .cd-admin-page {
   padding-top: 16px;
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
 }
 
 .cd-stat-grid {
@@ -455,6 +526,10 @@ onMounted(loadAll)
   padding: 0 !important;
 }
 
+.cd-audit-card :deep(.el-card__header) {
+  background: color-mix(in srgb, var(--theme-bg) 35%, #fff);
+}
+
 .cd-audit-empty {
   padding: 40px 16px;
   text-align: center;
@@ -464,17 +539,48 @@ onMounted(loadAll)
 
 .cd-audit-table {
   width: 100%;
+  --el-table-border-color: var(--cd-border-light);
+  --el-table-row-hover-bg-color: color-mix(in srgb, var(--cd-primary) 4%, #fff);
 }
 
 .cd-audit-table :deep(.el-table__header th) {
-  background: color-mix(in srgb, var(--theme-bg) 55%, #fff) !important;
+  background: #fff !important;
   font-weight: 600;
   color: var(--cd-text-secondary);
   font-size: 12px;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid var(--cd-border-light) !important;
+}
+
+.cd-audit-table :deep(.el-table__header .cell) {
+  text-align: center;
+  justify-content: center;
+}
+
+.cd-audit-table :deep(.el-table__body td) {
+  padding: 12px 8px !important;
+  background: #fff !important;
+  border-bottom: 1px solid var(--cd-border-light) !important;
+}
+
+.cd-audit-table :deep(.el-table__body tr:last-child td) {
+  border-bottom: none !important;
+}
+
+.cd-audit-table :deep(.el-table__body .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.45;
 }
 
 .cd-audit-table :deep(.el-table__row) {
   font-size: 13px;
+}
+
+.cd-audit-table :deep(.el-table__row:hover > td) {
+  background: color-mix(in srgb, var(--cd-primary) 4%, #fff) !important;
 }
 
 .cd-audit-table :deep(.el-table__inner-wrapper::before) {
@@ -486,29 +592,165 @@ onMounted(loadAll)
   color: var(--cd-text-primary);
 }
 
+.cd-audit-action {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cd-audit-action.tone-success {
+  color: #059669;
+}
+
+.cd-audit-action.tone-warning {
+  color: #d97706;
+}
+
+.cd-audit-action.tone-danger {
+  color: #dc2626;
+}
+
+.cd-audit-action.tone-info {
+  color: var(--cd-text-secondary);
+}
+
 .cd-audit-detail {
   color: var(--cd-text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cd-audit-ip {
   font-family: 'SF Mono', 'Consolas', monospace;
   font-size: 12px;
   color: var(--cd-text-secondary);
-  padding: 3px 10px;
-  background: color-mix(in srgb, var(--theme-bg) 65%, #fff);
-  border: 1px solid var(--cd-border-light);
-  border-radius: 6px;
 }
 
 .cd-audit-time {
   color: var(--cd-text-secondary);
   font-variant-numeric: tabular-nums;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
   .cd-stat-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.cd-user-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cd-user-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.cd-user-action--quota,
+.cd-user-action--primary {
+  color: var(--cd-primary);
+}
+
+.cd-user-action--quota:hover,
+.cd-user-action--primary:hover {
+  color: var(--cd-primary-dark, #4338ca);
+}
+
+.cd-user-action--danger {
+  color: var(--el-color-danger);
+}
+
+.cd-user-action--danger:hover {
+  color: #b91c1c;
+}
+
+.cd-quota-dialog :deep(.el-dialog__header) {
+  padding: 18px 20px 14px !important;
+  border-bottom: 1px solid var(--cd-border-light);
+}
+
+.cd-quota-dialog :deep(.el-dialog__body) {
+  padding: 16px 20px 8px !important;
+}
+
+.cd-quota-dialog :deep(.el-dialog__footer) {
+  padding: 12px 20px 18px !important;
+}
+
+.cd-quota-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cd-quota-dialog-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--cd-radius);
+  background: var(--cd-primary-bg);
+  color: var(--cd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cd-quota-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cd-text-primary);
+  line-height: 1.3;
+}
+
+.cd-quota-dialog-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--cd-text-secondary);
+}
+
+.cd-quota-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--cd-text-secondary);
+  line-height: 1.5;
+}
+
+.cd-quota-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cd-quota-field :deep(.el-input) {
+  flex: 1;
+}
+
+.cd-quota-field :deep(.el-input__wrapper) {
+  border-radius: 10px;
+}
+
+.cd-quota-unit {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cd-text-secondary);
+}
+
+.cd-quota-cancel {
+  min-width: 72px;
 }
 </style>

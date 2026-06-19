@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -52,40 +53,63 @@ public class FileService {
     public Map<String, Object> list(Long folderId, int page, int size, String keyword, String fileType) {
         long userId = AuthService.currentUserId();
 
-        // ES 启用且有关键词时，使用 ElasticSearch 搜索
-        if (fileSearchService != null && StringUtils.hasText(keyword)) {
+        // ES 启用且有关键词时，使用 ElasticSearch 搜索（文件夹类型走数据库）
+        if (fileSearchService != null && StringUtils.hasText(keyword)
+                && !"folder".equalsIgnoreCase(fileType)) {
             return fileSearchService.search(userId, keyword, fileType, page, size);
         }
 
         long fid = folderId != null ? folderId : 0L;
+        boolean typeFiltered = StringUtils.hasText(fileType);
+        boolean foldersOnly = typeFiltered && "folder".equalsIgnoreCase(fileType);
+        boolean sharedTeamFolder = folderService.isSharedTeamFolder(fid, userId);
 
-        LambdaQueryWrapper<FileRecord> fq = new LambdaQueryWrapper<FileRecord>()
-                .eq(FileRecord::getUserId, userId)
-                .eq(FileRecord::getStatus, 1);
-        if (StringUtils.hasText(keyword)) {
-            fq.like(FileRecord::getFileName, keyword.trim());
-        } else {
-            fq.eq(FileRecord::getFolderId, fid);
+        List<Folder> folders = List.of();
+        if (!typeFiltered || foldersOnly) {
+            LambdaQueryWrapper<Folder> dfq = new LambdaQueryWrapper<Folder>()
+                    .eq(Folder::getDeleted, 0);
+            if (!sharedTeamFolder) {
+                dfq.eq(Folder::getUserId, userId);
+            }
+            if (!StringUtils.hasText(keyword)) {
+                dfq.eq(Folder::getParentId, fid);
+            } else {
+                dfq.like(Folder::getFolderName, keyword.trim());
+            }
+            dfq.orderByAsc(Folder::getFolderName);
+            folders = new ArrayList<>(folderMapper.selectList(dfq));
+
+            if (fid == 0 && !StringUtils.hasText(keyword) && !typeFiltered) {
+                Set<Long> existingIds = folders.stream().map(Folder::getId).collect(Collectors.toSet());
+                for (Folder teamRoot : folderService.listTeamRootFoldersForUser(userId)) {
+                    if (!existingIds.contains(teamRoot.getId())) {
+                        folders.add(teamRoot);
+                    }
+                }
+                folders.sort(Comparator.comparing(Folder::getFolderName, String.CASE_INSENSITIVE_ORDER));
+            }
         }
-        applyFileTypeFilter(fq, fileType);
-        fq.orderByDesc(FileRecord::getCreateTime);
 
-        Page<FileRecord> fp = fileMapper.selectPage(new Page<>(page + 1, size), fq);
-
-        LambdaQueryWrapper<Folder> dfq = new LambdaQueryWrapper<Folder>()
-                .eq(Folder::getUserId, userId)
-                .eq(Folder::getDeleted, 0);
-        if (!StringUtils.hasText(keyword)) {
-            dfq.eq(Folder::getParentId, fid);
-        } else {
-            dfq.like(Folder::getFolderName, keyword.trim());
+        Page<FileRecord> fp = new Page<>(page + 1, size);
+        if (!foldersOnly) {
+            LambdaQueryWrapper<FileRecord> fq = new LambdaQueryWrapper<FileRecord>()
+                    .eq(FileRecord::getStatus, 1);
+            if (!sharedTeamFolder) {
+                fq.eq(FileRecord::getUserId, userId);
+            }
+            if (StringUtils.hasText(keyword)) {
+                fq.like(FileRecord::getFileName, keyword.trim());
+            } else {
+                fq.eq(FileRecord::getFolderId, fid);
+            }
+            applyFileTypeFilter(fq, fileType);
+            fq.orderByDesc(FileRecord::getCreateTime);
+            fp = fileMapper.selectPage(fp, fq);
         }
-        dfq.orderByAsc(Folder::getFolderName);
-        List<Folder> folders = folderMapper.selectList(dfq);
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (Folder f : folders) {
-            items.add(folderToItem(f));
+            items.add(folderToItem(f, userId));
         }
         for (FileRecord f : fp.getRecords()) {
             items.add(fileToItem(f));
@@ -259,7 +283,7 @@ public class FileService {
         file.setStatus(0);
         fileMapper.updateById(file);
         fileCacheService.evict(file.getId());
-        quotaService.subtractUsage(userId, file.getFileSize() != null ? file.getFileSize() : 0);
+        quotaService.subtractUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
         // ES 索引同步（更新 status 字段）
         if (fileSearchService != null) {
             fileSearchService.indexFile(file);
@@ -395,6 +419,14 @@ public class FileService {
         }
     }
 
+    public Map<String, Object> toFileItem(FileRecord f) {
+        return fileToItem(f);
+    }
+
+    public Map<String, Object> toFolderItem(Folder f) {
+        return folderToItem(f);
+    }
+
     private Map<String, Object> fileToItem(FileRecord f) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", f.getId());
@@ -414,12 +446,19 @@ public class FileService {
     }
 
     private Map<String, Object> folderToItem(Folder f) {
+        return folderToItem(f, AuthService.currentUserId());
+    }
+
+    private Map<String, Object> folderToItem(Folder f, long userId) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", f.getId());
         m.put("name", f.getFolderName());
         m.put("type", "folder");
         m.put("parentId", f.getParentId());
         m.put("createdAt", f.getCreateTime());
+        if (folderService.isSharedTeamFolder(f.getId(), userId)) {
+            m.put("teamShared", true);
+        }
         return m;
     }
 }

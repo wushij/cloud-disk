@@ -129,7 +129,7 @@
    ============================================ */
 
 /* ---- 按钮 ---- */
-.el-button--primary {
+.el-button--primary:not(.is-link):not(.is-text) {
   background: var(--cd-primary-gradient) !important;
   border: none !important;
   color: #fff !important;
@@ -137,14 +137,14 @@
   transition: var(--cd-transition);
 }
 
-.el-button--primary:hover,
-.el-button--primary:focus {
+.el-button--primary:not(.is-link):not(.is-text):hover,
+.el-button--primary:not(.is-link):not(.is-text):focus {
   background: var(--cd-primary-gradient-hover) !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 14px var(--theme-primary-muted-strong);
 }
 
-.el-button--primary:active {
+.el-button--primary:not(.is-link):not(.is-text):active {
   transform: translateY(0);
 }
 
@@ -239,17 +239,6 @@
 .el-dialog__header {
   padding: var(--cd-gap-lg) var(--cd-gap-xl) var(--cd-gap) !important;
   border-bottom: 1px solid var(--cd-border-light);
-  position: relative;
-}
-
-.el-dialog__header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(135deg, var(--cd-primary-light) 0%, color-mix(in srgb, var(--cd-primary-light) 60%, #818cf8) 100%);
 }
 
 .el-dialog__body {

@@ -270,6 +270,42 @@ async function previewSingle() {
 
 }
 
+function getFileIconName(item: ShareItem) {
+  if (item.type === 'folder') return 'Folder'
+  const name = item.name.toLowerCase()
+  const ext = name.split('.').pop() || ''
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'Picture'
+  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return 'VideoPlay'
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'Headset'
+  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return 'Notebook'
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Files'
+  return 'Document'
+}
+
+function getIconColorStyle(item: ShareItem) {
+  if (item.type === 'folder') return '#f59e0b'
+  const name = item.name.toLowerCase()
+  const ext = name.split('.').pop() || ''
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '#10b981'
+  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return '#8b5cf6'
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '#ec4899'
+  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return '#3b82f6'
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '#f97316'
+  return '#94a3b8'
+}
+
+function isSingleImageShare() {
+  if (!info.value) return false
+  if (info.value.shareType === 'FOLDER') return false
+  const name = String(info.value.fileName || '').toLowerCase()
+  const ext = name.split('.').pop() || ''
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
+}
+
+function getSingleShareImageUrl() {
+  if (!info.value || !info.value.fileId) return ''
+  return `/share/${code}/preview${q(`fileId=${info.value.fileId}`)}`
+}
 </script>
 
 
@@ -295,47 +331,32 @@ async function previewSingle() {
     <div v-if="info" class="cd-share-card cd-glass">
 
       <!-- 头部 -->
-
       <div class="cd-share-header">
-
-        <div class="cd-share-logo">
-
-          <el-icon :size="28"><Share /></el-icon>
-
+        <div class="cd-share-logo" :class="{ 'cd-share-logo-img': isSingleImageShare() && (verified || !info.needExtractCode) }">
+          <img
+            v-if="isSingleImageShare() && (verified || !info.needExtractCode)"
+            :src="getSingleShareImageUrl()"
+            class="cd-share-logo-cover"
+            alt=""
+          />
+          <el-icon v-else :size="28"><Share /></el-icon>
         </div>
-
         <div class="cd-share-title-area">
-
           <h1 class="cd-share-title">{{ info.shareType === 'FOLDER' ? info.folderName : info.fileName }}</h1>
-
           <p class="cd-share-meta">
-
             <el-tag v-if="info.shareType === 'FOLDER'" type="warning" size="small" round>
-
               <el-icon><FolderOpened /></el-icon> 文件夹分享
-
             </el-tag>
-
             <span v-else-if="info.fileSize">{{ (((info.fileSize as number) || 0) / 1024 / 1024).toFixed(2) }} MB</span>
-
           </p>
-
         </div>
-
       </div>
 
-
-
       <!-- 提取码 -->
-
       <div v-if="info.needExtractCode && !verified" class="cd-extract-area">
-
         <div class="cd-extract-tip">
-
-          <el-icon :size="20" color="var(--cd-primary)"><Lock /></el-icon>
-
-          <span>请输入提取码</span>
-
+          <el-icon :size="20" color="#3b82f6"><Lock /></el-icon>
+          <span>此分享需要提取码</span>
         </div>
 
         <div class="cd-extract-form">
@@ -406,11 +427,9 @@ async function previewSingle() {
 
               <div class="cd-share-file-icon">
 
-                <el-icon :size="36" :color="item.type === 'folder' ? 'var(--cd-file-folder)' : 'var(--cd-file-default)'">
+                <el-icon :size="36" :style="{ color: getIconColorStyle(item) }">
 
-                  <Folder v-if="item.type === 'folder'" />
-
-                  <Document v-else />
+                  <component :is="getFileIconName(item)" />
 
                 </el-icon>
 
@@ -528,7 +547,7 @@ async function previewSingle() {
 
   padding: 24px;
 
-  background: linear-gradient(135deg, #0F172A 0%, #1E2A4A 40%, #2D1B69 100%);
+  background: linear-gradient(135deg, #070b19 0%, #0d1527 50%, #171026 100%);
 
   display: flex;
 
@@ -566,11 +585,11 @@ async function previewSingle() {
 
   border-radius: 50%;
 
-  filter: blur(80px);
+  filter: blur(120px);
 
-  opacity: 0.4;
+  opacity: 0.28;
 
-  animation: orbFloat 8s ease-in-out infinite;
+  animation: orbFloat 10s ease-in-out infinite;
 
 }
 
@@ -578,15 +597,15 @@ async function previewSingle() {
 
 .cd-share-orb-1 {
 
-  width: 400px;
+  width: 500px;
 
-  height: 400px;
+  height: 500px;
 
-  background: #4F7CFF;
+  background: #3b82f6;
 
-  top: -100px;
+  top: -120px;
 
-  right: -100px;
+  right: -120px;
 
 }
 
@@ -594,17 +613,17 @@ async function previewSingle() {
 
 .cd-share-orb-2 {
 
-  width: 300px;
+  width: 400px;
 
-  height: 300px;
+  height: 400px;
 
-  background: #6366F1;
+  background: #7c3aed;
 
-  bottom: -80px;
+  bottom: -100px;
 
-  left: -80px;
+  left: -100px;
 
-  animation-delay: -3s;
+  animation-delay: -4s;
 
 }
 
@@ -614,9 +633,9 @@ async function previewSingle() {
 
   0%, 100% { transform: translateY(0) scale(1); }
 
-  33% { transform: translateY(-20px) scale(1.05); }
+  33% { transform: translateY(-30px) scale(1.08); }
 
-  66% { transform: translateY(10px) scale(0.95); }
+  66% { transform: translateY(15px) scale(0.92); }
 
 }
 
@@ -628,17 +647,39 @@ async function previewSingle() {
 
   width: 100%;
 
-  max-width: 900px;
+  max-width: 860px;
 
-  padding: 32px;
+  padding: 40px;
 
   position: relative;
 
   z-index: 1;
 
-  animation: floatUp 0.5s ease;
+  background: rgba(13, 21, 39, 0.55);
 
-  margin-top: 40px;
+  backdrop-filter: blur(24px);
+
+  -webkit-backdrop-filter: blur(24px);
+
+  border-radius: var(--cd-radius-xl);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  margin-top: 60px;
+
+  animation: floatUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+
+}
+
+
+
+@keyframes floatUp {
+
+  from { opacity: 0; transform: translateY(40px); }
+
+  to { opacity: 1; transform: translateY(0); }
 
 }
 
@@ -652,13 +693,13 @@ async function previewSingle() {
 
   align-items: center;
 
-  gap: 16px;
+  gap: 20px;
 
-  padding-bottom: 24px;
+  padding-bottom: 28px;
 
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 
 }
 
@@ -666,13 +707,13 @@ async function previewSingle() {
 
 .cd-share-logo {
 
-  width: 56px;
+  width: 68px;
 
-  height: 56px;
+  height: 68px;
 
-  border-radius: var(--cd-radius-lg);
+  border-radius: 20px;
 
-  background: var(--cd-primary-gradient);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 
   display: flex;
 
@@ -684,7 +725,7 @@ async function previewSingle() {
 
   flex-shrink: 0;
 
-  box-shadow: 0 4px 12px rgba(79, 124, 255, 0.4);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
 
 }
 
@@ -692,13 +733,15 @@ async function previewSingle() {
 
 .cd-share-title {
 
-  font-size: 22px;
+  font-size: 24px;
 
-  font-weight: 700;
+  font-weight: 800;
 
   color: #fff;
 
-  margin: 0 0 8px;
+  margin: 0 0 6px;
+
+  letter-spacing: -0.5px;
 
   word-break: break-all;
 
@@ -714,11 +757,13 @@ async function previewSingle() {
 
   align-items: center;
 
-  gap: 8px;
+  gap: 10px;
 
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
 
   font-size: 13px;
+
+  font-weight: 500;
 
 }
 
@@ -730,7 +775,7 @@ async function previewSingle() {
 
   text-align: center;
 
-  padding: 24px 0;
+  padding: 36px 0;
 
 }
 
@@ -744,13 +789,15 @@ async function previewSingle() {
 
   justify-content: center;
 
-  gap: 8px;
+  gap: 10px;
 
   color: rgba(255, 255, 255, 0.7);
 
-  font-size: 14px;
+  font-size: 15px;
 
-  margin-bottom: 16px;
+  font-weight: 600;
+
+  margin-bottom: 24px;
 
 }
 
@@ -760,9 +807,9 @@ async function previewSingle() {
 
   display: flex;
 
-  gap: 12px;
+  gap: 16px;
 
-  max-width: 400px;
+  max-width: 440px;
 
   margin: 0 auto;
 
@@ -772,11 +819,15 @@ async function previewSingle() {
 
 .cd-extract-form :deep(.el-input__wrapper) {
 
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
 
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 
   box-shadow: none !important;
+
+  border-radius: var(--cd-radius-lg) !important;
+
+  transition: all var(--cd-transition-fast) !important;
 
 }
 
@@ -784,9 +835,11 @@ async function previewSingle() {
 
 .cd-extract-form :deep(.el-input__wrapper.is-focus) {
 
-  border-color: var(--cd-primary) !important;
+  border-color: rgba(59, 130, 246, 0.6) !important;
 
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15) !important;
 
 }
 
@@ -795,6 +848,8 @@ async function previewSingle() {
 .cd-extract-form :deep(.el-input__inner) {
 
   color: #fff !important;
+
+  font-weight: 500;
 
 }
 
@@ -828,7 +883,7 @@ async function previewSingle() {
 
 .cd-share-breadcrumb {
 
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 
 }
 
@@ -840,13 +895,15 @@ async function previewSingle() {
 
   color: rgba(255, 255, 255, 0.6) !important;
 
+  font-weight: 600;
+
 }
 
 
 
 .cd-share-breadcrumb :deep(.el-breadcrumb__inner a:hover) {
 
-  color: var(--cd-primary-light) !important;
+  color: #3b82f6 !important;
 
 }
 
@@ -866,9 +923,9 @@ async function previewSingle() {
 
   display: grid;
 
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
 
-  gap: 12px;
+  gap: 16px;
 
 }
 
@@ -876,17 +933,19 @@ async function previewSingle() {
 
 .cd-share-file {
 
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
 
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 
   border-radius: var(--cd-radius-lg);
 
-  padding: 16px;
+  padding: 20px;
 
-  transition: var(--cd-transition);
+  transition: all var(--cd-transition);
 
   cursor: pointer;
+
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 
 }
 
@@ -894,11 +953,13 @@ async function previewSingle() {
 
 .cd-share-file:hover {
 
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
 
-  border-color: rgba(79, 124, 255, 0.4);
+  border-color: rgba(59, 130, 246, 0.4);
 
-  transform: translateY(-2px);
+  transform: translateY(-4px);
+
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
 
 }
 
@@ -908,7 +969,7 @@ async function previewSingle() {
 
   text-align: center;
 
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 
 }
 
@@ -924,13 +985,13 @@ async function previewSingle() {
 
 .cd-share-file-name {
 
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.9);
 
-  font-size: 13px;
+  font-size: 14px;
 
-  font-weight: 500;
+  font-weight: 600;
 
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 
   overflow: hidden;
 
@@ -948,7 +1009,7 @@ async function previewSingle() {
 
   justify-content: center;
 
-  gap: 4px;
+  gap: 8px;
 
 }
 
@@ -956,7 +1017,9 @@ async function previewSingle() {
 
 .cd-share-file-actions :deep(.el-button) {
 
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+
+  font-weight: 700;
 
 }
 
@@ -964,7 +1027,7 @@ async function previewSingle() {
 
 .cd-share-file-actions :deep(.el-button:hover) {
 
-  color: var(--cd-primary-light) !important;
+  color: #3b82f6 !important;
 
 }
 
@@ -978,9 +1041,9 @@ async function previewSingle() {
 
   justify-content: center;
 
-  gap: 12px;
+  gap: 16px;
 
-  padding: 32px 0;
+  padding: 40px 0 20px;
 
 }
 
@@ -988,9 +1051,9 @@ async function previewSingle() {
 
 .cd-single-actions .el-button:not(.el-button--primary) {
 
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
 
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 
   color: rgba(255, 255, 255, 0.85) !important;
 
@@ -1000,7 +1063,7 @@ async function previewSingle() {
 
 .cd-single-actions .el-button:not(.el-button--primary):hover {
 
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
 
   color: #fff !important;
 
@@ -1024,9 +1087,17 @@ async function previewSingle() {
 
   text-align: center;
 
-  margin-top: 80px;
+  margin: 80px auto 0;
 
-  max-width: 400px;
+  max-width: 440px;
+
+  background: rgba(13, 21, 39, 0.55);
+
+  border-radius: var(--cd-radius-xl);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
 
 }
 
@@ -1038,26 +1109,33 @@ async function previewSingle() {
 
   font-size: 16px;
 
-  margin: 16px 0 0;
+  font-weight: 600;
+
+  margin: 18px 0 0;
 
 }
 
 
 
 /* 预览 */
-
 .cd-share-media {
-
   max-width: 100%;
-
   max-height: 75vh;
-
   display: block;
-
   margin: 0 auto;
-
   border-radius: var(--cd-radius);
-
 }
 
+.cd-share-logo-img {
+  background: transparent !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  overflow: hidden;
+}
+
+.cd-share-logo-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 20px;
+}
 </style>

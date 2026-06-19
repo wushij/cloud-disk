@@ -75,6 +75,27 @@
         "navigationBarTitleText": "团队文件",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/teams/members",
+      "style": {
+        "navigationBarTitleText": "成员管理",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/notifications/index",
+      "style": {
+        "navigationBarTitleText": "消息通知",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/transfer/index",
+      "style": {
+        "navigationBarTitleText": "传输列表",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

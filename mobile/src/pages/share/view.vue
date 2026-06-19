@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
@@ -14,6 +14,24 @@ const needExtract = ref(false)
 const info = ref<Record<string, unknown> | null>(null)
 const items = ref<FileItem[]>([])
 const loading = ref(false)
+const actionVisible = ref(false)
+const actionItem = ref<FileItem | null>(null)
+
+const headerTitle = computed(() => {
+  const raw = String(info.value?.fileName || info.value?.folderName || '分享详情')
+  const name = raw.split('/').filter(Boolean).pop() || raw
+  return name.length > 28 ? `${name.slice(0, 28)}…` : name
+})
+
+const actionList = computed(() => {
+  const row = actionItem.value
+  if (!row || row.type !== 'file') return [] as { name: string }[]
+  const list: { name: string }[] = []
+  if (isImageFile(row)) list.push({ name: '预览图片' })
+  if (isVideoFile(row)) list.push({ name: '播放视频' })
+  list.push({ name: '下载' })
+  return list
+})
 
 onLoad((query) => {
   code.value = (query?.code as string) || ''
@@ -90,44 +108,87 @@ function shareQuery() {
   return extractInput.value ? `&extractCode=${encodeURIComponent(extractInput.value)}` : ''
 }
 
-function goBack() {
-  uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/disk/index' }) })
-}
-
 function openItem(item: FileItem) {
   if (item.type === 'folder') {
     uni.showToast({ title: '文件夹浏览请使用 PC 端', icon: 'none' })
     return
   }
   if (isImageFile(item)) {
-    const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
-    uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(item.name)}` })
+    previewImage(item)
     return
   }
   if (isVideoFile(item)) {
-    const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
-    uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(item.name)}` })
+    previewVideo(item)
     return
   }
+  showActions(item)
+}
+
+function previewImage(item: FileItem) {
+  const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
+  uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(item.name)}` })
+}
+
+function previewVideo(item: FileItem) {
+  const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
+  uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(item.name)}` })
+}
+
+function downloadFile(item: FileItem) {
   const url = apiBase(`/share/${code.value}/download?fileId=${item.id}${shareQuery()}`)
   // #ifdef H5
   window.open(url, '_blank')
   // #endif
+  // #ifndef H5
+  uni.showLoading({ title: '下载中' })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode === 200) {
+        uni.saveFile({
+          tempFilePath: res.tempFilePath,
+          success: () => uni.showToast({ title: '已保存', icon: 'success' }),
+          fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+        })
+      }
+    },
+    complete: () => uni.hideLoading()
+  })
+  // #endif
+}
+
+function showActions(item: FileItem) {
+  actionItem.value = item
+  actionVisible.value = true
+}
+
+function onSheetSelect(item: { name: string }) {
+  const row = actionItem.value
+  actionVisible.value = false
+  if (!row) return
+  switch (item.name) {
+    case '预览图片':
+      previewImage(row)
+      break
+    case '播放视频':
+      previewVideo(row)
+      break
+    case '下载':
+      downloadFile(row)
+      break
+  }
 }
 </script>
 
 <template>
   <view class="page">
     <MobileHeader
-      :title="String(info?.fileName || info?.folderName || '分享详情')"
-      gradient
-      show-back
-      @back="goBack"
+      :title="headerTitle"
     />
 
     <view v-if="needExtract && !verified" class="extract-panel">
       <view class="extract-icon">
-        <u-icon name="lock-fill" size="36" color="var(--cd-primary)" />
+        <u-icon name="lock-fill" size="36" color="#ffffff" />
       </view>
       <text class="extract-title">此分享需要提取码</text>
       <input v-model="extractInput" class="input" password placeholder="请输入提取码" />
@@ -145,9 +206,19 @@ function openItem(item: FileItem) {
           :key="`${item.type}-${item.id}`"
           :item="item"
           @click="openItem(item)"
+          @more="showActions(item)"
         />
       </view>
     </scroll-view>
+
+    <u-action-sheet
+      :show="actionVisible"
+      :actions="actionList"
+      cancel-text="取消"
+      round="16"
+      @close="actionVisible = false"
+      @select="onSheetSelect"
+    />
   </view>
 </template>
 
@@ -158,61 +229,69 @@ function openItem(item: FileItem) {
 }
 
 .extract-panel {
-  margin: 40rpx 32rpx;
-  padding: 48rpx 36rpx;
+  margin: 80rpx 44rpx;
+  padding: 72rpx 48rpx;
   background: var(--cd-bg-card);
   border-radius: var(--cd-radius-xl);
-  box-shadow: var(--cd-shadow-md);
+  box-shadow: var(--cd-shadow-lg);
   border: 1rpx solid var(--cd-border-light);
   text-align: center;
 }
 
 .extract-icon {
-  width: 88rpx;
-  height: 88rpx;
-  margin: 0 auto 22rpx;
-  border-radius: 26rpx;
-  background: var(--cd-primary-muted);
+  width: 112rpx;
+  height: 112rpx;
+  margin: 0 auto 36rpx;
+  border-radius: 36rpx;
+  background: var(--cd-primary-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 8rpx 20rpx rgba(1, 7, 16, 0.2);
 }
 
 .extract-title {
   display: block;
-  margin-bottom: 28rpx;
-  font-size: 28rpx;
-  font-weight: 700;
+  margin-bottom: 40rpx;
+  font-size: 32rpx;
+  font-weight: 800;
   color: var(--cd-text);
+  letter-spacing: -0.5rpx;
 }
 
 .input {
-  height: 92rpx;
-  margin-bottom: 22rpx;
-  padding: 0 28rpx;
-  background: #f8fafc;
+  height: 98rpx;
+  margin-bottom: 32rpx;
+  padding: 0 32rpx;
+  background: var(--cd-bg-surface);
   border-radius: var(--cd-radius-lg);
-  border: 2rpx solid transparent;
+  border: 1rpx solid var(--cd-border);
   font-size: 28rpx;
   text-align: center;
-  transition: all var(--cd-transition);
+  transition: all var(--cd-transition-fast);
 }
 
 .input:focus {
-  border-color: var(--cd-primary);
+  border-color: var(--cd-primary-light);
   background: #fff;
-  box-shadow: 0 0 0 6rpx rgba(1, 7, 16, 0.04);
+  box-shadow: 0 6rpx 20rpx rgba(1, 7, 16, 0.05);
 }
 
 .extract-btn {
-  height: 86rpx;
-  line-height: 86rpx;
-  border-radius: var(--cd-radius-lg);
+  height: 90rpx;
+  line-height: 90rpx;
+  border-radius: var(--cd-radius-full);
   background: var(--cd-primary-gradient);
   color: #fff;
   font-size: 28rpx;
   font-weight: 700;
-  box-shadow: 0 10rpx 32rpx rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8rpx 24rpx rgba(1, 7, 16, 0.2);
+  transition: all var(--cd-transition-fast);
+}
+
+.extract-btn:active {
+  transform: scale(0.97);
+  box-shadow: 0 4rpx 10rpx rgba(1, 7, 16, 0.1);
 }
 
 .scroll {

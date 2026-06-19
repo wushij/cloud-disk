@@ -54,11 +54,36 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
   }
 
-  async function login(u: string, p: string) {
+  async function login(
+    u: string,
+    p: string,
+    captcha?: { captchaId?: string; captchaAnswer?: string }
+  ) {
     const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
       url: '/api/auth/login',
       method: 'POST',
-      data: { username: u, password: p },
+      data: { username: u, password: p, ...captcha },
+      skipAuth: true,
+      skipErrorHandler: true
+    })
+    token.value = data.token
+    username.value = data.username
+    nickname.value = data.nickname || data.username
+    role.value = data.role || 'USER'
+    persist()
+    await fetchProfile()
+  }
+
+  async function register(
+    u: string,
+    p: string,
+    nick?: string,
+    captcha?: { captchaId?: string; captchaAnswer?: string }
+  ) {
+    const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
+      url: '/api/auth/register',
+      method: 'POST',
+      data: { username: u, password: p, nickname: nick, ...captcha },
       skipAuth: true,
       skipErrorHandler: true
     })
@@ -121,6 +146,7 @@ export const useAuthStore = defineStore('auth', () => {
     displayName,
     restore,
     login,
+    register,
     fetchProfile,
     uploadAvatar,
     logout,
