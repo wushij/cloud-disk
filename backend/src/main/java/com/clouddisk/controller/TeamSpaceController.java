@@ -1,6 +1,5 @@
 package com.clouddisk.controller;
 
-import com.clouddisk.entity.TeamMember;
 import com.clouddisk.entity.TeamSpace;
 import com.clouddisk.service.TeamSpaceService;
 import lombok.RequiredArgsConstructor;

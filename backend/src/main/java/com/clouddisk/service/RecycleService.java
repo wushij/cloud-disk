@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 
@@ -144,21 +145,9 @@ public class RecycleService {
 
 
 
-        items.sort((a, b) -> {
-
-            Object ta = a.get("deletedAt");
-
-            Object tb = b.get("deletedAt");
-
-            if (ta == null && tb == null) return 0;
-
-            if (ta == null) return 1;
-
-            if (tb == null) return -1;
-
-            return ((Comparable) tb).compareTo(ta);
-
-        });
+        items.sort(Comparator.comparing(
+                (Map<String, Object> item) -> (LocalDateTime) item.get("deletedAt"),
+                Comparator.nullsLast(Comparator.reverseOrder())));
 
         return items;
 
@@ -555,5 +544,4 @@ public class RecycleService {
     }
 
 }
-
 
