@@ -14,7 +14,8 @@ class FileValidatorTest {
     @BeforeEach
     void setUp() {
         CloudDiskProperties props = new CloudDiskProperties();
-        props.getUpload().setAllowedExtensions("jpg,pdf,txt,zip");
+        props.getUpload().setAllowedExtensions("*");
+        props.getUpload().setBlockedExtensions("exe,bat");
         props.getUpload().setMaxFileSize(1024);
         validator = new FileValidator(props);
     }
@@ -34,15 +35,15 @@ class FileValidatorTest {
     }
 
     @Test
-    void validate_rejectsUnsupportedExtension() {
+    void validate_rejectsBlockedExtension() {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> validator.validate("virus.exe", 100));
-        assertTrue(ex.getMessage().contains("不支持的文件类型"));
+        assertTrue(ex.getMessage().contains("不允许上传"));
     }
 
     @Test
-    void validate_acceptsAllowedExtension() {
-        assertDoesNotThrow(() -> validator.validate("photo.jpg", 512));
+    void validate_acceptsCommonTextFile() {
+        assertDoesNotThrow(() -> validator.validate("notes.txt", 512));
     }
 
     @Test

@@ -30,14 +30,50 @@ function buildUrl(url: string) {
   return `${BASE_URL}${url}`
 }
 
-function getMessage(data: unknown, fallback: string) {
-  if (data && typeof data === 'object') {
-    // 优先读后端 ApiErrorResponse.error 字段，其次读 message
-    const body = data as { error?: string; message?: string }
-    if (body.error) return body.error
-    if (body.message) return body.message
+/** 常见英文错误消息 → 中文翻译 */
+const EN_MSG_MAP: Record<string, string> = {
+  'Network Error': '网络连接失败，请检查网络后重试',
+  'Request aborted': '请求已取消',
+  'Failed to fetch': '网络连接失败，请检查网络后重试',
+  'timeout': '请求超时，请稍后重试',
+  'cancel': '',
+  'close': ''
+}
+
+const STATUS_MSG_MAP: Record<number, string> = {
+  400: '请求参数有误',
+  401: '未登录或登录已过期，请重新登录',
+  403: '没有权限执行此操作',
+  404: '请求的资源不存在',
+  405: '不支持该操作',
+  408: '请求超时，请稍后重试',
+  413: '上传文件过大',
+  429: '请求过于频繁，请稍后再试',
+  500: '服务器错误，请稍后重试',
+  502: '服务暂时不可用，请稍后重试',
+  503: '服务暂时不可用，请稍后重试',
+  504: '服务暂时不可用，请稍后重试'
+}
+
+function translateMessage(msg: string, status?: number): string {
+  const text = msg.trim()
+  if (!text) return status ? (STATUS_MSG_MAP[status] || '操作失败') : '操作失败'
+  // 直接命中英文映射
+  if (EN_MSG_MAP[text] !== undefined) return EN_MSG_MAP[text]
+  // 纯英文技术信息不直接展示
+  if (/^[\x00-\x7F]+$/.test(text) && /error|failed|request|network|timeout|abort|invalid|unexpected|denied|forbidden|not found/i.test(text)) {
+    return status ? (STATUS_MSG_MAP[status] || '操作失败') : '操作失败'
   }
-  return fallback
+  return text
+}
+
+function getMessage(data: unknown, fallback: string, status?: number) {
+  if (data && typeof data === 'object') {
+    const body = data as { error?: string; message?: string }
+    if (body.error) return translateMessage(body.error, status)
+    if (body.message) return translateMessage(body.message, status)
+  }
+  return translateMessage(fallback, status)
 }
 
 export function request<T>(options: RequestOptions): Promise<T> {
@@ -73,7 +109,7 @@ export function request<T>(options: RequestOptions): Promise<T> {
           resolve(res.data as T)
           return
         }
-        const message = getMessage(res.data, `请求失败 (${status})`)
+        const message = getMessage(res.data, `请求失败 (${status})`, status)
         if (!options.skipErrorHandler) {
           uni.showToast({ title: message, icon: 'none' })
         }
@@ -117,7 +153,7 @@ export function uploadFile(options: {
         let message = `上传失败 (${res.statusCode})`
         try {
           const parsed = JSON.parse(res.data)
-          message = getMessage(parsed, message)
+          message = getMessage(parsed, message, res.statusCode)
         } catch {
           /* ignore */
         }

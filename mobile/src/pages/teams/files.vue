@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useTransferStore } from '@/stores/transfer'
-import { request, fileApiUrl } from '@/api/http'
+import { request, fileApiUrl, TOKEN_KEY } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
+import MobileShareDialog from '@/components/MobileShareDialog.vue'
 import BreadcrumbBar from '@/components/BreadcrumbBar.vue'
 import FileListItem from '@/components/FileListItem.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
+import { isTextFile } from '@/utils/filePreview'
+import { useH5BackGuard } from '@/composables/useH5BackGuard'
 import type { FileItem } from '@/stores/file'
+import { downloadZip } from '@/utils/download'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
@@ -26,6 +30,97 @@ const loading = ref(false)
 const actionVisible = ref(false)
 const actionItem = ref<FileItem | null>(null)
 
+const selectMode = ref(false)
+const selectedItems = ref<FileItem[]>([])
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) {
+    clearSelection()
+  }
+}
+
+function exitSelectMode() {
+  selectMode.value = false
+  clearSelection()
+}
+
+function clearSelection() {
+  selectedItems.value = []
+}
+
+function toggleChecked(row: FileItem) {
+  const idx = selectedItems.value.findIndex(item => item.id === row.id && item.type === row.type)
+  if (idx >= 0) {
+    selectedItems.value.splice(idx, 1)
+  } else {
+    selectedItems.value.push(row)
+  }
+}
+
+function isChecked(row: FileItem) {
+  return selectedItems.value.some(item => item.id === row.id && item.type === row.type)
+}
+
+watch(currentFolderId, () => {
+  clearSelection()
+  selectMode.value = false
+})
+
+function downloadFile(row: FileItem) {
+  if (row.type === 'folder') {
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
+    return
+  }
+  transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
+  uni.showToast({ title: '已加入下载队列', icon: 'none' })
+}
+
+function handleBatchDownload() {
+  const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
+  const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
+  if (folders.length === 0 && files.length === 0) return
+
+  let path = '/api/files/download/zip'
+  const params: string[] = []
+  if (folders.length > 0) {
+    params.push(`folderIds=${folders.join(',')}`)
+  }
+  if (files.length > 0) {
+    params.push(`fileIds=${files.join(',')}`)
+  }
+  if (params.length > 0) {
+    path += '?' + params.join('&')
+  }
+  downloadZip(path)
+}
+
+function handleBatchDelete() {
+  if (selectedItems.value.length === 0) return
+  uni.showModal({
+    title: '确认删除',
+    content: `确定删除这 ${selectedItems.value.length} 个项目吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '正在删除...' })
+      try {
+        for (const item of selectedItems.value) {
+          const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
+          await request({ url, method: 'DELETE' })
+        }
+        uni.showToast({ title: '批量删除成功', icon: 'success' })
+        clearSelection()
+        selectMode.value = false
+        loadFiles()
+      } catch {
+        uni.showToast({ title: '删除失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  })
+}
+
 // 菜单状态
 const myRole = ref('')
 const menuVisible = ref(false)
@@ -36,6 +131,10 @@ type ConfirmAction = 'dissolve' | 'leave' | 'delete'
 const confirmVisible = ref(false)
 const confirmAction = ref<ConfirmAction>('dissolve')
 const confirmFile = ref<FileItem | null>(null)
+const shareVisible = ref(false)
+const shareFileId = ref<number | null>(null)
+const shareFolderId = ref<number | null>(null)
+const shareItemName = ref('')
 
 const confirmTitle = computed(() => {
   switch (confirmAction.value) {
@@ -73,11 +172,18 @@ const actionList = computed(() => {
   const row = actionItem.value
   if (!row) return [] as { name: string }[]
   const list: { name: string; color?: string }[] = []
-  if (row.type === 'folder') list.push({ name: '打开' })
+  if (row.type === 'folder') {
+    list.push({ name: '打开' })
+    list.push({ name: '打包下载' })
+  }
   if (row.type === 'file') {
     if (row.previewable && isImageFile(row)) list.push({ name: '预览图片' })
     if (row.previewable && isVideoFile(row)) list.push({ name: '播放视频' })
+    if (row.previewable && isTextFile(row.mimeType, row.name)) list.push({ name: '预览文本' })
     list.push({ name: '下载' })
+  }
+  if (myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
+    list.push({ name: '分享' })
   }
   list.push({ name: '删除', color: '#ef4444' })
   return list
@@ -197,6 +303,7 @@ function onMenuSelect(item: { name: string }) {
 
 async function loadFiles() {
   if (!auth.requireLogin()) return
+  clearSelection()
   loading.value = true
   try {
     const params: Record<string, unknown> = {}
@@ -216,6 +323,10 @@ async function loadFiles() {
 }
 
 function openItem(row: FileItem) {
+  if (selectMode.value) {
+    toggleChecked(row)
+    return
+  }
   if (row.type === 'folder') {
     breadcrumb.value.push({ id: row.id, name: row.name })
     currentFolderId.value = row.id
@@ -232,6 +343,11 @@ function openItem(row: FileItem) {
     uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
     return
   }
+  if (isTextFile(row.mimeType, row.name)) {
+    const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+    uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
+    return
+  }
   showActions(row)
 }
 
@@ -241,6 +357,18 @@ function gotoCrumb(idx: number) {
   currentFolderId.value = target.id
   loadFiles()
 }
+
+function goBackFolder() {
+  if (breadcrumb.value.length <= 1) return
+  gotoCrumb(breadcrumb.value.length - 2)
+}
+
+useH5BackGuard({
+  depth: () => breadcrumb.value.length - 1,
+  onAppBack: () => goBackFolder(),
+  // H5 刷新后 uni.navigateBack() 页面栈丢失，不定义 onRootBack
+  // 由 guard 内部原生 history.back() 处理根级返回，兼容刷新场景
+})
 
 function showActions(row: FileItem) {
   actionItem.value = row
@@ -269,9 +397,18 @@ function onActionSelect(item: { name: string }) {
       uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
       break
     }
-    case '下载': {
-      transferStore.addDownloadTask(row.id, row.name, row.size || 0)
-      uni.showToast({ title: '已加入下载队列', icon: 'none' })
+    case '预览文本': {
+      const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+      uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
+      break
+    }
+    case '下载':
+    case '打包下载': {
+      downloadFile(row)
+      break
+    }
+    case '分享': {
+      openShare(row)
       break
     }
     case '删除': {
@@ -281,6 +418,13 @@ function onActionSelect(item: { name: string }) {
       break
     }
   }
+}
+
+function openShare(row: FileItem) {
+  shareFileId.value = row.type === 'file' ? row.id : null
+  shareFolderId.value = row.type === 'folder' ? row.id : null
+  shareItemName.value = row.name
+  shareVisible.value = true
 }
 </script>
 
@@ -293,6 +437,10 @@ function onActionSelect(item: { name: string }) {
     >
       <template #right>
         <view class="header-right-group">
+          <!-- 多选切换按钮 -->
+          <view class="more-btn cd-pressable" style="margin-right: 16rpx;" @click="toggleSelectMode">
+            <u-icon :name="selectMode ? 'checkmark-circle-fill' : 'list-dot'" size="22" :color="selectMode ? 'var(--cd-primary)' : '#000000'" bold />
+          </view>
           <view class="more-btn cd-pressable" @click="menuVisible = true">
             <u-icon name="more-dot-fill" size="22" color="#000000" bold />
           </view>
@@ -318,8 +466,11 @@ function onActionSelect(item: { name: string }) {
           v-for="item in items"
           :key="`${item.type}-${item.id}`"
           :item="item"
+          :select-mode="selectMode"
+          :checked="isChecked(item)"
           @click="openItem(item)"
           @longpress="showActions(item)"
+          @check-change="toggleChecked(item)"
         />
       </view>
     </scroll-view>
@@ -361,6 +512,36 @@ function onActionSelect(item: { name: string }) {
       danger
       @confirm="onConfirmAction"
     />
+
+    <MobileShareDialog
+      v-model:show="shareVisible"
+      :file-id="shareFileId"
+      :folder-id="shareFolderId"
+      :item-name="shareItemName"
+    />
+
+    <!-- 移动端批量操作栏 -->
+    <view v-if="selectMode" class="batch-footer-bar">
+      <view class="batch-footer-info">
+        <text class="info-label">已选择</text>
+        <text class="batch-count">{{ selectedItems.length }}</text>
+        <text class="info-label">项</text>
+      </view>
+      <view class="batch-footer-actions">
+        <view class="batch-action-btn download-btn cd-pressable" @click="handleBatchDownload">
+          <u-icon name="download" size="20" color="var(--cd-primary)" />
+          <text class="btn-text">打包下载</text>
+        </view>
+        <view class="batch-action-btn delete-btn cd-pressable" @click="handleBatchDelete">
+          <u-icon name="trash" size="20" color="#ef4444" />
+          <text class="btn-text">删除</text>
+        </view>
+        <view class="batch-action-btn cancel-btn cd-pressable" @click="exitSelectMode">
+          <u-icon name="close" size="20" color="#64748b" />
+          <text class="btn-text">取消</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -403,5 +584,133 @@ function onActionSelect(item: { name: string }) {
 .header-right-group {
   display: flex;
   align-items: center;
+}
+
+/* 移动端批量操作栏 */
+.batch-footer-bar {
+  position: fixed;
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
+  left: 24rpx;
+  right: 24rpx;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1rpx solid rgba(255, 255, 255, 0.6);
+  border-radius: 40rpx;
+  padding: 20rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 999;
+  box-shadow: 0 16rpx 48rpx rgba(15, 23, 42, 0.12), 0 2rpx 10rpx rgba(15, 23, 42, 0.04);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(150rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.batch-footer-info {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--cd-text, #0f172a);
+}
+
+.info-label {
+  color: var(--cd-text-secondary, #475569);
+  font-size: 24rpx;
+}
+
+.batch-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--cd-primary, #6366f1) 0%, #4f46e5 100%);
+  min-width: 44rpx;
+  height: 44rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+  box-shadow: 0 6rpx 16rpx rgba(99, 102, 241, 0.35);
+}
+
+.batch-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.batch-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  width: 104rpx;
+  height: 94rpx;
+  border-radius: 24rpx;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1rpx solid rgba(255, 255, 255, 0.5);
+  transition: all var(--cd-transition-bounce, 0.25s);
+
+  &.download-btn {
+    background: rgba(99, 102, 241, 0.07);
+    border-color: rgba(99, 102, 241, 0.12);
+    
+    .btn-text {
+      color: var(--cd-primary, #6366f1);
+      font-weight: 700;
+    }
+  }
+
+  &.delete-btn {
+    background: rgba(239, 68, 68, 0.07);
+    border-color: rgba(239, 68, 68, 0.12);
+
+    .btn-text {
+      color: #ef4444;
+      font-weight: 700;
+    }
+  }
+
+  &.cancel-btn {
+    background: rgba(100, 116, 139, 0.07);
+    border-color: rgba(100, 116, 139, 0.12);
+
+    .btn-text {
+      color: #64748b;
+      font-weight: 600;
+    }
+  }
+
+  &:active {
+    transform: scale(0.9);
+    
+    &.download-btn {
+      background: rgba(99, 102, 241, 0.15);
+    }
+    &.delete-btn {
+      background: rgba(239, 68, 68, 0.15);
+    }
+    &.cancel-btn {
+      background: rgba(100, 116, 139, 0.15);
+    }
+  }
+}
+
+.btn-text {
+  font-size: 19rpx;
 }
 </style>

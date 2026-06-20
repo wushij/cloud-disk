@@ -91,7 +91,8 @@ clouddisk:
     session-expire-hours: 24
   upload:
     max-file-size: 21474836480
-    allowed-extensions: jpg,jpeg,png,gif,webp,bmp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,webm,mkv,mp3,wav,json,xml,csv,md
+    allowed-extensions: "*"
+    blocked-extensions: exe,bat,cmd,com,scr,vbs,msi,dll,apk,jar,ps1,msh,reg,cpl,hta,inf
   onlyoffice:
     enabled: ${ONLYOFFICE_ENABLED:false}
     document-server-url: ${ONLYOFFICE_DOC_SERVER_URL:http://127.0.0.1:8082}

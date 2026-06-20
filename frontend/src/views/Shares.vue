@@ -1,9 +1,34 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Notebook, Files } from '@element-plus/icons-vue'
 import http, { TOKEN_KEY } from '@/api/http'
 import PageHeader from '@/components/PageHeader.vue'
+
+const activeTab = ref<'active' | 'expired'>('active')
+
+function isExpired(row: ShareRow) {
+  if (row.status === 0) return true
+  if (!row.expireTime) return false
+  const exp = new Date(row.expireTime.replace('T', ' ').replace(/-/g, '/'))
+  return exp.getTime() < Date.now()
+}
+
+const activeList = computed(() => {
+  return rows.value.filter(row => !isExpired(row))
+})
+
+const expiredList = computed(() => {
+  return rows.value.filter(row => isExpired(row))
+})
+
+const displayedList = computed(() => {
+  return activeTab.value === 'active' ? activeList.value : expiredList.value
+})
+
+function tableRowClassName({ row }: { row: ShareRow }) {
+  return isExpired(row) ? 'is-expired-row' : ''
+}
 
 function getFileIcon(fileName: string) {
   const name = fileName.toLowerCase()
@@ -97,11 +122,34 @@ onMounted(load)
         title="我的分享"
         description="管理你创建的所有分享链接，支持提取码与过期时间"
         :icon="Share"
-        :count="rows.length"
-        count-label="条分享"
+        :count="activeList.length"
+        count-label="条活跃分享"
       />
+      <el-tabs v-model="activeTab" class="cd-shares-tabs">
+        <el-tab-pane label="进行中" name="active">
+          <template #label>
+            <span class="tab-label">
+              进行中
+              <el-badge :value="activeList.length" :type="activeList.length > 0 ? 'primary' : 'info'" class="tab-badge" />
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="已失效" name="expired">
+          <template #label>
+            <span class="tab-label">
+              已失效
+              <el-badge :value="expiredList.length" :type="expiredList.length > 0 ? 'danger' : 'info'" class="tab-badge" />
+            </span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
       <div class="cd-page-table-wrap">
-        <el-table v-loading="loading" :data="rows" class="cd-shares-table">
+        <el-table 
+          v-loading="loading" 
+          :data="displayedList" 
+          :row-class-name="tableRowClassName"
+          class="cd-shares-table"
+        >
           <el-table-column label="文件" min-width="220">
             <template #default="{ row }">
               <div class="cd-file-name">
@@ -133,8 +181,8 @@ onMounted(load)
           </el-table-column>
           <el-table-column label="状态" width="90" align="center">
             <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" round>
-                {{ row.status === 1 ? '有效' : '失效' }}
+              <el-tag :type="isExpired(row) ? 'info' : 'success'" size="small" round>
+                {{ isExpired(row) ? '失效' : '有效' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -146,12 +194,19 @@ onMounted(load)
           <el-table-column label="操作" width="220" fixed="right" align="center">
             <template #default="{ row }">
               <div class="cd-action-buttons">
-                <el-button class="cd-action-btn copy" size="small" @click="copyLink(row)">
-                  <el-icon><CopyDocument /></el-icon>复制链接
-                </el-button>
-                <el-button v-if="row.status === 1" class="cd-action-btn cancel" size="small" @click="cancel(row)">
-                  <el-icon><Close /></el-icon>取消分享
-                </el-button>
+                <template v-if="isExpired(row)">
+                  <el-button class="cd-action-btn delete" size="small" @click="cancel(row)">
+                    <el-icon><Close /></el-icon>彻底清除
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-button class="cd-action-btn copy" size="small" @click="copyLink(row)">
+                    <el-icon><CopyDocument /></el-icon>复制链接
+                  </el-button>
+                  <el-button class="cd-action-btn cancel" size="small" @click="cancel(row)">
+                    <el-icon><Close /></el-icon>取消分享
+                  </el-button>
+                </template>
               </div>
             </template>
           </el-table-column>
@@ -163,11 +218,52 @@ onMounted(load)
 
 <style scoped>
 .cd-shares-table :deep(.el-table__row) {
-  transition: background-color var(--cd-transition-fast);
+  transition: background-color var(--cd-transition-fast), opacity var(--cd-transition-fast);
 }
 
 .cd-shares-table :deep(.el-table__row:hover) {
   background-color: var(--cd-bg-surface) !important;
+}
+
+.cd-shares-table :deep(.el-table__row.is-expired-row) {
+  opacity: 0.6;
+  background-color: #f8fafc !important;
+}
+
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-share-filename-text) {
+  text-decoration: line-through;
+  color: var(--cd-text-placeholder) !important;
+}
+
+.cd-shares-tabs {
+  margin-top: 16px;
+  margin-bottom: 4px;
+}
+
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.tab-badge :deep(.el-badge__content) {
+  top: 0 !important;
+  transform: translateY(0) !important;
+  font-weight: 700;
+}
+
+/* 彻底清除按钮 */
+.cd-action-btn.delete {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
+.cd-action-btn.delete:hover {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  transform: translateY(-1px);
 }
 
 .cd-share-code {

@@ -201,7 +201,14 @@ function handleCollapseToggle() {
                 />
                 <span v-else class="task-emoji">{{ getFileIconInfo(t.name).icon }}</span>
               </div>
-              <span class="task-type-dot" :class="t.type">{{ t.type === 'upload' ? '↑' : '↓' }}</span>
+              <span class="task-type-badge" :class="t.type" :title="t.type === 'upload' ? '上传' : '下载'">
+                <svg v-if="t.type === 'upload'" viewBox="0 0 12 12" fill="none" class="type-badge-svg">
+                  <path d="M6 2v6M6 2L4 4M6 2l2 2M3 9h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <svg v-else viewBox="0 0 12 12" fill="none" class="type-badge-svg">
+                  <path d="M6 10V4M6 10L4 8M6 10l2-2M3 3h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
             </div>
 
             <div class="task-info">
@@ -263,7 +270,7 @@ function handleCollapseToggle() {
           <div
             v-for="t in completedTasks"
             :key="t.id"
-            class="task-card done"
+            class="task-card task-card--done"
             :class="{ error: t.status === 'error' }"
           >
             <div class="task-icon-area">
@@ -292,10 +299,14 @@ function handleCollapseToggle() {
               </div>
             </div>
 
-            <div class="task-info">
-              <div class="task-name" :title="t.name">{{ t.name }}</div>
-              <div class="task-meta done-meta">
+            <div class="task-info task-info--done">
+              <div class="done-title-row">
+                <div class="task-name done-name" :title="t.name">{{ t.name }}</div>
+              </div>
+              <div class="done-sub-row">
                 <span class="meta-size">{{ fmtSize(t.size) }}</span>
+                <span class="meta-divider">·</span>
+                <span class="meta-type">{{ t.type === 'upload' ? '上传' : '下载' }}</span>
                 <span
                   class="status-chip"
                   :class="{
@@ -304,18 +315,18 @@ function handleCollapseToggle() {
                     fail: t.status === 'error'
                   }"
                 >
-                  <template v-if="t.status === 'instant'">⚡ 秒传</template>
-                  <template v-else-if="t.status === 'done'">✓ 完成</template>
-                  <template v-else>✕ 失败</template>
+                  <template v-if="t.status === 'instant'">秒传</template>
+                  <template v-else-if="t.status === 'done'">已完成</template>
+                  <template v-else>失败</template>
                 </span>
               </div>
             </div>
 
-            <div class="task-actions">
-              <button class="action-circle remove" title="删除记录" @click="transferStore.cancelTask(t.id)">
-                🗑
-              </button>
-            </div>
+            <button class="done-remove-btn" title="删除记录" @click="transferStore.cancelTask(t.id)">
+              <svg viewBox="0 0 24 24" fill="none" class="remove-svg">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -616,8 +627,15 @@ function handleCollapseToggle() {
   background: rgba(255, 251, 235, 0.6);
 }
 
-.task-card.done {
-  padding: 10px 12px;
+.task-card--done {
+  align-items: center;
+  padding: 12px;
+  gap: 10px;
+}
+
+.task-card--done.error {
+  border-color: rgba(239, 68, 68, 0.15);
+  background: rgba(254, 242, 242, 0.45);
 }
 
 /* 封面区 */
@@ -659,36 +677,77 @@ function handleCollapseToggle() {
   line-height: 1;
 }
 
-.task-type-dot {
+.task-type-badge {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid #fff;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: 800;
   color: #fff;
-  line-height: 1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
 }
 
-.task-type-dot.upload {
-  background: linear-gradient(135deg, #4f46e5, #6366f1);
+.type-badge-svg {
+  width: 10px;
+  height: 10px;
+  display: block;
 }
 
-.task-type-dot.download {
-  background: linear-gradient(135deg, #f59e0b, #f97316);
+.task-type-badge.upload {
+  background: rgba(79, 70, 229, 0.92);
+}
+
+.task-type-badge.download {
+  background: rgba(217, 119, 6, 0.92);
 }
 
 /* 信息区 */
 .task-info {
   flex: 1;
   min-width: 0;
+}
+
+.task-info--done {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.done-title-row {
+  min-width: 0;
+}
+
+.done-name {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.done-sub-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1;
+}
+
+.done-sub-row .status-chip {
+  margin-left: 2px;
+}
+
+.meta-divider {
+  opacity: 0.6;
+}
+
+.meta-type {
+  font-weight: 500;
 }
 
 .task-name {
@@ -761,8 +820,18 @@ function handleCollapseToggle() {
   gap: 8px;
 }
 
-.done-meta {
-  margin-top: 0;
+.status-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .meta-size {
@@ -780,14 +849,6 @@ function handleCollapseToggle() {
 
 .meta-speed.error {
   color: #ef4444;
-}
-
-.status-chip {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 99px;
-  white-space: nowrap;
 }
 
 .status-chip.success {
@@ -856,5 +917,31 @@ function handleCollapseToggle() {
 .action-circle.remove:hover {
   background: rgba(239, 68, 68, 0.08);
   color: #ef4444;
+}
+
+.done-remove-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #b0bec9;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.done-remove-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #64748b;
+}
+
+.remove-svg {
+  width: 14px;
+  height: 14px;
 }
 </style>

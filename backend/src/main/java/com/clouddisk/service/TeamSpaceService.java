@@ -30,6 +30,7 @@ public class TeamSpaceService {
     private final StorageService storageService;
     private final NotificationDispatcher notificationDispatcher;
     private final FolderTreeHelper folderTreeHelper;
+    private final FileService fileService;
 
     // ==================== 团队空间 CRUD ====================
 
@@ -393,7 +394,7 @@ public class TeamSpaceService {
             item.put("mimeType", f.getFileType());
             item.put("folderId", f.getFolderId());
             item.put("hasThumbnail", StringUtils.hasText(f.getThumbnailPath()) || StringUtils.hasText(f.getPosterPath()));
-            item.put("previewable", isTeamFilePreviewable(f.getFileType(), f.getFileName()));
+            item.put("previewable", fileService.isPreviewable(f.getFileType(), f.getFileName()));
             item.put("createdAt", f.getCreateTime());
             items.add(item);
         }
@@ -420,18 +421,6 @@ public class TeamSpaceService {
         }
         return false;
     }
-
-    private boolean isTeamFilePreviewable(String mimeType, String fileName) {
-        String type = mimeType != null ? mimeType : "";
-        String lower = fileName != null ? fileName.toLowerCase() : "";
-        if (type.startsWith("image/") || type.equals("application/pdf") || type.startsWith("video/")) {
-            return true;
-        }
-        return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                || lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".pdf")
-                || lower.endsWith(".mp4") || lower.endsWith(".webm");
-    }
-
     // ==================== 内部方法 ====================
 
     private void addMember(Long spaceId, Long userId, String role) {

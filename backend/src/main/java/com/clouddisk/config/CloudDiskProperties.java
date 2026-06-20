@@ -59,8 +59,9 @@ public class CloudDiskProperties {
     @Data
     public static class Upload {
         private long maxFileSize = 20L * 1024 * 1024 * 1024;
-        private String allowedExtensions =
-                "jpg,jpeg,png,gif,webp,bmp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,webm,mkv,mp3,wav,json,xml,csv,md";
+        /** 设为 * 表示允许除 blocked-extensions 外的所有扩展名 */
+        private String allowedExtensions = "*";
+        private String blockedExtensions = "exe,bat,cmd,com,scr,vbs,msi,dll,apk,jar,ps1,msh,reg,cpl,hta,inf";
     }
 
     @Data

@@ -90,8 +90,11 @@ public class ShareService {
     private Map<String, Object> createFileShare(ShareCreateRequest req) {
         long userId = AuthService.currentUserId();
         if (req.getFileId() == null) throw new BusinessException("请选择文件");
-        FileRecord file = fileService.getOwned(req.getFileId(), userId);
+        FileRecord file = fileService.getOwnedOrShared(req.getFileId(), userId);
         if (file.getStatus() != 1) throw new BusinessException("文件不可用");
+        if (file.getFolderId() != null && file.getFolderId() > 0) {
+            folderService.requireTeamSharePermission(file.getFolderId(), userId);
+        }
 
         ShareRecord share = buildShareRecord(req, userId);
         share.setShareType("FILE");
@@ -104,8 +107,9 @@ public class ShareService {
     private Map<String, Object> createFolderShare(ShareCreateRequest req) {
         long userId = AuthService.currentUserId();
         Long folderId = req.getFolderId();
-        Folder folder = folderService.getOwned(folderId, userId);
+        Folder folder = folderService.getOwnedOrShared(folderId, userId);
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹不可用");
+        folderService.requireTeamSharePermission(folderId, userId);
 
         ShareRecord share = buildShareRecord(req, userId);
         share.setShareType("FOLDER");
@@ -178,20 +182,22 @@ public class ShareService {
             throw new BusinessException("不是文件夹分享");
         }
         Long fid = folderId != null ? folderId : share.getFolderId();
-        if (!isFolderInSharedTree(share.getFolderId(), fid, share.getUserId())) {
+        if (!isFolderInSharedTree(share.getFolderId(), fid)) {
             throw new BusinessException("目录不在分享范围内");
         }
         return listFolderShareItems(share, fid);
     }
 
-    private boolean isFolderInSharedTree(Long shareRootId, Long folderId, long userId) {
+    private boolean isFolderInSharedTree(Long shareRootId, Long folderId) {
+        if (folderId == null || shareRootId == null) return false;
         if (Objects.equals(shareRootId, folderId)) return true;
         Folder current = folderMapper.selectById(folderId);
-        while (current != null) {
+        int depth = 0;
+        while (current != null && depth < 50) {
             if (Objects.equals(current.getId(), shareRootId)) return true;
             if (current.getParentId() == null || current.getParentId() <= 0) break;
             current = folderMapper.selectById(current.getParentId());
-            if (current == null || !Objects.equals(current.getUserId(), userId)) break;
+            depth++;
         }
         return false;
     }
@@ -199,7 +205,6 @@ public class ShareService {
     public List<Map<String, Object>> listFolderShareItems(ShareRecord share, Long folderId) {
         List<Map<String, Object>> items = new ArrayList<>();
         List<Folder> folders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
-                .eq(Folder::getUserId, share.getUserId())
                 .eq(Folder::getParentId, folderId)
                 .eq(Folder::getDeleted, 0)
                 .orderByAsc(Folder::getFolderName));
@@ -211,7 +216,6 @@ public class ShareService {
             items.add(row);
         }
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
-                .eq(FileRecord::getUserId, share.getUserId())
                 .eq(FileRecord::getFolderId, folderId)
                 .eq(FileRecord::getStatus, 1)
                 .orderByDesc(FileRecord::getCreateTime));
@@ -257,10 +261,10 @@ public class ShareService {
                 throw new BusinessException("请指定文件");
             }
             FileRecord file = fileMapper.selectById(fileId);
-            if (file == null || !Objects.equals(file.getUserId(), share.getUserId()) || file.getStatus() != 1) {
+            if (file == null || file.getStatus() != 1) {
                 throw new BusinessException("文件不存在");
             }
-            if (!isFileInSharedFolderTree(share.getFolderId(), file.getFolderId(), share.getUserId())) {
+            if (!isFileInSharedFolderTree(share.getFolderId(), file.getFolderId())) {
                 throw new BusinessException("文件不在分享范围内");
             }
             return file;
@@ -281,7 +285,7 @@ public class ShareService {
             throw new BusinessException("不是文件夹分享");
         }
         Long fid = folderId != null ? folderId : share.getFolderId();
-        if (!isFolderInSharedTree(share.getFolderId(), fid, share.getUserId())) {
+        if (!isFolderInSharedTree(share.getFolderId(), fid)) {
             throw new BusinessException("目录不在分享范围内");
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -303,11 +307,11 @@ public class ShareService {
             return null;
         }
         Folder folder = folderMapper.selectById(folderId);
-        if (folder == null || !Objects.equals(folder.getUserId(), share.getUserId())) {
+        if (folder == null || !isFolderInSharedTree(share.getFolderId(), folderId)) {
             return share.getFolderId();
         }
         Long parentId = folder.getParentId();
-        if (parentId == null || parentId <= 0 || !isFolderInSharedTree(share.getFolderId(), parentId, share.getUserId())) {
+        if (parentId == null || parentId <= 0 || !isFolderInSharedTree(share.getFolderId(), parentId)) {
             return share.getFolderId();
         }
         return parentId;
@@ -316,7 +320,8 @@ public class ShareService {
     private List<Map<String, Object>> buildShareBreadcrumbs(ShareRecord share, Long folderId) {
         List<Map<String, Object>> chain = new ArrayList<>();
         Folder current = folderMapper.selectById(folderId);
-        while (current != null && Objects.equals(current.getUserId(), share.getUserId())) {
+        int depth = 0;
+        while (current != null && depth < 50) {
             Map<String, Object> crumb = new LinkedHashMap<>();
             crumb.put("id", current.getId());
             crumb.put("name", current.getFolderName());
@@ -328,20 +333,14 @@ public class ShareService {
                 break;
             }
             current = folderMapper.selectById(current.getParentId());
+            depth++;
         }
         return chain;
     }
 
-    private boolean isFileInSharedFolderTree(Long shareRootFolderId, Long fileFolderId, long userId) {
-        if (Objects.equals(shareRootFolderId, fileFolderId)) return true;
-        Folder current = folderMapper.selectById(fileFolderId);
-        while (current != null && current.getParentId() != null && current.getParentId() > 0) {
-            if (Objects.equals(current.getParentId(), shareRootFolderId)) return true;
-            if (Objects.equals(current.getId(), shareRootFolderId)) return true;
-            current = folderMapper.selectById(current.getParentId());
-            if (current == null || !Objects.equals(current.getUserId(), userId)) break;
-        }
-        return false;
+    private boolean isFileInSharedFolderTree(Long shareRootFolderId, Long fileFolderId) {
+        if (fileFolderId == null) return false;
+        return isFolderInSharedTree(shareRootFolderId, fileFolderId);
     }
 
     public void verifyExtractCode(ShareRecord share, String extractCode) {

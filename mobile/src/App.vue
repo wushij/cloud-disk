@@ -61,9 +61,13 @@ page {
   justify-content: center;
 }
 
-/* 圆角弹出层 */
+/* 圆角弹出层及高度优化 */
 .u-action-sheet {
   border-radius: var(--cd-radius-xl) var(--cd-radius-xl) 0 0 !important;
+}
+
+.u-action-sheet__item-wrap__item {
+  padding: 20rpx 0 !important;
 }
 
 /* 加载图标颜色 */

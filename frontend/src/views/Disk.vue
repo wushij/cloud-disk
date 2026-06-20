@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http, { TOKEN_KEY } from '@/api/http'
@@ -14,7 +14,10 @@ import FileGridView from '@/components/FileGridView.vue'
 import OnlyOfficeEditor from '@/components/OnlyOfficeEditor.vue'
 import PdfPreview from '@/components/PdfPreview.vue'
 import VideoPreview from '@/components/VideoPreview.vue'
+import TextPreview from '@/components/TextPreview.vue'
+import { isTextFile } from '@/utils/filePreview'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
+import { downloadZip } from '@/utils/download'
 
 const fileStore = useFileStore()
 const transferStore = useTransferStore()
@@ -39,6 +42,71 @@ const dragOver = ref(false)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
+
+const selectedItems = ref<FileItem[]>([])
+const tableRef = ref<any>(null)
+
+const selectedIds = computed({
+  get: () => selectedItems.value.map(item => item.id),
+  set: (ids) => {
+    selectedItems.value = items.value.filter(item => ids.includes(item.id))
+  }
+})
+
+function handleSelectionChange(val: FileItem[]) {
+  selectedItems.value = val
+}
+
+function clearSelection() {
+  selectedItems.value = []
+  if (tableRef.value) {
+    tableRef.value.clearSelection()
+  }
+}
+
+watch(selectedItems, (newVal) => {
+  if (!tableRef.value) return
+  const rows = tableRef.value.data || []
+  rows.forEach((row: any) => {
+    const shouldSelect = newVal.some(item => item.id === row.id)
+    if (tableRef.value.getSelection?.().includes(row) !== shouldSelect) {
+      tableRef.value.toggleRowSelection(row, shouldSelect)
+    }
+  })
+}, { deep: true })
+
+watch(currentFolderId, () => {
+  clearSelection()
+})
+
+function handleBatchDownload() {
+  const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
+  const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
+  if (folders.length === 0 && files.length === 0) return
+  let url = `/api/files/download/zip?access_token=${tokenParam()}`
+  if (folders.length > 0) {
+    url += `&folderIds=${folders.join(',')}`
+  }
+  if (files.length > 0) {
+    url += `&fileIds=${files.join(',')}`
+  }
+  downloadZip(url)
+}
+
+async function handleBatchDelete() {
+  await ElMessageBox.confirm(`确定删除选中的 ${selectedItems.value.length} 个项目吗？`, '批量删除', { type: 'warning' })
+  try {
+    for (const item of selectedItems.value) {
+      const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
+      await http.delete(url)
+    }
+    ElMessage.success('批量删除成功')
+    clearSelection()
+    await refreshAfterChange()
+  } catch {
+    /* error */
+  }
+}
 
 function tokenParam() {
   return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
@@ -88,7 +156,10 @@ function onDragLeave(e: DragEvent) {
 }
 
 function download(row: FileItem) {
-  if (row.type !== 'file') return
+  if (row.type === 'folder') {
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}&access_token=${tokenParam()}`)
+    return
+  }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
 }
 
@@ -192,6 +263,7 @@ function onWsProgress(data: {
 const isImage = computed(() => previewType.value.startsWith('image/'))
 const isVideo = computed(() => previewType.value.startsWith('video/'))
 const isPdf = computed(() => previewType.value.includes('pdf'))
+const isText = computed(() => isTextFile(previewType.value, previewName.value))
 const isOffice = computed(() => !!onlyOfficeConfig.value)
 
 onMounted(() => {
@@ -283,13 +355,52 @@ onUnmounted(disconnectUploadWs)
                 placeholder="类型"
                 clearable
                 @change="fileStore.loadList()"
+                popper-class="cd-type-select-dropdown"
               >
-                <el-option label="全部" value="" />
-                <el-option label="文件夹" value="folder" />
-                <el-option label="图片" value="image" />
-                <el-option label="视频" value="video" />
-                <el-option label="文档" value="document" />
-                <el-option label="压缩包" value="archive" />
+                <template #prefix>
+                  <el-icon v-if="fileType === 'folder'" class="cd-select-prefix-icon"><Folder /></el-icon>
+                  <el-icon v-else-if="fileType === 'image'" class="cd-select-prefix-icon"><Picture /></el-icon>
+                  <el-icon v-else-if="fileType === 'video'" class="cd-select-prefix-icon"><VideoPlay /></el-icon>
+                  <el-icon v-else-if="fileType === 'document'" class="cd-select-prefix-icon"><Document /></el-icon>
+                  <el-icon v-else-if="fileType === 'archive'" class="cd-select-prefix-icon"><Box /></el-icon>
+                  <el-icon v-else class="cd-select-prefix-icon"><Files /></el-icon>
+                </template>
+                <el-option value="" label="全部">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><Files /></el-icon>
+                    <span>全部</span>
+                  </div>
+                </el-option>
+                <el-option value="folder" label="文件夹">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><Folder /></el-icon>
+                    <span>文件夹</span>
+                  </div>
+                </el-option>
+                <el-option value="image" label="图片">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><Picture /></el-icon>
+                    <span>图片</span>
+                  </div>
+                </el-option>
+                <el-option value="video" label="视频">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><VideoPlay /></el-icon>
+                    <span>视频</span>
+                  </div>
+                </el-option>
+                <el-option value="document" label="文档">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><Document /></el-icon>
+                    <span>文档</span>
+                  </div>
+                </el-option>
+                <el-option value="archive" label="压缩包">
+                  <div class="cd-option-item">
+                    <el-icon class="cd-option-icon"><Box /></el-icon>
+                    <span>压缩包</span>
+                  </div>
+                </el-option>
               </el-select>
               <div class="cd-view-toggle">
                 <button
@@ -320,6 +431,7 @@ onUnmounted(disconnectUploadWs)
         <!-- 网格视图 -->
         <FileGridView
           v-if="viewMode === 'grid'"
+          v-model:selectedIds="selectedIds"
           :items="items"
           :loading="loading"
           @open="fileStore.enterFolder"
@@ -354,9 +466,17 @@ onUnmounted(disconnectUploadWs)
         </FileGridView>
 
         <!-- 列表视图 -->
-        <div v-else style="margin-top: 16px">
-          <el-table v-loading="loading" :data="items" @row-dblclick="fileStore.enterFolder">
-            <el-table-column label="名称" min-width="320">
+        <div v-else class="cd-disk-list-wrap">
+          <el-table
+            ref="tableRef"
+            v-loading="loading"
+            :data="items"
+            class="cd-disk-table"
+            @row-dblclick="fileStore.enterFolder"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column type="selection" width="55" align="center" />
+            <el-table-column label="名称" min-width="320" header-align="center">
               <template #default="{ row }">
                 <div class="cd-name-cell">
                   <img
@@ -393,45 +513,51 @@ onUnmounted(disconnectUploadWs)
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="大小" width="120">
+            <el-table-column label="大小" width="120" align="center" header-align="center">
               <template #default="{ row }">
                 <span class="cd-cell-text">{{ row.type === 'file' ? fmtSize(row.sizeBytes || 0) : '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="修改时间" width="180">
+            <el-table-column label="修改时间" width="180" align="center" header-align="center">
               <template #default="{ row }">
                 <span class="cd-cell-text">{{ row.createdAt ? new Date(row.createdAt).toLocaleString() : '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="168" fixed="right" align="center" header-align="center">
               <template #default="{ row }">
                 <div class="cd-row-actions">
-                  <el-button v-if="row.type === 'folder'" link type="primary" @click="fileStore.enterFolder(row)">
-                    <el-icon><FolderOpened /></el-icon>打开
-                  </el-button>
-                  <el-button v-if="row.type === 'folder'" link @click="openShare(row)">
-                    <el-icon><Share /></el-icon>
-                  </el-button>
+                  <el-tooltip v-if="row.type === 'folder'" content="打开" placement="top">
+                    <button type="button" class="cd-list-action-btn" @click="fileStore.enterFolder(row)">
+                      <el-icon><FolderOpened /></el-icon>
+                    </button>
+                  </el-tooltip>
                   <template v-else>
-                    <el-button link type="primary" @click="download(row)">
-                      <el-icon><Download /></el-icon>
-                    </el-button>
-                    <el-button v-if="row.previewable" link @click="preview(row)">
-                      <el-icon><View /></el-icon>
-                    </el-button>
-                    <el-button link @click="openShare(row)">
-                      <el-icon><Share /></el-icon>
-                    </el-button>
+                    <el-tooltip content="下载" placement="top">
+                      <button type="button" class="cd-list-action-btn" @click="download(row)">
+                        <el-icon><Download /></el-icon>
+                      </button>
+                    </el-tooltip>
+                    <el-tooltip v-if="row.previewable" content="预览" placement="top">
+                      <button type="button" class="cd-list-action-btn" @click="preview(row)">
+                        <el-icon><View /></el-icon>
+                      </button>
+                    </el-tooltip>
                   </template>
+                  <el-tooltip content="分享" placement="top">
+                    <button type="button" class="cd-list-action-btn" @click="openShare(row)">
+                      <el-icon><Share /></el-icon>
+                    </button>
+                  </el-tooltip>
                   <el-dropdown trigger="click" @command="(cmd: string) => {
                     if (cmd === 'move') openMoveCopy(row, 'move')
                     else if (cmd === 'copy') openMoveCopy(row, 'copy')
                     else if (cmd === 'rename') renameItem(row)
                     else if (cmd === 'delete') deleteItem(row)
+                    else if (cmd === 'download') download(row)
                   }">
-                    <el-button link>
+                    <button type="button" class="cd-list-action-btn" aria-label="更多">
                       <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                    </button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="move">
@@ -439,6 +565,9 @@ onUnmounted(disconnectUploadWs)
                         </el-dropdown-item>
                         <el-dropdown-item v-if="row.type === 'file'" command="copy">
                           <el-icon><CopyDocument /></el-icon>复制
+                        </el-dropdown-item>
+                        <el-dropdown-item v-if="row.type === 'folder'" command="download">
+                          <el-icon><Download /></el-icon>打包下载
                         </el-dropdown-item>
                         <el-dropdown-item command="rename">
                           <el-icon><Edit /></el-icon>重命名
@@ -484,8 +613,29 @@ onUnmounted(disconnectUploadWs)
         <img v-else-if="isImage" :src="previewUrl" class="cd-preview-media" alt="preview" />
         <VideoPreview v-else-if="isVideo" :src="previewUrl" />
         <PdfPreview v-else-if="isPdf" :src="previewUrl" />
+        <TextPreview v-else-if="isText" :src="previewUrl" />
         <el-empty v-else description="暂不支持该类型预览" />
       </el-dialog>
+
+      <!-- 悬浮批量操作底栏 -->
+      <transition name="cd-fade-slide">
+        <div v-if="selectedItems.length > 0" class="cd-batch-bar">
+          <div class="cd-batch-info">
+            已选择 <span class="cd-batch-count">{{ selectedItems.length }}</span> 项
+          </div>
+          <div class="cd-batch-actions">
+            <el-button type="primary" @click="handleBatchDownload">
+              <el-icon><Download /></el-icon>
+              打包下载
+            </el-button>
+            <el-button type="danger" plain @click="handleBatchDelete">
+              <el-icon><Delete /></el-icon>
+              批量删除
+            </el-button>
+            <el-button @click="clearSelection">取消</el-button>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -663,14 +813,92 @@ onUnmounted(disconnectUploadWs)
 }
 
 .cd-type-select {
-  width: 108px;
+  width: 124px;
   flex-shrink: 0;
 }
 
 .cd-type-select :deep(.el-select__wrapper) {
-  min-height: 36px;
+  background-color: var(--cd-bg);
+  box-shadow: 0 0 0 1px var(--cd-border) inset !important;
   border-radius: 10px;
-  box-shadow: none;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px 0 12px;
+  transition: var(--cd-transition-fast);
+}
+
+.cd-type-select :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--cd-primary-light) inset !important;
+}
+
+.cd-type-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--cd-primary) inset, 0 0 0 3px var(--theme-primary-muted), 0 0 12px var(--theme-primary-muted) !important;
+}
+
+.cd-type-select :deep(.el-select__placeholder) {
+  color: var(--cd-text-primary);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.cd-type-select :deep(.el-select__selected-item) {
+  color: var(--cd-text-primary);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.cd-select-prefix-icon {
+  font-size: 16px;
+  color: var(--cd-primary);
+  margin-right: 6px;
+}
+
+/* 下拉菜单项样式 */
+.cd-option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cd-option-icon {
+  font-size: 16px;
+  color: var(--cd-text-secondary);
+  transition: var(--cd-transition-fast);
+}
+
+:deep(.cd-type-select-dropdown) {
+  border-radius: var(--cd-radius-lg) !important;
+  padding: 6px !important;
+  box-shadow: var(--cd-shadow-lg) !important;
+  border: 1px solid var(--cd-border-light) !important;
+}
+
+:deep(.cd-type-select-dropdown .el-select-dropdown__item) {
+  border-radius: var(--cd-radius) !important;
+  margin: 2px 0 !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  color: var(--cd-text-regular) !important;
+  font-weight: 500 !important;
+}
+
+:deep(.cd-type-select-dropdown .el-select-dropdown__item.is-hovering) {
+  background-color: var(--theme-primary-muted) !important;
+  color: var(--cd-primary) !important;
+}
+
+:deep(.cd-type-select-dropdown .el-select-dropdown__item.is-selected) {
+  background-color: var(--theme-primary-muted-strong) !important;
+  color: var(--cd-primary) !important;
+  font-weight: 600 !important;
+}
+
+:deep(.cd-type-select-dropdown .el-select-dropdown__item.is-hovering .cd-option-icon) {
+  color: var(--cd-primary) !important;
+}
+
+:deep(.cd-type-select-dropdown .el-select-dropdown__item.is-selected .cd-option-icon) {
+  color: var(--cd-primary) !important;
 }
 
 .cd-disk-empty {
@@ -865,12 +1093,57 @@ onUnmounted(disconnectUploadWs)
   font-size: 13px;
 }
 
+/* 列表视图 */
+
+.cd-disk-list-wrap {
+  margin-top: 16px;
+}
+
+.cd-disk-table :deep(.el-table__header th .cell) {
+  font-weight: 600;
+  color: var(--cd-text-primary);
+}
+
+.cd-disk-table :deep(.el-table__row) {
+  transition: background-color var(--cd-transition-fast);
+}
+
+.cd-disk-table :deep(.el-table__row:hover) {
+  background-color: var(--cd-bg-surface) !important;
+}
+
 /* 行操作按钮 */
 
 .cd-row-actions {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cd-bg) 80%, var(--cd-border-light));
+}
+
+.cd-list-action-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cd-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color var(--cd-transition-fast), color var(--cd-transition-fast), transform var(--cd-transition-fast);
+}
+
+.cd-list-action-btn:hover {
+  background: #fff;
+  color: var(--cd-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 /* 预览对话框 */
@@ -888,5 +1161,57 @@ onUnmounted(disconnectUploadWs)
   display: block;
   margin: 0 auto;
   border-radius: var(--cd-radius);
+}
+
+/* 悬浮批量操作底栏 */
+.cd-batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 12px 24px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  z-index: 1000;
+  pointer-events: auto;
+  transition: all var(--cd-transition-bounce);
+}
+
+.cd-batch-info {
+  font-size: 14px;
+  color: var(--cd-text-secondary);
+  font-weight: 500;
+}
+
+.cd-batch-count {
+  color: var(--cd-primary);
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0 4px;
+}
+
+.cd-batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 进出场动画 */
+.cd-fade-slide-enter-active,
+.cd-fade-slide-leave-active {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cd-fade-slide-enter-from,
+.cd-fade-slide-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
 }
 </style>

@@ -5,8 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import { fmtSize, fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
-import { fileExtLabel, fileTypeColor, fileTypeIcon } from '@/utils/fileType'
+import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 
 interface RecycleItem {
   id: number
@@ -118,7 +119,7 @@ function confirmClearAll() {
       <view v-else class="list-wrapper">
         <view v-for="item in list" :key="`${item.type}-${item.id}`" class="recycle-card">
           <!-- 封面或图标展示区域 -->
-          <view class="recycle-thumb" :class="{ cover: fileHasCover(item as any), folder: item.type === 'folder' }">
+          <view class="recycle-thumb" :class="{ cover: fileHasCover(item as any), folder: item.type === 'folder' || fileTypeKind(item as any) === 'archive' }">
             <image
               v-if="fileHasCover(item as any) && fileCoverKind(item as any) === 'image'"
               :src="fileCoverUrl(item as any)"
@@ -138,13 +139,24 @@ function confirmClearAll() {
                 <u-icon name="play-circle-fill" size="18" color="#fff" />
               </view>
             </view>
-            <view v-else class="recycle-file-icon" :class="{ folder: item.type === 'folder' }">
-              <u-icon
-                :name="item.type === 'folder' ? 'folder' : fileTypeIcon(item as any)"
-                size="24"
-                :color="item.type === 'folder' ? '#f59e0b' : fileTypeColor(item as any)"
+            <view v-else class="recycle-file-icon" :class="fileTypeKind(item as any)">
+              <FolderTypeIcon
+                v-if="item.type === 'folder'"
+                :size="36"
               />
-              <text v-if="item.type === 'file'" class="recycle-ext">{{ fileExtLabel(item as any) }}</text>
+              <FolderTypeIcon
+                v-else-if="fileTypeKind(item as any) === 'archive'"
+                archive
+                :size="36"
+              />
+              <template v-else>
+                <u-icon
+                  :name="fileTypeIcon(item as any)"
+                  size="24"
+                  :color="fileTypeColor(item as any)"
+                />
+                <text class="recycle-ext">{{ fileExtLabel(item as any) }}</text>
+              </template>
             </view>
           </view>
 
@@ -241,7 +253,7 @@ function confirmClearAll() {
 }
 
 .recycle-thumb.folder {
-  background: rgba(245, 158, 11, 0.08);
+  background: transparent;
 }
 
 .recycle-thumb.cover {

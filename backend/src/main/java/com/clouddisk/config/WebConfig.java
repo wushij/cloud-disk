@@ -62,6 +62,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/auth/ldap/login",
                         "/api/auth/sso/**",
                         "/api/files/*/download",
+                        "/api/files/download/zip",
                         "/api/files/*/preview",
                         "/api/files/*/thumbnail",
                         "/api/onlyoffice/**",

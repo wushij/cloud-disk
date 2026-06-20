@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
 import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
-import { fileExtLabel, fileTypeColor, fileTypeIcon } from '@/utils/fileType'
+import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import { fmtSize } from '@/utils/fileCover'
 
 function formatDate(d: string) {
@@ -13,12 +14,15 @@ function formatDate(d: string) {
 
 defineProps<{
   item: FileItem
+  selectMode?: boolean
+  checked?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'click'): void
   (e: 'longpress'): void
   (e: 'more'): void
+  (e: 'check-change', val: boolean): void
 }>()
 
 function onMoreClick() {
@@ -30,11 +34,25 @@ function onMoreClick() {
 <template>
   <view
     class="file-item cd-pressable"
-    :class="{ folder: item.type === 'folder' }"
+    :class="{ folder: item.type === 'folder', 'is-selected': checked }"
     @click="emit('click')"
     @longpress="emit('longpress')"
   >
-    <view class="file-thumb" :class="{ cover: fileHasCover(item), folder: item.type === 'folder' }">
+    <!-- 选择勾选框 -->
+    <view v-if="selectMode" class="file-checkbox-area" @click.stop="emit('check-change', !checked)">
+      <view class="file-checkbox-circle" :class="{ 'is-checked': checked }">
+        <u-icon v-if="checked" name="checkbox-mark" color="#fff" size="10" />
+      </view>
+    </view>
+
+    <view
+      class="file-thumb"
+      :class="{
+        cover: fileHasCover(item),
+        folder: item.type === 'folder',
+        [`kind-${fileTypeKind(item)}`]: item.type === 'file' && !fileHasCover(item)
+      }"
+    >
       <image
         v-if="fileHasCover(item) && fileCoverKind(item) === 'image'"
         :src="fileCoverUrl(item)"
@@ -54,13 +72,24 @@ function onMoreClick() {
           <u-icon name="play-circle-fill" size="22" color="#fff" />
         </view>
       </view>
-      <view v-else class="file-icon" :class="{ folder: item.type === 'folder' }">
-        <u-icon
-          :name="item.type === 'folder' ? 'folder' : fileTypeIcon(item)"
-          size="28"
-          :color="item.type === 'folder' ? '#f59e0b' : fileTypeColor(item)"
+      <view v-else class="file-icon" :class="fileTypeKind(item)">
+        <FolderTypeIcon
+          v-if="item.type === 'folder'"
+          :size="40"
         />
-        <text v-if="item.type === 'file'" class="file-ext">{{ fileExtLabel(item) }}</text>
+        <FolderTypeIcon
+          v-else-if="fileTypeKind(item) === 'archive'"
+          archive
+          :size="40"
+        />
+        <template v-else>
+          <u-icon
+            :name="fileTypeIcon(item)"
+            size="28"
+            :color="fileTypeColor(item)"
+          />
+          <text class="file-ext">{{ fileExtLabel(item) }}</text>
+        </template>
       </view>
     </view>
 
@@ -72,7 +101,7 @@ function onMoreClick() {
       </view>
     </view>
 
-    <view class="file-more" @tap.stop="onMoreClick" @click.stop="onMoreClick">
+    <view v-if="!selectMode" class="file-more" @tap.stop="onMoreClick" @click.stop="onMoreClick">
       <u-icon name="more-dot-fill" color="#94a3b8" size="18" />
     </view>
   </view>
@@ -112,7 +141,42 @@ function onMoreClick() {
 }
 
 .file-thumb.folder {
-  background: rgba(245, 158, 11, 0.08);
+  background: transparent;
+}
+
+.file-thumb.kind-archive {
+  background: transparent;
+  border: none;
+}
+
+.file-thumb.kind-pdf {
+  background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1rpx solid rgba(239, 68, 68, 0.12);
+}
+
+.file-thumb.kind-doc {
+  background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1rpx solid rgba(37, 99, 235, 0.12);
+}
+
+.file-thumb.kind-sheet {
+  background: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1rpx solid rgba(5, 150, 105, 0.12);
+}
+
+.file-thumb.kind-slide {
+  background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1rpx solid rgba(217, 119, 6, 0.12);
+}
+
+.file-thumb.kind-audio {
+  background: linear-gradient(145deg, #fdf2f8 0%, #fce7f3 100%);
+  border: 1rpx solid rgba(236, 72, 153, 0.12);
+}
+
+.file-thumb.kind-code {
+  background: linear-gradient(145deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1rpx solid rgba(99, 102, 241, 0.12);
 }
 
 .file-thumb.cover {
@@ -153,6 +217,44 @@ function onMoreClick() {
 
 .file-icon.folder {
   background: transparent;
+}
+
+.file-icon.archive,
+.file-icon.pdf,
+.file-icon.doc,
+.file-icon.sheet,
+.file-icon.slide,
+.file-icon.audio,
+.file-icon.code {
+  background: transparent;
+}
+
+.file-icon.archive .file-ext {
+  color: #c2410c;
+}
+
+.file-icon.pdf .file-ext {
+  color: #dc2626;
+}
+
+.file-icon.doc .file-ext {
+  color: #2563eb;
+}
+
+.file-icon.sheet .file-ext {
+  color: #059669;
+}
+
+.file-icon.slide .file-ext {
+  color: #d97706;
+}
+
+.file-icon.audio .file-ext {
+  color: #db2777;
+}
+
+.file-icon.code .file-ext {
+  color: #4f46e5;
 }
 
 .file-ext {
@@ -212,5 +314,35 @@ function onMoreClick() {
 .file-more:active {
   background: #e2e8f0;
   transform: scale(0.9);
+}
+
+.file-item.is-selected {
+  background: rgba(99, 102, 241, 0.04) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.file-checkbox-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 4rpx;
+  flex-shrink: 0;
+}
+
+.file-checkbox-circle {
+  width: 38rpx;
+  height: 38rpx;
+  border-radius: 50%;
+  border: 3rpx solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--cd-transition-fast);
+  background: #fff;
+}
+
+.file-checkbox-circle.is-checked {
+  background: var(--cd-primary, #6366f1);
+  border-color: var(--cd-primary, #6366f1);
 }
 </style>

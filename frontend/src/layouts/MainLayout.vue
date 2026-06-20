@@ -15,6 +15,7 @@ import ThemePicker from '@/components/ThemePicker.vue'
 import { useTransferStore } from '@/stores/transfer'
 
 import TransferPanel from '@/components/TransferPanel.vue'
+import PromptDialog from '@/components/PromptDialog.vue'
 
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 
@@ -479,6 +480,7 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
 
     <!-- 全局传输进度面板 -->
     <TransferPanel />
+    <PromptDialog />
 
   </el-container>
 

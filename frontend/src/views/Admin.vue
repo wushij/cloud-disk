@@ -96,7 +96,11 @@ function onAvatarError(userId: number) {
 async function toggleUser(row: UserRow) {
   const next = row.status === 1 ? 0 : 1
   const action = next === 0 ? '禁用' : '启用'
-  await ElMessageBox.confirm(`确定${action}用户「${row.username}」？`, '确认', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确定${action}用户「${row.username}」？`, '确认', { type: 'warning' })
+  } catch {
+    return
+  }
   try {
     await http.put(`/api/admin/users/${row.id}/status`, { status: next })
     row.status = next
@@ -208,7 +212,7 @@ onMounted(loadAll)
           </div>
         </template>
         <el-table :data="users" class="cd-admin-table">
-          <el-table-column label="用户" min-width="200">
+          <el-table-column label="用户" min-width="200" header-align="center">
             <template #default="{ row }">
               <div class="cd-user-cell">
                 <el-avatar
@@ -226,40 +230,40 @@ onMounted(loadAll)
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="角色" width="100">
+          <el-table-column label="角色" width="100" align="center" header-align="center">
             <template #default="{ row }">
               <el-tag :type="row.role === 'ADMIN' ? 'warning' : 'info'" size="small" round>{{ row.role }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="已用空间" width="110">
+          <el-table-column label="已用空间" width="110" align="center" header-align="center">
             <template #default="{ row }">
               <span class="cd-cell-text">{{ fmtSize(row.storageUsed || 0) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="配额" width="110">
+          <el-table-column label="配额" width="110" align="center" header-align="center">
             <template #default="{ row }">
               <span class="cd-cell-text">{{ row.storageQuota ? fmtSize(row.storageQuota) : '不限' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="状态" width="100" align="center" header-align="center">
             <template #default="{ row }">
               <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small" round>
                 {{ row.status === 1 ? '正常' : '禁用' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="168" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right" align="center" header-align="center">
             <template #default="{ row }">
-              <div class="cd-user-actions">
-                <button type="button" class="cd-user-action cd-user-action--quota" @click="openQuotaDialog(row)">
+              <div class="cd-admin-actions">
+                <button type="button" class="cd-admin-action quota" @click="openQuotaDialog(row)">
                   <el-icon :size="14"><Coin /></el-icon>
-                  <span>配额</span>
+                  配额
                 </button>
                 <button
                   v-if="row.username !== 'admin'"
                   type="button"
-                  class="cd-user-action"
-                  :class="row.status === 1 ? 'cd-user-action--danger' : 'cd-user-action--primary'"
+                  class="cd-admin-action"
+                  :class="row.status === 1 ? 'danger' : 'success'"
                   @click="toggleUser(row)"
                 >
                   {{ row.status === 1 ? '禁用' : '启用' }}
@@ -483,6 +487,21 @@ onMounted(loadAll)
   font-size: 12px;
 }
 
+.cd-admin-table :deep(.el-table__header .cell) {
+  text-align: center;
+  justify-content: center;
+}
+
+.cd-admin-table :deep(.el-table__body .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cd-admin-table :deep(.el-table__body td:first-child .cell) {
+  justify-content: flex-start;
+}
+
 .cd-user-cell {
   display: flex;
   align-items: center;
@@ -640,42 +659,57 @@ onMounted(loadAll)
   }
 }
 
-.cd-user-actions {
+.cd-admin-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
-.cd-user-action {
+.cd-admin-action {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0;
-  border: none;
-  background: none;
+  padding: 7px 14px;
+  border-radius: 999px;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: color 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  background: transparent;
+  white-space: nowrap;
 }
 
-.cd-user-action--quota,
-.cd-user-action--primary {
+.cd-admin-action.quota {
   color: var(--cd-primary);
+  background: var(--theme-primary-muted, rgba(79, 124, 255, 0.08));
+  border-color: color-mix(in srgb, var(--cd-primary) 18%, transparent);
 }
 
-.cd-user-action--quota:hover,
-.cd-user-action--primary:hover {
-  color: var(--cd-primary-dark, #4338ca);
+.cd-admin-action.quota:hover {
+  background: color-mix(in srgb, var(--cd-primary) 14%, #fff);
 }
 
-.cd-user-action--danger {
-  color: var(--el-color-danger);
+.cd-admin-action.danger {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.2);
 }
 
-.cd-user-action--danger:hover {
-  color: #b91c1c;
+.cd-admin-action.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.cd-admin-action.success {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.cd-admin-action.success:hover {
+  background: rgba(16, 185, 129, 0.12);
 }
 
 .cd-quota-dialog :deep(.el-dialog__header) {

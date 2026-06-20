@@ -9,39 +9,52 @@ import type { FileItem } from '@/stores/file'
 export type { FileItem }
 
 const props = defineProps<{
-
   items: FileItem[]
-
   loading?: boolean
-
   /** 精简操作：仅保留打开/下载/预览/删除 */
   simple?: boolean
-
+  selectedIds?: number[]
 }>()
-
-
 
 const emit = defineEmits<{
-
   (e: 'open', row: FileItem): void
-
   (e: 'download', row: FileItem): void
-
   (e: 'directDownload', row: FileItem): void
-
   (e: 'preview', row: FileItem): void
-
   (e: 'share', row: FileItem): void
-
   (e: 'move', row: FileItem): void
-
   (e: 'copy', row: FileItem): void
-
   (e: 'rename', row: FileItem): void
-
   (e: 'delete', row: FileItem): void
-
+  (e: 'update:selectedIds', val: number[]): void
 }>()
+
+const isSelecting = computed(() => !!props.selectedIds && props.selectedIds.length > 0)
+
+function isSelected(row: FileItem) {
+  return props.selectedIds?.includes(row.id) ?? false
+}
+
+function toggleSelect(row: FileItem, checked: boolean) {
+  const current = props.selectedIds ? [...props.selectedIds] : []
+  if (checked) {
+    if (!current.includes(row.id)) {
+      current.push(row.id)
+    }
+  } else {
+    const idx = current.indexOf(row.id)
+    if (idx >= 0) {
+      current.splice(idx, 1)
+    }
+  }
+  emit('update:selectedIds', current)
+}
+
+function onCardClick(row: FileItem) {
+  if (isSelecting.value) {
+    toggleSelect(row, !isSelected(row))
+  }
+}
 
 
 
@@ -104,7 +117,7 @@ function formatDate(value?: string) {
       </slot>
     </div>
 
-    <div v-else class="cd-grid-container">
+    <div v-else class="cd-grid-container" :class="{ 'is-selecting': isSelecting }">
 
       <div
 
@@ -113,11 +126,19 @@ function formatDate(value?: string) {
         :key="row.id"
 
         class="cd-grid-card"
-        :class="{ 'cd-grid-card-folder': row.type === 'folder' }"
+        :class="{ 'cd-grid-card-folder': row.type === 'folder', 'is-selected': isSelected(row) }"
 
+        @click="onCardClick(row)"
         @dblclick="emit('open', row)"
 
       >
+        <!-- 多选勾选框 -->
+        <div class="cd-grid-checkbox-wrap" @click.stop>
+          <el-checkbox
+            :model-value="isSelected(row)"
+            @change="toggleSelect(row, !isSelected(row))"
+          />
+        </div>
 
         <!-- 缩略图/图标区域 -->
 
@@ -223,6 +244,22 @@ function formatDate(value?: string) {
           >
 
             <el-icon><FolderOpened /></el-icon>
+
+          </button>
+
+          <button
+
+            v-if="row.type === 'folder'"
+
+            class="cd-grid-action-btn"
+
+            title="打包下载"
+
+            @click.stop="emit('download', row)"
+
+          >
+
+            <el-icon><Download /></el-icon>
 
           </button>
 
@@ -795,4 +832,69 @@ function formatDate(value?: string) {
   gap: 6px;
 }
 
+.cd-grid-card.is-selected {
+  border-color: var(--cd-primary) !important;
+  background: var(--cd-primary-light-9, rgba(99, 102, 241, 0.05)) !important;
+  box-shadow: 0 0 0 1px var(--cd-primary), var(--cd-shadow-card) !important;
+}
+
+.cd-grid-checkbox-wrap {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: auto;
+}
+
+.cd-grid-card:hover .cd-grid-checkbox-wrap,
+.cd-grid-card.is-selected .cd-grid-checkbox-wrap,
+.cd-grid-container.is-selecting .cd-grid-checkbox-wrap {
+  opacity: 1;
+}
+
+/* 升级为高质感圆形磨砂多选框 */
+.cd-grid-checkbox-wrap :deep(.el-checkbox__inner) {
+  width: 20px;
+  height: 20px;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.cd-grid-checkbox-wrap:hover :deep(.el-checkbox__inner) {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18) !important;
+  transform: scale(1.05);
+}
+
+.cd-grid-checkbox-wrap :deep(.el-checkbox.is-checked .el-checkbox__inner) {
+  background: var(--cd-primary, #6366f1) !important;
+  border-color: var(--cd-primary, #6366f1) !important;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.38) !important;
+}
+
+/* 调整对勾形状与绝对居中 */
+.cd-grid-checkbox-wrap :deep(.el-checkbox__inner::after) {
+  left: 50% !important;
+  top: 50% !important;
+  width: 5px !important;
+  height: 9px !important;
+  border-width: 2px !important;
+  border-color: #ffffff !important;
+  transform: translate(-50%, -52%) rotate(45deg) scaleY(0) !important;
+  transform-origin: center !important;
+  transition: transform 0.15s ease-in-out !important;
+}
+
+.cd-grid-checkbox-wrap :deep(.el-checkbox.is-checked .el-checkbox__inner::after),
+.cd-grid-checkbox-wrap :deep(.el-checkbox__input.is-checked .el-checkbox__inner::after) {
+  transform: translate(-50%, -52%) rotate(45deg) scaleY(1) !important;
+}
 </style>

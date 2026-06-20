@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 import http, { TOKEN_KEY } from '@/api/http'
@@ -8,9 +8,12 @@ import PageHeader from '@/components/PageHeader.vue'
 import FileGridView from '@/components/FileGridView.vue'
 import PdfPreview from '@/components/PdfPreview.vue'
 import VideoPreview from '@/components/VideoPreview.vue'
+import TextPreview from '@/components/TextPreview.vue'
+import { isTextFile } from '@/utils/filePreview'
 import type { FileItem } from '@/stores/file'
 import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
+import { downloadZip } from '@/utils/download'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
@@ -43,6 +46,51 @@ const breadcrumb = ref<{ id: number; name: string }[]>([])
 const currentFolderId = ref<number>(0)
 const loading = ref(false)
 const showMembers = ref(false)
+
+const selectedItems = ref<FileItem[]>([])
+const selectedIds = computed({
+  get: () => selectedItems.value.map(item => item.id),
+  set: (ids) => {
+    selectedItems.value = files.value.filter(item => ids.includes(item.id))
+  }
+})
+
+function clearSelection() {
+  selectedItems.value = []
+}
+
+watch(currentFolderId, () => {
+  clearSelection()
+})
+
+function handleBatchDownload() {
+  const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
+  const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
+  if (folders.length === 0 && files.length === 0) return
+  let url = `/api/files/download/zip?access_token=${tokenParam()}`
+  if (folders.length > 0) {
+    url += `&folderIds=${folders.join(',')}`
+  }
+  if (files.length > 0) {
+    url += `&fileIds=${files.join(',')}`
+  }
+  downloadZip(url)
+}
+
+async function handleBatchDelete() {
+  await ElMessageBox.confirm(`确定删除选中的 ${selectedItems.value.length} 个项目吗？`, '批量删除', { type: 'warning' })
+  try {
+    for (const item of selectedItems.value) {
+      const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
+      await http.delete(url)
+    }
+    ElMessage.success('批量删除成功')
+    clearSelection()
+    await loadFiles()
+  } catch {
+    /* error */
+  }
+}
 const membersLoading = ref(false)
 const avatarBroken = ref<Record<number, boolean>>({})
 /** 从团队列表直接进入成员管理时使用，避免误切到文件详情页 */
@@ -80,20 +128,14 @@ const teamGradients = [
   'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
 ]
 
-const gridFiles = computed(() =>
-  files.value.map((row) => ({
-    ...row,
-    previewable:
-      row.type === 'file' &&
-      !!(row.mimeType?.startsWith('image/') || row.mimeType?.startsWith('video/') || row.mimeType?.includes('pdf'))
-  }))
-)
+const gridFiles = computed(() => files.value)
 
 const createVisible = ref(false)
 
 const isImage = computed(() => previewType.value.startsWith('image/'))
 const isVideo = computed(() => previewType.value.startsWith('video/'))
 const isPdf = computed(() => previewType.value.includes('pdf'))
+const isText = computed(() => isTextFile(previewType.value, previewName.value))
 
 function tokenParam() {
   return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
@@ -259,6 +301,7 @@ async function enterSpace(space: TeamSpace) {
 
 async function loadFiles() {
   if (!currentSpace.value) return
+  clearSelection()
   await syncSpaceMeta()
   loading.value = true
   try {
@@ -343,6 +386,10 @@ function backToList() {
 }
 
 function downloadFile(row: FileItem) {
+  if (row.type === 'folder') {
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}&access_token=${tokenParam()}`)
+    return
+  }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
 }
 
@@ -691,6 +738,7 @@ onUnmounted(disconnectUploadWs)
 
         <div class="cd-team-files">
           <FileGridView
+            v-model:selectedIds="selectedIds"
             :items="gridFiles"
             :loading="loading"
             simple
@@ -718,6 +766,26 @@ onUnmounted(disconnectUploadWs)
 
       <input ref="fileInput" type="file" multiple hidden @change="onFileChange" />
       <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onFolderChange" />
+
+      <!-- 悬浮批量操作底栏 -->
+      <transition name="cd-fade-slide">
+        <div v-if="selectedItems.length > 0" class="cd-batch-bar">
+          <div class="cd-batch-info">
+            已选择 <span class="cd-batch-count">{{ selectedItems.length }}</span> 项
+          </div>
+          <div class="cd-batch-actions">
+            <el-button type="primary" @click="handleBatchDownload">
+              <el-icon><Download /></el-icon>
+              打包下载
+            </el-button>
+            <el-button type="danger" plain @click="handleBatchDelete">
+              <el-icon><Delete /></el-icon>
+              批量删除
+            </el-button>
+            <el-button @click="clearSelection">取消</el-button>
+          </div>
+        </div>
+      </transition>
     </el-card>
 
     <!-- 创建团队 -->
@@ -751,6 +819,7 @@ onUnmounted(disconnectUploadWs)
       <img v-if="isImage" :src="previewUrl" class="cd-preview-media" alt="preview" />
       <VideoPreview v-else-if="isVideo" :src="previewUrl" />
       <PdfPreview v-else-if="isPdf" :src="previewUrl" />
+      <TextPreview v-else-if="isText" :src="previewUrl" />
       <el-empty v-else description="暂不支持该类型预览" />
     </el-dialog>
 
@@ -1391,5 +1460,57 @@ onUnmounted(disconnectUploadWs)
   display: block;
   margin: 0 auto;
   border-radius: var(--cd-radius);
+}
+
+/* 悬浮批量操作底栏 */
+.cd-batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 12px 24px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  z-index: 1000;
+  pointer-events: auto;
+  transition: all var(--cd-transition-bounce);
+}
+
+.cd-batch-info {
+  font-size: 14px;
+  color: var(--cd-text-secondary);
+  font-weight: 500;
+}
+
+.cd-batch-count {
+  color: var(--cd-primary);
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0 4px;
+}
+
+.cd-batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 进出场动画 */
+.cd-fade-slide-enter-active,
+.cd-fade-slide-leave-active {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cd-fade-slide-enter-from,
+.cd-fade-slide-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
 }
 </style>

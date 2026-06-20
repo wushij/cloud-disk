@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -13,8 +13,12 @@ import FileListItem from '@/components/FileListItem.vue'
 import FileGridCard from '@/components/FileGridCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
-import { fileApiUrl } from '@/api/http'
+import MobileShareDialog from '@/components/MobileShareDialog.vue'
+import { fileApiUrl, TOKEN_KEY } from '@/api/http'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
+import { isTextFile } from '@/utils/filePreview'
+import { useH5BackGuard } from '@/composables/useH5BackGuard'
+import { downloadZip } from '@/utils/download'
 
 const auth = useAuthStore()
 const fileStore = useFileStore()
@@ -23,6 +27,85 @@ const { breadcrumb, items, loading, keyword } = storeToRefs(fileStore)
 const { activeTaskCount } = storeToRefs(transferStore)
 
 const viewMode = ref<'grid' | 'list'>('list')
+const selectMode = ref(false)
+const selectedItems = ref<FileItem[]>([])
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) {
+    clearSelection()
+  }
+}
+
+function exitSelectMode() {
+  selectMode.value = false
+  clearSelection()
+}
+
+function clearSelection() {
+  selectedItems.value = []
+}
+
+function toggleChecked(row: FileItem) {
+  const idx = selectedItems.value.findIndex(item => item.id === row.id && item.type === row.type)
+  if (idx >= 0) {
+    selectedItems.value.splice(idx, 1)
+  } else {
+    selectedItems.value.push(row)
+  }
+}
+
+function isChecked(row: FileItem) {
+  return selectedItems.value.some(item => item.id === row.id && item.type === row.type)
+}
+
+watch(breadcrumb, () => {
+  clearSelection()
+  selectMode.value = false
+}, { deep: true })
+
+function handleBatchDownload() {
+  const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
+  const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
+  if (folders.length === 0 && files.length === 0) return
+  
+  let path = '/api/files/download/zip'
+  const params: string[] = []
+  if (folders.length > 0) {
+    params.push(`folderIds=${folders.join(',')}`)
+  }
+  if (files.length > 0) {
+    params.push(`fileIds=${files.join(',')}`)
+  }
+  if (params.length > 0) {
+    path += '?' + params.join('&')
+  }
+  downloadZip(path)
+}
+
+function handleBatchDelete() {
+  if (selectedItems.value.length === 0) return
+  uni.showModal({
+    title: '确认删除',
+    content: `确定删除这 ${selectedItems.value.length} 个项目吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '正在删除...' })
+      try {
+        for (const item of selectedItems.value) {
+          await fileStore.deleteItem(item)
+        }
+        uni.showToast({ title: '批量删除成功', icon: 'success' })
+        clearSelection()
+        selectMode.value = false
+      } catch {
+        uni.showToast({ title: '删除失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  })
+}
 const actionVisible = ref(false)
 const actionItem = ref<FileItem | null>(null)
 const renameVisible = ref(false)
@@ -30,6 +113,10 @@ const renameTarget = ref<FileItem | null>(null)
 const renaming = ref(false)
 const createFolderVisible = ref(false)
 const creatingFolder = ref(false)
+const shareVisible = ref(false)
+const shareFileId = ref<number | null>(null)
+const shareFolderId = ref<number | null>(null)
+const shareItemName = ref('')
 
 function goTransfer() {
   uni.navigateTo({ url: '/pages/transfer/index' })
@@ -39,12 +126,17 @@ const actionList = computed(() => {
   const row = actionItem.value
   if (!row) return [] as { name: string }[]
   const list: { name: string }[] = []
-  if (row.type === 'folder') list.push({ name: '打开' })
+  if (row.type === 'folder') {
+    list.push({ name: '打开' })
+    list.push({ name: '打包下载' })
+  }
   if (row.type === 'file') {
     if (row.previewable && isImageFile(row)) list.push({ name: '预览图片' })
     if (row.previewable && isVideoFile(row)) list.push({ name: '播放视频' })
+    if (row.previewable && isTextFile(row.mimeType, row.name)) list.push({ name: '预览文本' })
     list.push({ name: '下载' })
   }
+  list.push({ name: '分享' })
   list.push({ name: '重命名' })
   list.push({ name: '删除' })
   return list
@@ -59,6 +151,11 @@ onShow(async () => {
 
 onMounted(() => {
   uni.$on('refresh-file-list', refreshList)
+})
+
+useH5BackGuard({
+  depth: () => breadcrumb.value.length - 1,
+  onAppBack: () => fileStore.goBackFolder()
 })
 
 onUnmounted(() => {
@@ -78,6 +175,10 @@ function toggleView() {
 }
 
 function openItem(row: FileItem) {
+  if (selectMode.value) {
+    toggleChecked(row)
+    return
+  }
   if (row.type === 'folder') {
     fileStore.enterFolder(row)
     return
@@ -88,6 +189,10 @@ function openItem(row: FileItem) {
   }
   if (isVideoFile(row)) {
     previewVideo(row)
+    return
+  }
+  if (isTextFile(row.mimeType, row.name)) {
+    previewText(row)
     return
   }
   showActions(row)
@@ -116,8 +221,15 @@ function onActionSelect(name: string) {
     case '播放视频':
       previewVideo(row)
       break
+    case '预览文本':
+      previewText(row)
+      break
     case '下载':
+    case '打包下载':
       downloadFile(row)
+      break
+    case '分享':
+      openShare(row)
       break
     case '重命名':
       promptRename(row)
@@ -126,6 +238,13 @@ function onActionSelect(name: string) {
       confirmDelete(row)
       break
   }
+}
+
+function openShare(row: FileItem) {
+  shareFileId.value = row.type === 'file' ? row.id : null
+  shareFolderId.value = row.type === 'folder' ? row.id : null
+  shareItemName.value = row.name
+  shareVisible.value = true
 }
 
 function previewImage(row: FileItem) {
@@ -138,8 +257,17 @@ function previewVideo(row: FileItem) {
   uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
 }
 
+function previewText(row: FileItem) {
+  const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+  uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
+}
+
 function downloadFile(row: FileItem) {
-  transferStore.addDownloadTask(row.id, row.name, row.size || 0)
+  if (row.type === 'folder') {
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
+    return
+  }
+  transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
   uni.showToast({ title: '已加入下载队列', icon: 'none' })
 }
 
@@ -208,8 +336,9 @@ async function chooseAndUpload() {
   uni.chooseFile({
     count: 9,
     success: async (res) => {
-      for (const file of res.tempFiles) {
-        await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId)
+      const files = Array.isArray(res.tempFiles) ? res.tempFiles : [res.tempFiles]
+      for (const file of files) {
+        await transferStore.addUploadTask((file as any).path, (file as any).name, (file as any).size, fileStore.currentFolderId)
       }
       uni.showToast({ title: '已添加到上传队列', icon: 'none' })
     }
@@ -220,26 +349,14 @@ async function chooseAndUpload() {
     count: 9,
     type: 'all',
     success: async (res) => {
-      for (const file of res.tempFiles) {
-        await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId)
+      const files = Array.isArray(res.tempFiles) ? res.tempFiles : [res.tempFiles]
+      for (const file of files) {
+        await transferStore.addUploadTask((file as any).path, (file as any).name, (file as any).size, fileStore.currentFolderId)
       }
       uni.showToast({ title: '已添加到上传队列', icon: 'none' })
     },
     fail: () => {
-      uni.chooseImage({
-        count: 9,
-        success: async (res) => {
-          const files = res.tempFiles || []
-          for (let i = 0; i < res.tempFilePaths.length; i++) {
-            const path = res.tempFilePaths[i]
-            const fileInfo = files[i] || {}
-            const size = fileInfo.size || 0
-            const name = path.split('/').pop() || `image_${Date.now()}.jpg`
-            await transferStore.addUploadTask(path, name, size, fileStore.currentFolderId)
-          }
-          uni.showToast({ title: '已添加到上传队列', icon: 'none' })
-        }
-      })
+      uni.showToast({ title: '请从聊天中选择文件，或使用浏览器访问上传', icon: 'none', duration: 3000 })
     }
   })
   // #endif
@@ -256,6 +373,10 @@ async function chooseAndUpload() {
     >
       <template #right>
         <view class="header-action-group">
+          <!-- 多选切换按钮 -->
+          <view class="header-action-btn cd-pressable" @click="toggleSelectMode">
+            <u-icon :name="selectMode ? 'checkmark-circle-fill' : 'list-dot'" size="22" :color="selectMode ? 'var(--cd-primary)' : '#000000'" bold />
+          </view>
           <view class="header-action-btn cd-pressable" @click="goTransfer">
             <u-icon name="download" size="22" color="#000000" bold />
             <view
@@ -320,8 +441,11 @@ async function chooseAndUpload() {
           >
             <FileGridCard
               :item="item"
+              :select-mode="selectMode"
+              :checked="isChecked(item)"
               @click="openItem(item)"
               @longpress="showActions(item)"
+              @check-change="toggleChecked(item)"
             />
           </view>
         </view>
@@ -332,8 +456,11 @@ async function chooseAndUpload() {
             v-for="item in items"
             :key="`${item.type}-${item.id}`"
             :item="item"
+            :select-mode="selectMode"
+            :checked="isChecked(item)"
             @click="openItem(item)"
             @longpress="showActions(item)"
+            @check-change="toggleChecked(item)"
           />
         </view>
       </template>
@@ -341,8 +468,31 @@ async function chooseAndUpload() {
 
     <!-- 上传进度交由传输列表后台管理 -->
 
-    <MobileActionBar @upload="chooseAndUpload" @folder="promptCreateFolder" />
-    <MobileTabBar active="disk" />
+    <MobileActionBar v-if="!selectMode" @upload="chooseAndUpload" @folder="promptCreateFolder" />
+    <MobileTabBar v-if="!selectMode" active="disk" />
+
+    <!-- 移动端批量操作栏 -->
+    <view v-if="selectMode" class="batch-footer-bar">
+      <view class="batch-footer-info">
+        <text class="info-label">已选择</text>
+        <text class="batch-count">{{ selectedItems.length }}</text>
+        <text class="info-label">项</text>
+      </view>
+      <view class="batch-footer-actions">
+        <view class="batch-action-btn download-btn cd-pressable" @click="handleBatchDownload">
+          <u-icon name="download" size="20" color="var(--cd-primary)" />
+          <text class="btn-text">打包下载</text>
+        </view>
+        <view class="batch-action-btn delete-btn cd-pressable" @click="handleBatchDelete">
+          <u-icon name="trash" size="20" color="#ef4444" />
+          <text class="btn-text">删除</text>
+        </view>
+        <view class="batch-action-btn cancel-btn cd-pressable" @click="exitSelectMode">
+          <u-icon name="close" size="20" color="#64748b" />
+          <text class="btn-text">取消</text>
+        </view>
+      </view>
+    </view>
 
     <u-action-sheet
       :show="actionVisible"
@@ -371,6 +521,13 @@ async function chooseAndUpload() {
       :maxlength="64"
       confirm-text="确定"
       @confirm="submitCreateFolder"
+    />
+
+    <MobileShareDialog
+      v-model:show="shareVisible"
+      :file-id="shareFileId"
+      :folder-id="shareFolderId"
+      :item-name="shareItemName"
     />
   </view>
 </template>
@@ -553,5 +710,133 @@ async function chooseAndUpload() {
   font-weight: 700;
   color: #fff;
   line-height: 1;
+}
+
+/* 移动端批量操作栏 */
+.batch-footer-bar {
+  position: fixed;
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
+  left: 24rpx;
+  right: 24rpx;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1rpx solid rgba(255, 255, 255, 0.6);
+  border-radius: 40rpx;
+  padding: 20rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 999;
+  box-shadow: 0 16rpx 48rpx rgba(15, 23, 42, 0.12), 0 2rpx 10rpx rgba(15, 23, 42, 0.04);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(150rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.batch-footer-info {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--cd-text, #0f172a);
+}
+
+.info-label {
+  color: var(--cd-text-secondary, #475569);
+  font-size: 24rpx;
+}
+
+.batch-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--cd-primary, #6366f1) 0%, #4f46e5 100%);
+  min-width: 44rpx;
+  height: 44rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+  box-shadow: 0 6rpx 16rpx rgba(99, 102, 241, 0.35);
+}
+
+.batch-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.batch-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  width: 104rpx;
+  height: 94rpx;
+  border-radius: 24rpx;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1rpx solid rgba(255, 255, 255, 0.5);
+  transition: all var(--cd-transition-bounce, 0.25s);
+
+  &.download-btn {
+    background: rgba(99, 102, 241, 0.07);
+    border-color: rgba(99, 102, 241, 0.12);
+    
+    .btn-text {
+      color: var(--cd-primary, #6366f1);
+      font-weight: 700;
+    }
+  }
+
+  &.delete-btn {
+    background: rgba(239, 68, 68, 0.07);
+    border-color: rgba(239, 68, 68, 0.12);
+
+    .btn-text {
+      color: #ef4444;
+      font-weight: 700;
+    }
+  }
+
+  &.cancel-btn {
+    background: rgba(100, 116, 139, 0.07);
+    border-color: rgba(100, 116, 139, 0.12);
+
+    .btn-text {
+      color: #64748b;
+      font-weight: 600;
+    }
+  }
+
+  &:active {
+    transform: scale(0.9);
+    
+    &.download-btn {
+      background: rgba(99, 102, 241, 0.15);
+    }
+    &.delete-btn {
+      background: rgba(239, 68, 68, 0.15);
+    }
+    &.cancel-btn {
+      background: rgba(100, 116, 139, 0.15);
+    }
+  }
+}
+
+.btn-text {
+  font-size: 19rpx;
 }
 </style>

@@ -227,9 +227,7 @@ public class RecycleService {
 
         }
 
-
-
-        List<Long> folderIds = folderTreeHelper.expandRecycledRestoreIds(userId, id);
+        List<Long> folderIds = folderTreeHelper.expandRecycledRestoreIds(id);
 
         folderMapper.update(null, new LambdaUpdateWrapper<Folder>()
 
@@ -325,7 +323,7 @@ public class RecycleService {
 
         }
 
-        List<Long> folderIds = folderTreeHelper.collectRecycledSubtreeIds(userId, id);
+        List<Long> folderIds = folderTreeHelper.collectRecycledSubtreeIds(id);
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 

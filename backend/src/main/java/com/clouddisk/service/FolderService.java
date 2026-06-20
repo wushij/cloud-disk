@@ -160,6 +160,41 @@ public class FolderService {
         return false;
     }
 
+    /** 团队目录下的分享权限：仅 OWNER / ADMIN 可创建外链 */
+    public void requireTeamSharePermission(long folderId, long userId) {
+        if (folderId <= 0) return;
+        TeamSpace space = resolveTeamSpaceForFolder(folderId);
+        if (space == null) return;
+
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getSpaceId, space.getId())
+                .eq(TeamMember::getUserId, userId));
+        if (member == null) {
+            throw new BusinessException("你不是该团队的成员");
+        }
+        if ("OWNER".equals(member.getRole()) || "ADMIN".equals(member.getRole())) {
+            return;
+        }
+        throw new BusinessException("普通成员无法分享团队文件，请联系团队管理员");
+    }
+
+    private TeamSpace resolveTeamSpaceForFolder(long folderId) {
+        Folder current = folderMapper.selectById(folderId);
+        if (current == null) return null;
+        int depth = 0;
+        while (current != null && depth < 30) {
+            TeamSpace space = teamSpaceMapper.selectOne(new LambdaQueryWrapper<TeamSpace>()
+                    .eq(TeamSpace::getRootFolderId, current.getId())
+                    .eq(TeamSpace::getStatus, 1));
+            if (space != null) return space;
+            Long parentId = current.getParentId();
+            if (parentId == null || parentId <= 0) break;
+            current = folderMapper.selectById(parentId);
+            depth++;
+        }
+        return null;
+    }
+
 
 
     private List<Map<String, Object>> buildTree(Long parentId, Map<Long, List<Folder>> byParent) {
@@ -310,7 +345,7 @@ public class FolderService {
 
 
 
-        List<Long> folderIds = folderTreeHelper.collectActiveSubtreeIds(userId, id);
+        List<Long> folderIds = folderTreeHelper.collectActiveSubtreeIds(id);
 
         folderMapper.update(null, new LambdaUpdateWrapper<Folder>()
 

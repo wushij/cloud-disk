@@ -40,14 +40,15 @@ function ensureConnected() {
   if (!url) return
 
   connecting = true
-  socketTask = uni.connectSocket({
+  const task = uni.connectSocket({
     url,
     complete: () => {
       connecting = false
     }
   })
+  socketTask = task
 
-  socketTask.onMessage((ev) => {
+  task.onMessage((ev) => {
     try {
       const data = JSON.parse(String(ev.data)) as WsMessage
       listeners.forEach((fn) => fn(data))
@@ -56,12 +57,12 @@ function ensureConnected() {
     }
   })
 
-  socketTask.onClose(() => {
+  task.onClose(() => {
     socketTask = null
     connecting = false
   })
 
-  socketTask.onError(() => {
+  task.onError(() => {
     socketTask = null
     connecting = false
   })

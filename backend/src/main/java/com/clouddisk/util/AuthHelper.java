@@ -12,10 +12,14 @@ public final class AuthHelper {
         String queryToken = request.getParameter("access_token");
         if (queryToken != null && !queryToken.isBlank()) {
             Object loginId = StpUtil.getLoginIdByToken(queryToken);
-            if (loginId == null) throw new BusinessException("登录凭证无效");
-            return Long.parseLong(loginId.toString());
+            if (loginId == null) throw new BusinessException("登录凭证无效或已过期");
+            try {
+                return Long.parseLong(loginId.toString());
+            } catch (NumberFormatException e) {
+                throw new BusinessException("登录凭证无效");
+            }
         }
-        if (!StpUtil.isLogin()) throw new BusinessException("未登录");
+        if (!StpUtil.isLogin()) throw new BusinessException("未登录或登录已过期");
         return StpUtil.getLoginIdAsLong();
     }
 }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
 import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
-import { fileExtLabel, fileTypeColor } from '@/utils/fileType'
+import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import { fmtSize } from '@/utils/fileCover'
 
 function formatDate(d: string) {
@@ -13,22 +14,38 @@ function formatDate(d: string) {
 
 defineProps<{
   item: FileItem
+  selectMode?: boolean
+  checked?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'click'): void
   (e: 'longpress'): void
+  (e: 'check-change', val: boolean): void
 }>()
 </script>
 
 <template>
   <view
     class="grid-card cd-pressable"
-    :class="{ folder: item.type === 'folder' }"
+    :class="{ folder: item.type === 'folder', 'is-selected': checked }"
     @click="$emit('click')"
     @longpress="$emit('longpress')"
   >
-    <view class="grid-thumb" :class="{ folder: item.type === 'folder' }">
+    <!-- 选择勾选框 -->
+    <view v-if="selectMode" class="grid-checkbox-wrap" @click.stop="emit('check-change', !checked)">
+      <view class="grid-checkbox-circle" :class="{ 'is-checked': checked }">
+        <u-icon v-if="checked" name="checkbox-mark" color="#fff" size="8" />
+      </view>
+    </view>
+
+    <view
+      class="grid-thumb"
+      :class="{
+        folder: item.type === 'folder' || fileTypeKind(item) === 'archive',
+        [`kind-${fileTypeKind(item)}`]: item.type === 'file' && !fileHasCover(item)
+      }"
+    >
       <image
         v-if="fileHasCover(item) && fileCoverKind(item) === 'image'"
         :src="fileCoverUrl(item)"
@@ -44,13 +61,24 @@ defineEmits<{
         :controls="false"
         object-fit="cover"
       />
-      <view v-else class="grid-icon" :class="{ folder: item.type === 'folder' }">
-        <u-icon
-          :name="item.type === 'folder' ? 'folder' : 'file-text'"
-          :size="item.type === 'folder' ? 40 : 36"
-          :color="item.type === 'folder' ? '#f59e0b' : fileTypeColor(item)"
+      <view v-else class="grid-icon" :class="fileTypeKind(item)">
+        <FolderTypeIcon
+          v-if="item.type === 'folder'"
+          :size="52"
         />
-        <text v-if="item.type === 'file'" class="grid-ext">{{ fileExtLabel(item) }}</text>
+        <FolderTypeIcon
+          v-else-if="fileTypeKind(item) === 'archive'"
+          archive
+          :size="52"
+        />
+        <template v-else>
+          <u-icon
+            :name="fileTypeIcon(item)"
+            size="36"
+            :color="fileTypeColor(item)"
+          />
+          <text class="grid-ext">{{ fileExtLabel(item) }}</text>
+        </template>
       </view>
       <view v-if="fileCoverKind(item) === 'video'" class="grid-play-badge">
         <u-icon name="play-circle-fill" size="20" color="#fff" />
@@ -97,7 +125,22 @@ defineEmits<{
 }
 
 .grid-thumb.folder {
-  background: linear-gradient(145deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.04));
+  background: transparent;
+}
+
+.grid-thumb.kind-archive {
+  background: transparent;
+  border: none;
+}
+
+.grid-thumb.kind-pdf {
+  background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1rpx solid rgba(239, 68, 68, 0.12);
+}
+
+.grid-thumb.kind-doc {
+  background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1rpx solid rgba(37, 99, 235, 0.12);
 }
 
 .grid-cover {
@@ -117,6 +160,10 @@ defineEmits<{
 }
 
 .grid-icon.folder {
+  background: transparent;
+}
+
+.grid-icon.archive {
   background: transparent;
 }
 
@@ -172,5 +219,34 @@ defineEmits<{
   color: var(--cd-text-muted);
   opacity: 0.7;
   flex-shrink: 0;
+}
+
+.grid-card.is-selected {
+  border-color: rgba(99, 102, 241, 0.35) !important;
+  background: rgba(99, 102, 241, 0.04) !important;
+}
+
+.grid-checkbox-wrap {
+  position: absolute;
+  top: 10rpx;
+  left: 10rpx;
+  z-index: 5;
+}
+
+.grid-checkbox-circle {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  border: 3rpx solid #cbd5e1;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--cd-transition-fast);
+}
+
+.grid-checkbox-circle.is-checked {
+  background: var(--cd-primary, #6366f1);
+  border-color: var(--cd-primary, #6366f1);
 }
 </style>

@@ -9,6 +9,8 @@ import { ElMessage } from 'element-plus'
 import http from '@/api/http'
 
 import PdfPreview from '@/components/PdfPreview.vue'
+import TextPreview from '@/components/TextPreview.vue'
+import { isTextFile } from '@/utils/filePreview'
 
 import VideoPreview from '@/components/VideoPreview.vue'
 
@@ -530,6 +532,10 @@ function getSingleShareImageUrl() {
       <VideoPreview v-else-if="previewMime.startsWith('video/')" :src="previewUrl" />
 
       <PdfPreview v-else-if="previewMime.includes('pdf')" :src="previewUrl" />
+
+      <TextPreview v-else-if="isTextFile(previewMime, previewName)" :src="previewUrl" />
+
+      <el-empty v-else description="暂不支持该类型预览" />
 
     </el-dialog>
 

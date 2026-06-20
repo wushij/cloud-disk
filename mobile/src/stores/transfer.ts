@@ -163,7 +163,7 @@ export const useTransferStore = defineStore('transfer', () => {
             task.speed = formatSpeed(task.loaded / elapsed)
           }
         },
-        task.abortController.signal
+        task.abortController?.signal
       )
 
       task.status = 'done'

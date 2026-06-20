@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { request, fileApiUrl } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 interface ShareItem {
   id: number
   shareCode: string
+  shareType?: string
   fileName?: string
   extractCode?: string
   expireTime?: string
@@ -19,9 +21,22 @@ interface ShareItem {
   folderId?: number
 }
 
+function isFolderShare(item: ShareItem) {
+  return item.shareType === 'FOLDER' || !!item.folderId || (item.fileName || '').includes('（文件夹）')
+}
+
+function isTeamFolderShare(item: ShareItem) {
+  return isFolderShare(item) && (item.fileName || '').includes('[团队]')
+}
+
+function displayShareName(item: ShareItem) {
+  return (item.fileName || item.shareCode).replace(/（文件夹）$/, '')
+}
+
 function isImageShare(item: ShareItem) {
+  if (isFolderShare(item)) return false
   const name = item.fileName || ''
-  if (!name) return false
+  if (!name || !item.fileId) return false
   const parts = name.split('.')
   if (parts.length <= 1) return false
   const ext = parts.pop()?.toLowerCase() || ''
@@ -46,17 +61,19 @@ function getShareIcon(item: ShareItem) {
   const name = item.fileName || ''
   if (!name) return 'share-fill'
   const parts = name.split('.')
-  if (parts.length <= 1) return 'folder-fill'
+  if (parts.length <= 1) return 'folder'
   const ext = parts.pop()?.toLowerCase() || ''
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'photo-fill'
   if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return 'play-circle-fill'
   if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'volume-fill'
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'file-zip-fill'
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'file-text-fill'
   if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'].includes(ext)) return 'file-text-fill'
   return 'file-text-fill'
 }
 
 function getShareIconStyle(item: ShareItem) {
+  if (isFolderShare(item)) return {}
+
   const name = item.fileName || ''
   const gradients = {
     folder: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // 琥珀
@@ -98,6 +115,25 @@ function getShareIconStyle(item: ShareItem) {
 const auth = useAuthStore()
 const list = ref<ShareItem[]>([])
 const loading = ref(false)
+const activeTab = ref<'active' | 'expired'>('active')
+
+function isExpired(item: ShareItem) {
+  if (!item.expireTime) return false
+  const exp = new Date(item.expireTime.replace('T', ' ').replace(/-/g, '/'))
+  return exp.getTime() < Date.now()
+}
+
+const expiredList = computed(() => {
+  return list.value.filter(item => isExpired(item))
+})
+
+const activeList = computed(() => {
+  return list.value.filter(item => !isExpired(item))
+})
+
+const displayedList = computed(() => {
+  return activeTab.value === 'active' ? activeList.value : expiredList.value
+})
 
 onShow(async () => {
   if (!auth.requireLogin()) return
@@ -139,30 +175,72 @@ async function removeShare(item: ShareItem) {
 
 <template>
   <view class="page">
-    <MobileHeader title="我的分享" :subtitle="`${list.length} 个链接`" gradient icon-type="share" />
+    <MobileHeader 
+      title="我的分享" 
+      :subtitle="`进行中 ${activeList.length} · 已失效 ${expiredList.length}`" 
+      gradient 
+      icon-type="share" 
+    />
+
+    <!-- 分类 Tab 切换栏 -->
+    <view class="tab-bar-container">
+      <view class="tab-bar-pill">
+        <view 
+          class="tab-item" 
+          :class="{ active: activeTab === 'active' }"
+          @click="activeTab = 'active'"
+        >
+          <text class="tab-text">进行中</text>
+          <text class="tab-badge" v-if="activeList.length > 0">{{ activeList.length }}</text>
+        </view>
+        <view 
+          class="tab-item" 
+          :class="{ active: activeTab === 'expired' }"
+          @click="activeTab = 'expired'"
+        >
+          <text class="tab-text">已失效</text>
+          <text class="tab-badge expired" v-if="expiredList.length > 0">{{ expiredList.length }}</text>
+        </view>
+      </view>
+    </view>
 
     <scroll-view scroll-y class="scroll">
       <view v-if="loading" class="state-box"><u-loading-icon text="加载中" color="var(--cd-primary)" /></view>
-      <view v-else-if="!list.length" class="state-box">
+      <view v-else-if="!displayedList.length" class="state-box">
         <EmptyState
           icon="share"
-          title="还没有分享"
-          description="在云盘中长按文件，即可创建分享链接发给好友"
+          :title="activeTab === 'active' ? '没有进行中的分享' : '没有已失效的分享'"
+          :description="activeTab === 'active' ? '在云盘中长按文件，即可创建分享链接发给好友' : '过期的分享链接清理后会显示在这里'"
         />
       </view>
-      <view v-for="item in list" :key="item.id" class="share-card">
+      <view 
+        v-for="item in displayedList" 
+        :key="item.id" 
+        class="share-card"
+        :class="{ 'is-expired-card': isExpired(item) }"
+      >
         <view class="share-body" @click="openShare(item)">
-          <view class="share-badge" :style="getShareIconStyle(item)">
+          <view
+            class="share-badge"
+            :class="{
+              'is-folder': isFolderShare(item),
+              'is-team-folder': isTeamFolderShare(item)
+            }"
+            :style="getShareIconStyle(item)"
+          >
             <image
-              v-if="isImageShare(item) && item.fileId"
+              v-if="isImageShare(item)"
               class="share-cover-img"
               :src="getShareImageUrl(item)"
               mode="aspectFill"
             />
-            <u-icon v-else :name="getShareIcon(item)" size="18" color="#fff" />
+            <view v-else-if="isFolderShare(item)" class="share-folder-icon">
+              <FolderTypeIcon :size="44" />
+            </view>
+            <u-icon v-else :name="getShareIcon(item)" size="22" color="#fff" />
           </view>
           <view class="share-main">
-            <text class="share-name">{{ item.fileName || item.shareCode }}</text>
+            <text class="share-name">{{ displayShareName(item) }}</text>
             <view class="share-stats">
               <view class="stat-pill">
                 <u-icon name="eye" size="14" color="#64748b" />
@@ -177,18 +255,29 @@ async function removeShare(item: ShareItem) {
                 <text>加密</text>
               </view>
             </view>
-            <text v-if="item.expireTime" class="share-expire">过期: {{ formatExpireTime(item.expireTime) }}</text>
+            <text v-if="item.expireTime" class="share-expire">
+              {{ isExpired(item) ? '已于 ' + formatExpireTime(item.expireTime) + ' 过期' : '过期时间: ' + formatExpireTime(item.expireTime) }}
+            </text>
+            <text v-else class="share-expire permanent">永久有效</text>
           </view>
         </view>
         <view class="share-actions">
-          <view class="action-chip" @click="copyLink(item)">
-            <u-icon name="file-text" size="16" color="var(--cd-primary)" />
-            <text>复制</text>
-          </view>
-          <view class="action-chip danger" @click="removeShare(item)">
-            <u-icon name="trash" size="16" color="#ef4444" />
-            <text>取消</text>
-          </view>
+          <template v-if="isExpired(item)">
+            <view class="action-chip danger" style="flex: 1;" @click="removeShare(item)">
+              <u-icon name="trash" size="16" color="#ef4444" />
+              <text>彻底清除</text>
+            </view>
+          </template>
+          <template v-else>
+            <view class="action-chip" @click="copyLink(item)">
+              <u-icon name="file-text" size="16" color="var(--cd-primary)" />
+              <text>复制</text>
+            </view>
+            <view class="action-chip danger" @click="removeShare(item)">
+              <u-icon name="trash" size="16" color="#ef4444" />
+              <text>取消</text>
+            </view>
+          </template>
         </view>
       </view>
     </scroll-view>
@@ -205,7 +294,7 @@ async function removeShare(item: ShareItem) {
 }
 
 .scroll {
-  height: calc(100vh - 200rpx);
+  height: calc(100vh - 300rpx);
   padding: 4rpx 0 24rpx;
 }
 
@@ -218,6 +307,82 @@ async function removeShare(item: ShareItem) {
   box-shadow: var(--cd-shadow-card);
   border: 1rpx solid var(--cd-border-light);
   transition: all var(--cd-transition-bounce);
+}
+
+.share-card.is-expired-card {
+  opacity: 0.65;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  
+  .share-name {
+    color: #64748b !important;
+    text-decoration: line-through;
+  }
+}
+
+.tab-bar-container {
+  padding: 16rpx 24rpx 8rpx;
+  background: var(--cd-bg);
+}
+
+.tab-bar-pill {
+  display: flex;
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 24rpx;
+  padding: 6rpx;
+  border: 1rpx solid var(--cd-border-light, #f1f5f9);
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 18rpx 0;
+  border-radius: 18rpx;
+  transition: all var(--cd-transition-fast, 0.2s);
+  
+  &.active {
+    background: #ffffff;
+    box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.06);
+    
+    .tab-text {
+      color: var(--cd-primary, #6366f1);
+      font-weight: 700;
+    }
+  }
+}
+
+.tab-text {
+  font-size: 26rpx;
+  color: var(--cd-text-muted, #64748b);
+  font-weight: 500;
+}
+
+.tab-badge {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #fff;
+  background: var(--cd-primary, #6366f1);
+  min-width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4rpx;
+  box-shadow: 0 2rpx 6rpx rgba(99, 102, 241, 0.2);
+
+  &.expired {
+    background: #94a3b8;
+    box-shadow: none;
+  }
+}
+
+.share-expire.permanent {
+  color: #10b981 !important;
+  font-weight: 600;
 }
 
 .share-card:active {
@@ -242,6 +407,26 @@ async function removeShare(item: ShareItem) {
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+}
+
+.share-badge.is-folder {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.share-badge.is-team-folder {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.share-folder-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .share-cover-img {

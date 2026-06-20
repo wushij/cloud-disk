@@ -2,6 +2,7 @@ package com.clouddisk.controller;
 
 import com.clouddisk.dto.ShareCreateRequest;
 import com.clouddisk.entity.FileRecord;
+import com.clouddisk.util.FileTypeUtils;
 import com.clouddisk.onlyoffice.ShareOnlyOfficeService;
 import com.clouddisk.service.FileService;
 import com.clouddisk.service.ShareService;
@@ -95,9 +96,11 @@ public class ShareController {
             return ResponseEntity.badRequest().build();
         }
         Resource resource = fileService.download(file.getId(), file.getUserId());
-        MediaType mediaType = file.getFileType() != null
+        MediaType mediaType = FileTypeUtils.isTextFile(file.getFileType(), file.getFileName())
+                ? new MediaType("text", "plain", StandardCharsets.UTF_8)
+                : (file.getFileType() != null
                 ? MediaType.parseMediaType(file.getFileType())
-                : MediaType.APPLICATION_OCTET_STREAM;
+                : MediaType.APPLICATION_OCTET_STREAM);
         return ResponseEntity.ok().contentType(mediaType).body(resource);
     }
 

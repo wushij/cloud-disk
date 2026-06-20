@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import http, { TOKEN_KEY } from '@/api/http'
+import { usePromptDialogStore } from '@/stores/promptDialog'
 import { calcFileMd5 } from '@/utils/md5'
 import { uploadFile } from '@/utils/upload'
 import { clearFolderCache, ensureFolderPath, fileRelativePath } from '@/utils/folderUpload'
@@ -365,12 +366,16 @@ export const useTransferStore = defineStore('transfer', () => {
 })
 
 export async function promptCreateFolder(parentId: number): Promise<boolean> {
-  const { value } = await ElMessageBox.prompt('请输入文件夹名称', '新建文件夹', {
-    confirmButtonText: '创建',
-    cancelButtonText: '取消'
-  }).catch(() => ({ value: null }))
-  if (!value?.trim()) return false
-  await http.post('/api/folders', { folderName: value.trim(), parentId })
+  const value = await usePromptDialogStore().open({
+    title: '新建文件夹',
+    message: '为当前目录创建一个新文件夹',
+    placeholder: '请输入文件夹名称',
+    confirmText: '创建',
+    icon: 'folder',
+    maxlength: 64
+  })
+  if (!value) return false
+  await http.post('/api/folders', { folderName: value, parentId })
   ElMessage.success('创建成功')
   return true
 }

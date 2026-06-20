@@ -26,7 +26,9 @@ const EN_MESSAGE_MAP: Record<string, string> = {
   'Network Error': '网络连接失败，请检查网络后重试',
   'timeout of 0ms exceeded': '请求超时，请稍后重试',
   'Request aborted': '请求已取消',
-  'Failed to fetch': '网络连接失败，请检查网络后重试'
+  'Failed to fetch': '网络连接失败，请检查网络后重试',
+  cancel: '',
+  close: ''
 }
 
 function statusToMessage(status: number, fallback = '操作失败'): string {
@@ -62,6 +64,8 @@ function statusToMessage(status: number, fallback = '操作失败'): string {
 export function toUserMessage(message: string, fallback = '操作失败'): string {
   const text = message.trim()
   if (!text) return fallback
+
+  if (/^cancel$|^close$/i.test(text)) return ''
 
   if (EN_MESSAGE_MAP[text]) return EN_MESSAGE_MAP[text]
 
@@ -99,7 +103,19 @@ export function showSuccessToast(message: string) {
   ElMessage.success(text)
 }
 
+/** Element Plus MessageBox 等用户主动取消，不应当作错误提示 */
+export function isBenignUserCancel(err: unknown): boolean {
+  if (err === 'cancel' || err === 'close') return true
+  if (typeof err === 'object' && err !== null) {
+    const action = (err as { action?: string }).action
+    if (action === 'cancel' || action === 'close') return true
+  }
+  return false
+}
+
 export function getApiErrorMessage(err: unknown, fallback = '操作失败'): string {
+  if (isBenignUserCancel(err)) return ''
+
   if (axios.isAxiosError(err)) {
     const ax = err as AxiosError<ApiErrorBody>
     const data = ax.response?.data

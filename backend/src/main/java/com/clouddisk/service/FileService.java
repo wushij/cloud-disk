@@ -17,8 +17,10 @@ import com.clouddisk.media.TranscodeStatus;
 import com.clouddisk.search.FileSearchService;
 import com.clouddisk.security.VirusScanService;
 import com.clouddisk.storage.StorageService;
+import com.clouddisk.util.FileTypeUtils;
 import com.clouddisk.util.FileValidator;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -28,11 +30,15 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
 
     private static final long MD5_CACHE_TTL = 86400 * 7;
+
+    /** 打包下载总大小上限：2 GB */
+    private static final long MAX_ZIP_TOTAL_BYTES = 2L * 1024 * 1024 * 1024;
 
     private final FileMapper fileMapper;
     private final FolderMapper folderMapper;
@@ -45,6 +51,7 @@ public class FileService {
     private final FileCacheService fileCacheService;
     private final StorageQuotaService quotaService;
     private final VirusScanService virusScanService;
+    private final FolderTreeHelper folderTreeHelper;
 
     /** ElasticSearch 搜索服务（条件装配，ES 未启用时为 null） */
     @Autowired(required = false)
@@ -174,6 +181,9 @@ public class FileService {
             folderService.getOwnedOrShared(folderId, userId);
         }
         fileValidator.validate(fileName, size);
+        if (!StringUtils.hasText(mimeType)) {
+            mimeType = FileTypeUtils.guessMimeType(fileName);
+        }
         quotaService.checkQuota(userId, size);
         checkDuplicateFileName(userId, folderId != null ? folderId : 0L, fileName, null);
         FileRecord record = new FileRecord();
@@ -323,10 +333,7 @@ public class FileService {
     }
 
     public boolean isOfficeFile(String mimeType, String fileName) {
-        String lower = fileName.toLowerCase();
-        return lower.endsWith(".doc") || lower.endsWith(".docx")
-                || lower.endsWith(".xls") || lower.endsWith(".xlsx")
-                || lower.endsWith(".ppt") || lower.endsWith(".pptx");
+        return FileTypeUtils.isOfficeFile(mimeType, fileName);
     }
 
     /** OnlyOffice 已启用且为 Office 文档时，前端才展示在线编辑入口 */
@@ -338,6 +345,9 @@ public class FileService {
         if (mimeType == null) mimeType = "";
         String lower = fileName.toLowerCase();
         if (mimeType.startsWith("image/") || mimeType.equals("application/pdf") || mimeType.startsWith("video/")) {
+            return true;
+        }
+        if (FileTypeUtils.isTextFile(mimeType, fileName)) {
             return true;
         }
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
@@ -461,4 +471,236 @@ public class FileService {
         }
         return m;
     }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    public static class ZipEntrySource {
+        private String relativePath;
+        private String storagePath;
+    }
+
+    private static class FolderZipNode {
+        final Folder folder;
+        final String zipPath;
+        FolderZipNode(Folder folder, String zipPath) {
+            this.folder = folder;
+            this.zipPath = zipPath;
+        }
+    }
+
+    private String resolveZipPathConflict(String originalName, Set<String> usedPaths, boolean isDir) {
+        if (!usedPaths.contains(originalName)) {
+            return originalName;
+        }
+        if (!isDir && originalName.contains(".")) {
+            int lastDot = originalName.lastIndexOf('.');
+            String base = lastDot > 0 ? originalName.substring(0, lastDot) : originalName;
+            String ext = lastDot > 0 ? originalName.substring(lastDot) : "";
+            int count = 1;
+            while (true) {
+                String newName = base + "_" + count + ext;
+                if (!usedPaths.contains(newName)) {
+                    return newName;
+                }
+                count++;
+            }
+        } else {
+            int count = 1;
+            while (true) {
+                String newName = originalName + "_" + count;
+                if (!usedPaths.contains(newName)) {
+                    return newName;
+                }
+                count++;
+            }
+        }
+    }
+
+    public List<ZipEntrySource> prepareZipSources(List<Long> folderIds, List<Long> fileIds, long userId) {
+        List<ZipEntrySource> sources = new ArrayList<>();
+        Set<String> usedPaths = new HashSet<>();
+        long totalSize = 0;
+
+        log.info("prepareZipSources 开始: folderIds={}, fileIds={}, userId={}", folderIds, fileIds, userId);
+
+        // 全局已处理的文件夹和文件 ID 集合，绝对防重防环
+        Set<Long> visitedFolderIds = new HashSet<>();
+        Set<Long> visitedFileIds = new HashSet<>();
+
+        // 1. 去重并精简 folderIds，防止选中父文件夹的同时又选中了其子文件夹
+        List<Long> cleanFolderIds = new ArrayList<>();
+        if (folderIds != null && !folderIds.isEmpty()) {
+            Set<Long> uniqueFolderIds = new LinkedHashSet<>(folderIds);
+            Set<Long> allDescendantFolderIds = new HashSet<>();
+            // 收集所有选中文件夹的所有子孙文件夹 ID
+            for (Long fid : uniqueFolderIds) {
+                List<Long> subtreeIds = folderTreeHelper.collectActiveSubtreeIds(fid);
+                if (subtreeIds != null) {
+                    for (Long subId : subtreeIds) {
+                        if (!Objects.equals(subId, fid)) {
+                            allDescendantFolderIds.add(subId);
+                        }
+                    }
+                }
+            }
+            // 过滤：只有那些不属于任何其他选中文件夹的子孙的文件夹，才是顶级要打包的文件夹
+            for (Long fid : uniqueFolderIds) {
+                if (!allDescendantFolderIds.contains(fid)) {
+                    cleanFolderIds.add(fid);
+                }
+            }
+        }
+
+        log.info("prepareZipSources 去重后顶级文件夹: cleanFolderIds={}", cleanFolderIds);
+
+        // 2. 收集所有将被打包的文件夹 ID 集合（包含 cleanFolderIds 及其所有的子孙文件夹 ID）
+        Set<Long> allCoveredFolderIds = new HashSet<>();
+        if (!cleanFolderIds.isEmpty()) {
+            for (Long fid : cleanFolderIds) {
+                List<Long> subtreeIds = folderTreeHelper.collectActiveSubtreeIds(fid);
+                log.info("prepareZipSources 收集子树: rootFolderId={}, subtreeIds={}", fid, subtreeIds);
+                if (subtreeIds != null) {
+                    allCoveredFolderIds.addAll(subtreeIds);
+                }
+            }
+        }
+
+        log.info("prepareZipSources allCoveredFolderIds={}", allCoveredFolderIds);
+
+        // 3. 处理直接选中的文件（如果该文件所在的文件夹已经在打包计划中了，直接过滤掉，防重）
+        if (fileIds != null) {
+            Set<Long> uniqueFileIds = new LinkedHashSet<>(fileIds);
+            for (Long fileId : uniqueFileIds) {
+                if (visitedFileIds.contains(fileId)) continue;
+                FileRecord file = getOwnedOrShared(fileId, userId);
+                if (file.getStatus() != 1) continue;
+                // 如果文件所属的文件夹已经属于要打包的文件夹树之一，就不再在根目录下重复打包了
+                if (file.getFolderId() != null && allCoveredFolderIds.contains(file.getFolderId())) {
+                    continue;
+                }
+                visitedFileIds.add(fileId);
+                totalSize += safeSize(file.getFileSize());
+                checkZipSizeLimit(totalSize);
+                // 提取纯文件名：fileName 可能包含路径前缀
+                String rawName = file.getFileName();
+                int lastSlash = rawName.lastIndexOf('/');
+                String baseName = lastSlash >= 0 ? rawName.substring(lastSlash + 1) : rawName;
+                String zipPath = resolveZipPathConflict(baseName, usedPaths, false);
+                usedPaths.add(zipPath);
+                sources.add(new ZipEntrySource(zipPath, resolvePlayPath(file)));
+            }
+        }
+
+        // 4. 处理直接选中的文件夹
+        if (!cleanFolderIds.isEmpty()) {
+            Set<Long> uniqueCleanFolderIds = new LinkedHashSet<>(cleanFolderIds);
+            for (Long folderId : uniqueCleanFolderIds) {
+                if (visitedFolderIds.contains(folderId)) continue;
+                Folder rootFolder = folderService.getOwnedOrShared(folderId, userId);
+                if (rootFolder.getDeleted() != 0) continue;
+
+                String rootZipName = resolveZipPathConflict(rootFolder.getFolderName(), usedPaths, true);
+                usedPaths.add(rootZipName);
+
+                // 显式写入顶级文件夹的规范 Entry（以 / 结尾，没有物理存储路径）
+                sources.add(new ZipEntrySource(rootZipName + "/", null));
+                visitedFolderIds.add(rootFolder.getId());
+
+                Queue<FolderZipNode> queue = new LinkedList<>();
+                queue.offer(new FolderZipNode(rootFolder, rootZipName));
+
+                while (!queue.isEmpty()) {
+                    FolderZipNode node = queue.poll();
+                    Folder currentFolder = node.folder;
+                    String currentZipPath = node.zipPath;
+
+                    log.debug("prepareZipSources BFS: folderId={}, folderName={}, zipPath={}",
+                            currentFolder.getId(), currentFolder.getFolderName(), currentZipPath);
+
+                    // 查询当前文件夹下的文件
+                    List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
+                            .eq(FileRecord::getFolderId, currentFolder.getId())
+                            .eq(FileRecord::getStatus, 1));
+
+                    log.debug("prepareZipSources BFS文件: folderId={}, 文件数量={}, 文件列表={}",
+                            currentFolder.getId(), files.size(),
+                            files.stream().map(f -> f.getId() + ":" + f.getFileName()).toList());
+                    
+                    Set<String> localUsedNames = new HashSet<>();
+                    for (FileRecord file : files) {
+                        if (visitedFileIds.contains(file.getId())) continue;
+                        visitedFileIds.add(file.getId());
+
+                        totalSize += safeSize(file.getFileSize());
+                        checkZipSizeLimit(totalSize);
+                        // 提取纯文件名：部分文件上传时 fileName 可能包含完整相对路径（如 test/hh/123/hh.md）
+                        // 而 ZIP 路径已由文件夹树构建（currentZipPath），直接拼接会导致路径重复
+                        String rawFileName = file.getFileName();
+                        String baseName = rawFileName;
+                        int lastSlash = rawFileName.lastIndexOf('/');
+                        if (lastSlash >= 0) {
+                            baseName = rawFileName.substring(lastSlash + 1);
+                        }
+                        String resolvedFileName = resolveZipPathConflict(baseName, localUsedNames, false);
+                        localUsedNames.add(resolvedFileName);
+                        
+                        String fileZipPath = currentZipPath + "/" + resolvedFileName;
+                        sources.add(new ZipEntrySource(fileZipPath, resolvePlayPath(file)));
+                    }
+
+                    // 查询当前文件夹下的子文件夹
+                    List<Folder> subfolders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+                            .eq(Folder::getParentId, currentFolder.getId())
+                            .eq(Folder::getDeleted, 0));
+
+                    log.debug("prepareZipSources BFS子文件夹: parentId={}, 子文件夹数量={}, 子文件夹列表={}",
+                            currentFolder.getId(), subfolders.size(),
+                            subfolders.stream().map(f -> f.getId() + ":" + f.getFolderName()).toList());
+                    
+                    Set<String> localUsedFolders = new HashSet<>();
+                    for (Folder sub : subfolders) {
+                        if (visitedFolderIds.contains(sub.getId())) continue;
+                        visitedFolderIds.add(sub.getId());
+
+                        String subFolderName = sub.getFolderName();
+                        String resolvedSubFolder = resolveZipPathConflict(subFolderName, localUsedFolders, true);
+                        localUsedFolders.add(resolvedSubFolder);
+
+                        String subZipPath = currentZipPath + "/" + resolvedSubFolder;
+                        // 显式写入子文件夹的规范 Entry
+                        sources.add(new ZipEntrySource(subZipPath + "/", null));
+
+                        queue.offer(new FolderZipNode(sub, subZipPath));
+                    }
+                }
+            }
+        }
+
+        log.info("打包下载准备完成: {} 个实体(含文件与目录), 总大小 {} MB (userId={})", sources.size(), totalSize / 1024 / 1024, userId);
+        return sources;
+    }
+
+    private static long safeSize(Long size) {
+        return size != null ? size : 0;
+    }
+
+    private static void checkZipSizeLimit(long totalSize) {
+        if (totalSize > MAX_ZIP_TOTAL_BYTES) {
+            throw new BusinessException("打包文件总大小超过 2GB 上限，请减少选择后重试");
+        }
+    }
+
+    public Resource loadStorageResource(String storagePath) {
+        return storageService.loadAsResource(storagePath);
+    }
+
+    public String getFolderName(Long folderId, long userId) {
+        try {
+            return folderService.getOwnedOrShared(folderId, userId).getFolderName();
+        } catch (Exception e) {
+            return "archive";
+        }
+    }
 }
+
