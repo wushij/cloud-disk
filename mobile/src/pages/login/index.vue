@@ -95,10 +95,6 @@ async function submit() {
       <view class="card">
         <text class="card-title">CloudDisk Pro</text>
 
-        <view class="auth-head">
-          <text class="auth-head-title">欢迎回来</text>
-        </view>
-
         <view class="field" :class="{ focused: focusField === 'user' }">
           <view class="field-prefix">
             <u-icon name="account" size="19" color="#a0aec0" />
@@ -127,7 +123,33 @@ async function submit() {
             @blur="focusField = ''"
           />
           <view class="field-suffix" @click="showPass = !showPass">
-            <u-icon :name="showPass ? 'eye-fill' : 'eye-off'" size="19" color="#a0aec0" />
+            <svg
+              v-if="showPass"
+              class="eye-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#a0aec0"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <svg
+              v-else
+              class="eye-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#a0aec0"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+              <line x1="4" y1="5" x2="20" y2="19" />
+            </svg>
           </view>
         </view>
 
@@ -253,16 +275,6 @@ async function submit() {
   margin-bottom: 4rpx;
 }
 
-.auth-head {
-  margin-bottom: 4rpx;
-}
-
-.auth-head-title {
-  font-size: 34rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-
 .field {
   display: flex;
   align-items: center;
@@ -291,6 +303,12 @@ async function submit() {
 
 .field-suffix {
   padding: 8rpx;
+}
+
+.eye-icon {
+  width: 38rpx;
+  height: 38rpx;
+  display: block;
 }
 
 .field-input {

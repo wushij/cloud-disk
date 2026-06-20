@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Delete, Document, Folder, RefreshLeft, CaretRight } from '@element-plus/icons-vue'
 import http from '@/api/http'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { fmtSize } from '@/utils/md5'
 import PageHeader from '@/components/PageHeader.vue'
 import { fileHasCover, fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 interface RecycleItem {
   id: number
@@ -19,6 +21,7 @@ interface RecycleItem {
 
 const items = ref<RecycleItem[]>([])
 const loading = ref(false)
+const confirmDialog = useConfirmDialogStore()
 
 async function load() {
   loading.value = true
@@ -48,6 +51,13 @@ function fmtTime(iso?: string) {
 }
 
 async function restore(row: RecycleItem) {
+  const ok = await confirmDialog.open({
+    title: '恢复项目',
+    message: `确定要恢复「${row.name}」？`,
+    confirmText: '恢复',
+    danger: false
+  })
+  if (!ok) return
   try {
     const url =
       row.type === 'folder'
@@ -62,11 +72,13 @@ async function restore(row: RecycleItem) {
 }
 
 async function remove(row: RecycleItem) {
-  await ElMessageBox.confirm(`确定永久删除「${row.name}」？删除后不可恢复。`, '彻底删除', {
-    type: 'warning',
-    confirmButtonText: '永久删除',
-    cancelButtonText: '取消'
+  const ok = await confirmDialog.open({
+    title: '彻底删除',
+    message: `确定彻底删除「${row.name}」？此操作无法撤销！`,
+    confirmText: '确定',
+    danger: true
   })
+  if (!ok) return
   try {
     const url =
       row.type === 'folder' ? `/api/recycle/folder/${row.id}` : `/api/recycle/file/${row.id}`
@@ -79,11 +91,13 @@ async function remove(row: RecycleItem) {
 }
 
 async function clearAll() {
-  await ElMessageBox.confirm('将永久删除回收站中全部内容，且不可恢复。', '清空回收站', {
-    type: 'warning',
-    confirmButtonText: '清空',
-    cancelButtonText: '取消'
+  const ok = await confirmDialog.open({
+    title: '清空回收站',
+    message: '确定要清空回收站中的所有项目吗？此操作将永久删除且无法撤销！',
+    confirmText: '清空',
+    danger: true
   })
+  if (!ok) return
   try {
     await http.delete('/api/recycle/clear')
     ElMessage.success('已清空')
@@ -91,6 +105,14 @@ async function clearAll() {
   } catch {
     /* global toast */
   }
+}
+
+const isArchive = (row: RecycleItem) => {
+  if (row.type !== 'file') return false
+  const name = row.name || ''
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : ''
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
 }
 
 onMounted(load)
@@ -151,10 +173,13 @@ onMounted(load)
                       </div>
                     </div>
                   </template>
-                  <el-icon v-else :size="20">
-                    <Folder v-if="row.type === 'folder'" />
-                    <Document v-else />
-                  </el-icon>
+                  <template v-else>
+                    <FolderTypeIcon v-if="row.type === 'folder'" :size="24" />
+                    <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="24" />
+                    <el-icon v-else :size="20">
+                      <Document />
+                    </el-icon>
+                  </template>
                 </div>
                 <div class="recycle-name-meta">
                   <span class="recycle-name">{{ row.name }}</span>

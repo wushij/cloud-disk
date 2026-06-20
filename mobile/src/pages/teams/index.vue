@@ -2,12 +2,14 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { request, fileApiUrl, uploadFile } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { globalTeamList } from '@/utils/sharedState'
+import { bumpTeamAvatarVersion, teamAvatarVersions } from '@/utils/teamAvatar'
 
 const auth = useAuthStore()
 
@@ -19,14 +21,16 @@ interface TeamSpace {
   myRole: string
   memberCount: number
   createdAt: string
+  avatar?: string
 }
 
-const teams = ref<TeamSpace[]>([])
+const teams = globalTeamList
 const loading = ref(false)
 const createVisible = ref(false)
 const creating = ref(false)
 
 onShow(async () => {
+  uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
   await loadTeams()
 })
@@ -68,9 +72,46 @@ function getAvatarStyle(teamId: number) {
   }
 }
 
+function getTeamAvatarUrl(teamId: number, avatarPath?: string) {
+  if (!avatarPath) return ''
+  const v = teamAvatarVersions.value[teamId] || 0
+  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  return v ? `${base}&v=${v}` : base
+}
+
+function changeTeamAvatar(team: TeamSpace) {
+  if (team.myRole !== 'OWNER' && team.myRole !== 'ADMIN') return
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0]
+      uni.showLoading({ title: '上传中...' })
+      try {
+        const data = await uploadFile({
+          url: `/api/teams/${team.id}/avatar`,
+          filePath: tempFilePath,
+          name: 'file'
+        }) as { avatar: string }
+        bumpTeamAvatarVersion(team.id)
+        const idx = teams.value.findIndex((t) => t.id === team.id)
+        if (idx >= 0) {
+          teams.value[idx] = { ...teams.value[idx], avatar: data.avatar }
+        }
+        uni.showToast({ title: '修改成功', icon: 'success' })
+      } catch (err) {
+        uni.showToast({ title: '上传失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  })
+}
+
 function enterTeam(team: TeamSpace) {
   uni.navigateTo({
-    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}&myRole=${team.myRole}`
+    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}&myRole=${team.myRole}&avatar=${encodeURIComponent(team.avatar || '')}`
   })
 }
 
@@ -134,6 +175,7 @@ const actionList = computed(() => {
   if (!selectedTeam.value) return []
   const list: { name: string; color?: string }[] = [{ name: '成员管理' }]
   if (selectedTeam.value.myRole === 'OWNER' || selectedTeam.value.myRole === 'ADMIN') {
+    list.push({ name: '更换团队头像' })
     list.push({ name: '重命名团队' })
   }
   if (selectedTeam.value.myRole === 'OWNER') {
@@ -155,8 +197,12 @@ function onActionSelect(item: { name: string }) {
   if (!team) return
   if (item.name === '成员管理') {
     uni.navigateTo({
-      url: `/pages/teams/members?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&myRole=${team.myRole}`
+      url: `/pages/teams/members?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&myRole=${team.myRole}&avatar=${encodeURIComponent(team.avatar || '')}`
     })
+    return
+  }
+  if (item.name === '更换团队头像') {
+    changeTeamAvatar(team)
     return
   }
   if (item.name === '重命名团队') {
@@ -225,7 +271,7 @@ async function onConfirmAction() {
     </MobileHeader>
 
     <scroll-view scroll-y class="content-scroll">
-      <view v-if="loading" class="state-box">
+      <view v-if="loading && !teams.length" class="state-box">
         <u-loading-icon text="加载中" color="var(--cd-primary)" />
       </view>
       <EmptyState
@@ -250,8 +296,9 @@ async function onConfirmAction() {
           @longpress="showTeamActions(team)"
         >
           <view class="team-card-left">
-            <view class="team-avatar" :style="getAvatarStyle(team.id)">
-              <text class="team-avatar-text">{{ team.name.charAt(0) }}</text>
+            <view class="team-avatar" :style="team.avatar ? {} : getAvatarStyle(team.id)">
+              <image v-if="team.avatar" :src="getTeamAvatarUrl(team.id, team.avatar)" class="team-avatar-img" mode="aspectFill" />
+              <text class="team-avatar-text" v-else>{{ team.name.charAt(0) }}</text>
             </view>
           </view>
           <view class="team-card-info">
@@ -380,6 +427,12 @@ async function onConfirmAction() {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.team-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
 }
 
 .team-avatar-text {

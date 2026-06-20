@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import http, { TOKEN_KEY } from '@/api/http'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import { usePromptDialogStore } from '@/stores/promptDialog'
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
 import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
 import { useFileStore, type FileItem } from '@/stores/file'
@@ -18,9 +20,12 @@ import TextPreview from '@/components/TextPreview.vue'
 import { isTextFile } from '@/utils/filePreview'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
 import { downloadZip } from '@/utils/download'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 const fileStore = useFileStore()
 const transferStore = useTransferStore()
+const confirmDialog = useConfirmDialogStore()
+const promptDialog = usePromptDialogStore()
 const { currentFolderId, breadcrumb, items, loading, keyword, fileType } = storeToRefs(fileStore)
 
 const viewMode = ref<'list' | 'grid'>('grid')
@@ -94,7 +99,13 @@ function handleBatchDownload() {
 }
 
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确定删除选中的 ${selectedItems.value.length} 个项目吗？`, '批量删除', { type: 'warning' })
+  const ok = await confirmDialog.open({
+    title: '批量删除',
+    message: `确定要批量删除选中的 ${selectedItems.value.length} 个项目吗？此操作将移入回收站！`,
+    confirmText: '删除',
+    danger: true
+  })
+  if (!ok) return
   try {
     for (const item of selectedItems.value) {
       const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
@@ -211,6 +222,17 @@ function openShare(row: FileItem) {
   shareVisible.value = true
 }
 
+/** 网格卡片单击：进入文件夹 / 预览文件 / 非可预览则下载 */
+function handleGridOpen(row: FileItem) {
+  if (row.type === 'folder') {
+    fileStore.enterFolder(row)
+  } else if (row.previewable) {
+    preview(row)
+  } else {
+    download(row)
+  }
+}
+
 function openMoveCopy(row: FileItem, mode: 'move' | 'copy') {
   moveCopyItem.value = row
   moveCopyMode.value = mode
@@ -218,13 +240,17 @@ function openMoveCopy(row: FileItem, mode: 'move' | 'copy') {
 }
 
 async function renameItem(row: FileItem) {
-  const { value } = await ElMessageBox.prompt('新名称', '重命名', { inputValue: row.name }).catch(() => ({
-    value: null
-  }))
-  if (!value?.trim() || value.trim() === row.name) return
+  const value = await promptDialog.open({
+    title: '重命名',
+    defaultValue: row.name,
+    confirmText: '确定',
+    icon: 'edit',
+    maxlength: 255
+  })
+  if (!value || value === row.name) return
   try {
     const url = row.type === 'folder' ? `/api/folders/${row.id}/rename` : `/api/files/${row.id}/rename`
-    await http.put(url, { name: value.trim() })
+    await http.put(url, { name: value })
     ElMessage.success('重命名成功')
     await refreshAfterChange()
   } catch {
@@ -233,7 +259,13 @@ async function renameItem(row: FileItem) {
 }
 
 async function deleteItem(row: FileItem) {
-  await ElMessageBox.confirm(`确定删除「${row.name}」？`, '删除', { type: 'warning' })
+  const ok = await confirmDialog.open({
+    title: '删除项目',
+    message: `确定删除「${row.name}」？此操作将移入回收站！`,
+    confirmText: '删除',
+    danger: true
+  })
+  if (!ok) return
   try {
     const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
     await http.delete(url)
@@ -265,6 +297,14 @@ const isVideo = computed(() => previewType.value.startsWith('video/'))
 const isPdf = computed(() => previewType.value.includes('pdf'))
 const isText = computed(() => isTextFile(previewType.value, previewName.value))
 const isOffice = computed(() => !!onlyOfficeConfig.value)
+
+const isArchive = (row: FileItem) => {
+  if (row.type !== 'file') return false
+  const name = row.name || ''
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : ''
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
+}
 
 onMounted(() => {
   fileStore.loadList()
@@ -434,7 +474,7 @@ onUnmounted(disconnectUploadWs)
           v-model:selectedIds="selectedIds"
           :items="items"
           :loading="loading"
-          @open="fileStore.enterFolder"
+          @open="handleGridOpen"
           @download="download"
           @direct-download="directDownload"
           @preview="preview"
@@ -495,9 +535,10 @@ onUnmounted(disconnectUploadWs)
                     playsinline
                   />
                   <div v-else class="cd-file-icon" :style="{ color: fileIconColor(row) }">
-                    <el-icon :size="22">
-                      <Folder v-if="row.type === 'folder'" />
-                      <Document v-else />
+                    <FolderTypeIcon v-if="row.type === 'folder'" :size="24" />
+                    <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="24" />
+                    <el-icon v-else :size="22">
+                      <Document />
                     </el-icon>
                   </div>
                   <span v-if="row.highlightName" class="cd-name-text" v-html="row.highlightName" />
@@ -820,7 +861,7 @@ onUnmounted(disconnectUploadWs)
 .cd-type-select :deep(.el-select__wrapper) {
   background-color: var(--cd-bg);
   box-shadow: 0 0 0 1px var(--cd-border) inset !important;
-  border-radius: 10px;
+  border-radius: var(--cd-radius-full);
   height: 36px;
   min-height: 36px;
   padding: 0 10px 0 12px;
@@ -973,7 +1014,7 @@ onUnmounted(disconnectUploadWs)
   height: 36px;
   background: var(--cd-bg);
   border: 1px solid var(--cd-border);
-  border-radius: 10px;
+  border-radius: var(--cd-radius-full);
   padding: 0 12px;
   transition: var(--cd-transition-fast);
 }
@@ -1001,7 +1042,7 @@ onUnmounted(disconnectUploadWs)
   display: flex;
   background: var(--cd-bg);
   border: 1px solid var(--cd-border);
-  border-radius: 10px;
+  border-radius: var(--cd-radius-full);
   padding: 3px;
   gap: 2px;
 }
@@ -1011,7 +1052,7 @@ onUnmounted(disconnectUploadWs)
   height: 30px;
   border: none;
   background: none;
-  border-radius: 7px;
+  border-radius: var(--cd-radius-full);
   cursor: pointer;
   display: flex;
   align-items: center;

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 
-defineProps<{
+const props = defineProps<{
   active: 'disk' | 'shares' | 'teams' | 'profile'
 }>()
 
@@ -24,8 +24,9 @@ const tabs: TabItem[] = [
   { key: 'profile', label: '我的', path: '/pages/profile/index', icon: 'account-fill' }
 ]
 
-function switchTab(path: string) {
-  uni.reLaunch({ url: path })
+function switchTab(tab: TabItem) {
+  if (props.active === tab.key) return
+  uni.switchTab({ url: tab.path })
 }
 </script>
 
@@ -37,7 +38,7 @@ function switchTab(path: string) {
         :key="tab.key"
         class="tab-item cd-pressable"
         :class="{ active: active === tab.key }"
-        @click="switchTab(tab.path)"
+        @click="switchTab(tab)"
       >
         <view class="tab-icon-wrap" :class="{ active: active === tab.key }">
           <svg
@@ -113,21 +114,21 @@ function switchTab(path: string) {
 .tab-badge-dot {
   position: absolute;
   top: -2rpx;
-  right: -6rpx;
-  min-width: 28rpx;
-  height: 28rpx;
-  padding: 0 6rpx;
+  right: -4rpx;
+  min-width: 20rpx;
+  height: 20rpx;
+  padding: 0 4rpx;
   border-radius: 999rpx;
   background: #ef4444;
-  border: 2rpx solid #fff;
-  box-shadow: 0 2rpx 8rpx rgba(239, 68, 68, 0.35);
+  border: 1.5rpx solid #fff;
+  box-shadow: 0 2rpx 6rpx rgba(239, 68, 68, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .tab-badge-text {
-  font-size: 18rpx;
+  font-size: 14rpx;
   font-weight: 700;
   color: #fff;
   line-height: 1;

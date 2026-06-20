@@ -15,6 +15,7 @@ public class TeamSpace {
     private Long rootFolderId;
     private Long maxSize;
     private Integer status;
+    private String avatar;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
     @TableField(fill = FieldFill.INSERT_UPDATE)

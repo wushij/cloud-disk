@@ -129,11 +129,16 @@
    ============================================ */
 
 /* ---- 按钮 ---- */
+.el-button {
+  border-radius: var(--cd-radius-full) !important;
+  font-weight: 600 !important;
+}
+
 .el-button--primary:not(.is-link):not(.is-text) {
   background: var(--cd-primary-gradient) !important;
   border: none !important;
   color: #fff !important;
-  font-weight: 500;
+  font-weight: 600;
   transition: var(--cd-transition);
 }
 
@@ -161,7 +166,7 @@
 
 /* ---- 输入框 ---- */
 .el-input__wrapper {
-  border-radius: var(--cd-radius) !important;
+  border-radius: 20px !important;
   transition: var(--cd-transition);
   box-shadow: 0 0 0 1px var(--cd-border) inset !important;
 }
@@ -309,8 +314,13 @@
 /* ---- Badge ---- */
 .el-badge__content {
   background: var(--cd-primary) !important;
-  border: 2px solid #fff !important;
+  border: none !important;
   font-weight: 600;
+  height: 14px !important;
+  min-width: 14px !important;
+  padding: 0 4px !important;
+  font-size: 10px !important;
+  line-height: 12px !important;
   animation: badgePulse 2s ease-in-out infinite;
 }
 

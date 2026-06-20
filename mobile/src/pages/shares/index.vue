@@ -7,6 +7,8 @@ import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import { globalShareList } from '@/utils/sharedState'
 
 interface ShareItem {
   id: number
@@ -19,6 +21,7 @@ interface ShareItem {
   downloadCount?: number
   fileId?: number
   folderId?: number
+  status?: number
 }
 
 function isFolderShare(item: ShareItem) {
@@ -113,11 +116,33 @@ function getShareIconStyle(item: ShareItem) {
 }
 
 const auth = useAuthStore()
-const list = ref<ShareItem[]>([])
+const list = globalShareList
 const loading = ref(false)
 const activeTab = ref<'active' | 'expired'>('active')
 
+const removeShareVisible = ref(false)
+const shareToRemove = ref<ShareItem | null>(null)
+
+const removeShareDialogTitle = computed(() =>
+  shareToRemove.value && isExpired(shareToRemove.value) ? '彻底删除' : '取消分享'
+)
+
+const removeShareDialogMessage = computed(() => {
+  const item = shareToRemove.value
+  if (!item) return ''
+  const name = displayShareName(item)
+  if (isExpired(item)) {
+    return `确定彻底删除失效分享「${name}」？删除后无法恢复。`
+  }
+  return `确定取消分享「${name}」？`
+})
+
+const removeShareConfirmText = computed(() =>
+  shareToRemove.value && isExpired(shareToRemove.value) ? '彻底删除' : '确定'
+)
+
 function isExpired(item: ShareItem) {
+  if (item.status === 0) return true
   if (!item.expireTime) return false
   const exp = new Date(item.expireTime.replace('T', ' ').replace(/-/g, '/'))
   return exp.getTime() < Date.now()
@@ -136,6 +161,7 @@ const displayedList = computed(() => {
 })
 
 onShow(async () => {
+  uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
   loading.value = true
   try {
@@ -158,18 +184,32 @@ function copyLink(item: ShareItem) {
   })
 }
 
-async function removeShare(item: ShareItem) {
-  uni.showModal({
-    title: '取消分享',
-    content: '确定取消该分享链接？',
-    success: async (res) => {
-      if (!res.confirm) return
-      await request({ url: `/api/share/${item.id}`, method: 'DELETE' })
-      uni.showToast({ title: '已取消', icon: 'success' })
-      const data = await request<{ content?: ShareItem[] } | ShareItem[]>({ url: '/api/share/mine' })
-      list.value = Array.isArray(data) ? data : data.content || []
+function removeShare(item: ShareItem) {
+  shareToRemove.value = item
+  removeShareVisible.value = true
+}
+
+async function handleRemoveShareConfirm() {
+  const item = shareToRemove.value
+  if (!item) return
+  const expired = isExpired(item)
+  try {
+    await request({ url: `/api/share/${item.id}`, method: 'DELETE' })
+    if (expired) {
+      list.value = list.value.filter((r) => r.id !== item.id)
+      uni.showToast({ title: '已彻底删除', icon: 'success' })
+    } else {
+      const idx = list.value.findIndex((r) => r.id === item.id)
+      if (idx >= 0) {
+        list.value[idx] = { ...list.value[idx], status: 0 }
+      }
+      uni.showToast({ title: '已取消分享', icon: 'success' })
     }
-  })
+  } catch {
+    /* handled */
+  } finally {
+    shareToRemove.value = null
+  }
 }
 </script>
 
@@ -205,7 +245,7 @@ async function removeShare(item: ShareItem) {
     </view>
 
     <scroll-view scroll-y class="scroll">
-      <view v-if="loading" class="state-box"><u-loading-icon text="加载中" color="var(--cd-primary)" /></view>
+      <view v-if="loading && !displayedList.length" class="state-box"><u-loading-icon text="加载中" color="var(--cd-primary)" /></view>
       <view v-else-if="!displayedList.length" class="state-box">
         <EmptyState
           icon="share"
@@ -265,7 +305,7 @@ async function removeShare(item: ShareItem) {
           <template v-if="isExpired(item)">
             <view class="action-chip danger" style="flex: 1;" @click="removeShare(item)">
               <u-icon name="trash" size="16" color="#ef4444" />
-              <text>彻底清除</text>
+              <text>彻底删除</text>
             </view>
           </template>
           <template v-else>
@@ -283,6 +323,15 @@ async function removeShare(item: ShareItem) {
     </scroll-view>
 
     <MobileTabBar active="shares" />
+
+    <MobileConfirmDialog
+      v-model:show="removeShareVisible"
+      :title="removeShareDialogTitle"
+      :message="removeShareDialogMessage"
+      :confirm-text="removeShareConfirmText"
+      danger
+      @confirm="handleRemoveShareConfirm"
+    />
   </view>
 </template>
 
@@ -310,10 +359,13 @@ async function removeShare(item: ShareItem) {
 }
 
 .share-card.is-expired-card {
-  opacity: 0.65;
   background: #f8fafc !important;
   border-color: #e2e8f0 !important;
-  
+
+  .share-body {
+    opacity: 0.72;
+  }
+
   .share-name {
     color: #64748b !important;
     text-decoration: line-through;

@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
 import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
 import type { FileItem } from '@/stores/file'
+import FolderTypeIcon from './FolderTypeIcon.vue'
 
 export type { FileItem }
 
@@ -53,6 +54,8 @@ function toggleSelect(row: FileItem, checked: boolean) {
 function onCardClick(row: FileItem) {
   if (isSelecting.value) {
     toggleSelect(row, !isSelected(row))
+  } else {
+    emit('open', row)
   }
 }
 
@@ -70,6 +73,12 @@ function fileExt(row: FileItem): string {
 
   return dot > 0 ? name.substring(dot + 1).toUpperCase() : ''
 
+}
+
+const isArchive = (row: FileItem) => {
+  if (row.type !== 'file') return false
+  const ext = fileExt(row).toLowerCase()
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
 }
 
 
@@ -160,23 +169,15 @@ function formatDate(value?: string) {
             playsinline
           />
           <div v-else class="cd-grid-icon" :style="{ color: fileIconColor(row) }">
-
-            <el-icon :size="32">
-
-              <Folder v-if="row.type === 'folder'" />
-
-              <Document v-else-if="row.mimeType?.includes('pdf')" />
-
+            <FolderTypeIcon v-if="row.type === 'folder'" :size="48" />
+            <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="48" />
+            <el-icon v-else :size="32">
+              <Document v-if="row.mimeType?.includes('pdf')" />
               <Picture v-else-if="row.mimeType?.startsWith('image/')" />
-
               <VideoPlay v-else-if="row.mimeType?.startsWith('video/')" />
-
               <Document v-else />
-
             </el-icon>
-
             <span v-if="fileExt(row)" class="cd-grid-ext">{{ fileExt(row) }}</span>
-
           </div>
 
           <!-- 转码标签 -->

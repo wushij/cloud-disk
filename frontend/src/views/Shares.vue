@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Notebook, Files } from '@element-plus/icons-vue'
 import http, { TOKEN_KEY } from '@/api/http'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 const activeTab = ref<'active' | 'expired'>('active')
 
@@ -81,8 +83,21 @@ function getShareImageUrl(row: ShareRow) {
   return `/api/files/${row.fileId}/preview?access_token=${token}`
 }
 
+function isFolder(row: ShareRow) {
+  if (row.folderId != null) return true
+  return !row.fileName.includes('.')
+}
+
+function isArchive(row: ShareRow) {
+  if (row.folderId != null) return false
+  const name = row.fileName.toLowerCase()
+  const ext = name.split('.').pop() || ''
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
+}
+
 const rows = ref<ShareRow[]>([])
 const loading = ref(false)
+const confirmDialog = useConfirmDialogStore()
 
 async function load() {
   loading.value = true
@@ -102,11 +117,28 @@ function copyLink(row: ShareRow) {
 }
 
 async function cancel(row: ShareRow) {
-  await ElMessageBox.confirm('确定取消该分享？', '提示', { type: 'warning' })
+  const expired = isExpired(row)
+  const ok = await confirmDialog.open({
+    title: expired ? '彻底删除' : '取消分享',
+    message: expired
+      ? `确定彻底删除失效分享「${row.fileName}」？删除后无法恢复。`
+      : `确定取消分享「${row.fileName}」？`,
+    confirmText: expired ? '彻底删除' : '确定',
+    danger: true
+  })
+  if (!ok) return
   try {
     await http.delete(`/api/share/${row.id}`)
-    ElMessage.success('已取消')
-    load()
+    if (expired) {
+      rows.value = rows.value.filter((r) => r.id !== row.id)
+      ElMessage.success('已彻底删除')
+    } else {
+      const idx = rows.value.findIndex((r) => r.id === row.id)
+      if (idx >= 0) {
+        rows.value[idx] = { ...rows.value[idx], status: 0 }
+      }
+      ElMessage.success('已取消分享')
+    }
   } catch {
     /* global toast */
   }
@@ -156,9 +188,13 @@ onMounted(load)
                 <div v-if="isImageShare(row)" class="cd-share-cover-wrapper">
                   <img :src="getShareImageUrl(row)" class="cd-share-cover" alt="" />
                 </div>
-                <el-icon v-else :size="20" :style="{ color: getIconColor(row.fileName) }">
-                  <component :is="getFileIcon(row.fileName)" />
-                </el-icon>
+                <template v-else>
+                  <FolderTypeIcon v-if="isFolder(row)" :size="24" />
+                  <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="24" />
+                  <el-icon v-else :size="20" :style="{ color: getIconColor(row.fileName) }">
+                    <component :is="getFileIcon(row.fileName)" />
+                  </el-icon>
+                </template>
                 <span class="cd-share-filename-text">{{ row.fileName }}</span>
               </div>
             </template>
@@ -193,19 +229,22 @@ onMounted(load)
           </el-table-column>
           <el-table-column label="操作" width="220" fixed="right" align="center">
             <template #default="{ row }">
-              <div class="cd-action-buttons">
+              <div class="cd-action-pills">
                 <template v-if="isExpired(row)">
-                  <el-button class="cd-action-btn delete" size="small" @click="cancel(row)">
-                    <el-icon><Close /></el-icon>彻底清除
-                  </el-button>
+                  <button type="button" class="cd-action-pill danger" @click="cancel(row)">
+                    <el-icon :size="14"><Close /></el-icon>
+                    彻底清除
+                  </button>
                 </template>
                 <template v-else>
-                  <el-button class="cd-action-btn copy" size="small" @click="copyLink(row)">
-                    <el-icon><CopyDocument /></el-icon>复制链接
-                  </el-button>
-                  <el-button class="cd-action-btn cancel" size="small" @click="cancel(row)">
-                    <el-icon><Close /></el-icon>取消分享
-                  </el-button>
+                  <button type="button" class="cd-action-pill primary" @click="copyLink(row)">
+                    <el-icon :size="14"><CopyDocument /></el-icon>
+                    复制链接
+                  </button>
+                  <button type="button" class="cd-action-pill muted" @click="cancel(row)">
+                    <el-icon :size="14"><Close /></el-icon>
+                    取消分享
+                  </button>
                 </template>
               </div>
             </template>
@@ -226,13 +265,22 @@ onMounted(load)
 }
 
 .cd-shares-table :deep(.el-table__row.is-expired-row) {
-  opacity: 0.6;
   background-color: #f8fafc !important;
 }
 
-.cd-shares-table :deep(.el-table__row.is-expired-row .cd-share-filename-text) {
-  text-decoration: line-through;
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-share-filename-text),
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-cell-text),
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-share-code) {
   color: var(--cd-text-placeholder) !important;
+  text-decoration: line-through;
+}
+
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-file-name) {
+  opacity: 0.72;
+}
+
+.cd-shares-table :deep(.el-table__row.is-expired-row .cd-action-pills) {
+  opacity: 1;
 }
 
 .cd-shares-tabs {
@@ -254,17 +302,6 @@ onMounted(load)
   font-weight: 700;
 }
 
-/* 彻底清除按钮 */
-.cd-action-btn.delete {
-  background: #fef2f2 !important;
-  color: #b91c1c !important;
-}
-
-.cd-action-btn.delete:hover {
-  background: #fee2e2 !important;
-  border-color: #fca5a5 !important;
-  transform: translateY(-1px);
-}
 
 .cd-share-code {
   font-family: monospace;
@@ -286,52 +323,6 @@ onMounted(load)
 .cd-cell-text {
   font-size: 13px;
   color: var(--cd-text-secondary);
-}
-
-.cd-action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
-
-.cd-action-btn {
-  border: 1px solid transparent !important;
-  font-weight: 600 !important;
-  transition: all var(--cd-transition-fast, 0.15s) !important;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px !important;
-  height: 28px !important;
-  border-radius: 6px !important;
-}
-
-/* 复制链接 */
-.cd-action-btn.copy {
-  background: #eff6ff !important;
-  color: #1d4ed8 !important;
-}
-
-.cd-action-btn.copy:hover {
-  background: #dbeafe !important;
-  border-color: #93c5fd !important;
-  transform: translateY(-1px);
-}
-
-/* 取消分享 */
-.cd-action-btn.cancel {
-  background: #fef2f2 !important;
-  color: #b91c1c !important;
-}
-
-.cd-action-btn.cancel:hover {
-  background: #fee2e2 !important;
-  border-color: #fca5a5 !important;
-  transform: translateY(-1px);
-}
-
-.cd-action-btn:active {
-  transform: translateY(0) !important;
 }
 
 .cd-share-cover-wrapper {

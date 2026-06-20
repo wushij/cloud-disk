@@ -27,7 +27,25 @@ export default defineConfig({
       },
       '/share': {
         target: 'http://127.0.0.1:8088',
-        changeOrigin: true
+        changeOrigin: true,
+        bypass: (req, res) => {
+          const url = req.url || ''
+          const isApi = url.includes('/items') || 
+                        url.includes('/access') || 
+                        url.includes('/download') || 
+                        url.includes('/preview') || 
+                        url.includes('/direct-url') || 
+                        url.includes('/onlyoffice')
+          const isHtml = req.headers.accept && req.headers.accept.includes('text/html')
+          if (isHtml && !isApi) {
+            const match = url.match(/^\/share\/([^/?#]+)/)
+            if (match && match[1]) {
+              res.writeHead(302, { Location: `/#/pages/share/view?code=${match[1]}` })
+              res.end()
+              return false
+            }
+          }
+        }
       },
       '/ws': {
         target: 'ws://127.0.0.1:8088',

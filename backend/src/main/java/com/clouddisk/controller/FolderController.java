@@ -43,4 +43,9 @@ public class FolderController {
         folderService.deleteToRecycle(id);
         return Map.of("message", "已移入回收站");
     }
+
+    @GetMapping("/{id}/breadcrumbs")
+    public List<Map<String, Object>> getBreadcrumbs(@PathVariable Long id) {
+        return folderService.getBreadcrumbs(id, com.clouddisk.service.AuthService.currentUserId());
+    }
 }

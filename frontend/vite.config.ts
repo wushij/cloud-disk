@@ -30,9 +30,22 @@ export default defineConfig(({ mode }) => {
           timeout: 3_600_000,
           proxyTimeout: 3_600_000
         },
-        '/share/': {
+        '/share': {
           target: apiTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          bypass: (req) => {
+            const url = req.url || ''
+            const isApi = url.includes('/items') || 
+                          url.includes('/access') || 
+                          url.includes('/download') || 
+                          url.includes('/preview') || 
+                          url.includes('/direct-url') || 
+                          url.includes('/onlyoffice')
+            const isHtml = req.headers.accept && req.headers.accept.includes('text/html')
+            if (isHtml && !isApi) {
+              return '/index.html'
+            }
+          }
         },
         '/ws': {
           target: wsTarget,

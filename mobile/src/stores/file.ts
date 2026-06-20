@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { request } from '@/api/http'
+import { updateUrlQueryParam } from '@/utils/navUrlHelper'
 
 export interface FileItem {
   id: number
@@ -39,11 +40,29 @@ export const useFileStore = defineStore('file', () => {
     }
   }
 
+  async function loadBreadcrumbs(folderId: number) {
+    if (folderId <= 0) {
+      breadcrumb.value = [{ id: 0, name: '全部文件' }]
+      return
+    }
+    try {
+      const data = await request<{ id: number; name: string }[]>({
+        url: `/api/folders/${folderId}/breadcrumbs`
+      })
+      if (Array.isArray(data)) {
+        breadcrumb.value = data
+      }
+    } catch {
+      breadcrumb.value = [{ id: 0, name: '全部文件' }]
+    }
+  }
+
   function enterFolder(row: FileItem) {
     if (row.type !== 'folder') return
     breadcrumb.value.push({ id: row.id, name: row.name })
     currentFolderId.value = row.id
     keyword.value = ''
+    updateUrlQueryParam({ folderId: row.id })
     return loadList()
   }
 
@@ -51,6 +70,7 @@ export const useFileStore = defineStore('file', () => {
     const target = breadcrumb.value[idx]
     breadcrumb.value = breadcrumb.value.slice(0, idx + 1)
     currentFolderId.value = target.id
+    updateUrlQueryParam({ folderId: target.id === 0 ? null : target.id })
     return loadList()
   }
 
@@ -87,6 +107,7 @@ export const useFileStore = defineStore('file', () => {
     loading,
     keyword,
     loadList,
+    loadBreadcrumbs,
     enterFolder,
     gotoCrumb,
     goBackFolder,

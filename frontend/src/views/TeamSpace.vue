@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 import http, { TOKEN_KEY } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
 import FileGridView from '@/components/FileGridView.vue'
 import PdfPreview from '@/components/PdfPreview.vue'
@@ -13,10 +14,12 @@ import { isTextFile } from '@/utils/filePreview'
 import type { FileItem } from '@/stores/file'
 import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
+import { bumpTeamAvatarVersion, getTeamAvatarVersion } from '@/utils/teamAvatar'
 import { downloadZip } from '@/utils/download'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
+const confirmDialog = useConfirmDialogStore()
 
 interface TeamSpace {
   id: number
@@ -26,6 +29,7 @@ interface TeamSpace {
   myRole: string
   memberCount: number
   createdAt: string
+  avatar?: string
 }
 
 interface TeamMember {
@@ -78,7 +82,13 @@ function handleBatchDownload() {
 }
 
 async function handleBatchDelete() {
-  await ElMessageBox.confirm(`确定删除选中的 ${selectedItems.value.length} 个项目吗？`, '批量删除', { type: 'warning' })
+  const ok = await confirmDialog.open({
+    title: '批量删除',
+    message: `确定要批量删除选中的 ${selectedItems.value.length} 个项目吗？此操作将移入回收站！`,
+    confirmText: '删除',
+    danger: true
+  })
+  if (!ok) return
   try {
     for (const item of selectedItems.value) {
       const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
@@ -110,6 +120,59 @@ const renameVisible = ref(false)
 const renameName = ref('')
 const renameTarget = ref<TeamSpace | null>(null)
 const renaming = ref(false)
+
+const teamAvatarUploading = ref(false)
+const teamAvatarInputRef = ref<HTMLInputElement | null>(null)
+
+function teamAvatarSrc(space: TeamSpace) {
+  if (!space.avatar) return ''
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (!token) return ''
+  const v = getTeamAvatarVersion(space.id)
+  return `/api/teams/${space.id}/avatar?access_token=${encodeURIComponent(token)}&v=${v}`
+}
+
+function openTeamAvatarPicker() {
+  if (!teamAvatarUploading.value) teamAvatarInputRef.value?.click()
+}
+
+async function onTeamAvatarSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !currentSpace.value) return
+
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片大小不能超过 5MB')
+    return
+  }
+
+  teamAvatarUploading.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const { data } = await http.post(`/api/teams/${currentSpace.value.id}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    ElMessage.success('团队头像已更新')
+    bumpTeamAvatarVersion(currentSpace.value.id)
+    currentSpace.value = { ...currentSpace.value, avatar: data.avatar }
+    
+    const idx = spaces.value.findIndex(s => s.id === currentSpace.value?.id)
+    if (idx >= 0) {
+      spaces.value[idx] = { ...spaces.value[idx], avatar: data.avatar }
+    }
+  } catch {
+    /* global toast */
+  } finally {
+    teamAvatarUploading.value = false
+  }
+}
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
@@ -363,6 +426,17 @@ function enterFolder(row: FileItem) {
   loadFiles()
 }
 
+/** 网格卡片单击：进入文件夹 / 预览文件 / 非可预览则下载 */
+function handleGridOpen(row: FileItem) {
+  if (row.type === 'folder') {
+    enterFolder(row)
+  } else if (row.previewable) {
+    previewFile(row)
+  } else {
+    downloadFile(row)
+  }
+}
+
 function gotoCrumb(idx: number) {
   const target = breadcrumb.value[idx]
   breadcrumb.value = breadcrumb.value.slice(0, idx + 1)
@@ -499,9 +573,13 @@ async function submitInvite() {
 async function removeMember(member: TeamMember) {
   const ctx = membersContext.value
   if (!ctx) return
-  await ElMessageBox.confirm(`确定将「${memberDisplayName(member)}」移出团队吗？`, '移除成员', {
-    type: 'warning'
+  const ok = await confirmDialog.open({
+    title: '移除成员',
+    message: `确定将「${memberDisplayName(member)}」移出团队吗？`,
+    confirmText: '移除',
+    danger: true
   })
+  if (!ok) return
   try {
     await http.delete(`/api/teams/${ctx.id}/members/${member.userId}`)
     ElMessage.success('已移除')
@@ -514,11 +592,13 @@ async function removeMember(member: TeamMember) {
 async function disbandSpace(space?: TeamSpace) {
   const target = space || currentSpace.value
   if (!target) return
-  await ElMessageBox.confirm(
-    `确定解散团队「${target.name}」吗？所有成员将被移除，团队关联文件将被移入回收站！`,
-    '解散团队',
-    { type: 'warning' }
-  )
+  const ok = await confirmDialog.open({
+    title: '解散团队',
+    message: `确定解散团队「${target.name}」吗？所有成员将被移除，团队关联文件将被移入回收站！`,
+    confirmText: '解散',
+    danger: true
+  })
+  if (!ok) return
   try {
     await http.delete(`/api/teams/${target.id}`)
     ElMessage.success('已解散该团队空间')
@@ -532,11 +612,13 @@ async function disbandSpace(space?: TeamSpace) {
 async function leaveSpace(space?: TeamSpace) {
   const target = space || currentSpace.value
   if (!target) return
-  await ElMessageBox.confirm(
-    `确定退出团队「${target.name}」吗？退出后您将无法再访问其共享文件！`,
-    '退出团队',
-    { type: 'warning' }
-  )
+  const ok = await confirmDialog.open({
+    title: '退出团队',
+    message: `确定退出团队「${target.name}」吗？退出后您将无法再访问其共享文件！`,
+    confirmText: '退出',
+    danger: true
+  })
+  if (!ok) return
   try {
     await http.post(`/api/teams/${target.id}/leave`)
     ElMessage.success('已成功退出该团队空间')
@@ -548,9 +630,13 @@ async function leaveSpace(space?: TeamSpace) {
 }
 
 async function deleteItem(row: FileItem) {
-  await ElMessageBox.confirm(`确定删除「${row.name}」吗？文件/目录将被移至回收站`, '删除', {
-    type: 'warning'
+  const ok = await confirmDialog.open({
+    title: '删除项目',
+    message: `确定删除「${row.name}」？此操作将移入回收站！`,
+    confirmText: '删除',
+    danger: true
   })
+  if (!ok) return
   const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
   try {
     await http.delete(url)
@@ -610,8 +696,9 @@ onUnmounted(disconnectUploadWs)
             class="cd-team-row"
             @click="enterSpace(space)"
           >
-            <div class="cd-team-avatar" :style="teamAvatarStyle(space.id)">
-              {{ space.name.charAt(0).toUpperCase() }}
+            <div class="cd-team-avatar" :style="space.avatar ? {} : teamAvatarStyle(space.id)">
+              <img v-if="space.avatar" :src="teamAvatarSrc(space)" class="cd-team-avatar-img" />
+              <span v-else>{{ space.name.charAt(0).toUpperCase() }}</span>
             </div>
             <div class="cd-team-info">
               <div class="cd-team-name">{{ space.name }}</div>
@@ -660,9 +747,35 @@ onUnmounted(disconnectUploadWs)
     <el-card v-else shadow="never" class="cd-page-card cd-team-detail">
       <div class="cd-team-detail-head">
         <div class="cd-team-detail-left">
-          <div class="cd-team-avatar cd-team-avatar--detail" :style="teamAvatarStyle(currentSpace.id)">
-            {{ currentSpace.name.charAt(0).toUpperCase() }}
+          <div v-if="!canManageMembers" class="cd-team-avatar cd-team-avatar--detail" :style="currentSpace.avatar ? {} : teamAvatarStyle(currentSpace.id)">
+            <img v-if="currentSpace.avatar" :src="teamAvatarSrc(currentSpace)" class="cd-team-avatar-img" />
+            <span v-else>{{ currentSpace.name.charAt(0).toUpperCase() }}</span>
           </div>
+          <button
+            v-else
+            type="button"
+            class="cd-team-avatar-zone"
+            :class="{ uploading: teamAvatarUploading }"
+            :disabled="teamAvatarUploading"
+            title="点击更换团队头像"
+            @click="openTeamAvatarPicker"
+          >
+            <div class="cd-team-avatar cd-team-avatar--detail" :style="currentSpace.avatar ? {} : teamAvatarStyle(currentSpace.id)">
+              <img v-if="currentSpace.avatar" :src="teamAvatarSrc(currentSpace)" class="cd-team-avatar-img" />
+              <span v-else>{{ currentSpace.name.charAt(0).toUpperCase() }}</span>
+            </div>
+            <span class="cd-team-avatar-mask">
+              <el-icon v-if="!teamAvatarUploading" :size="16"><Camera /></el-icon>
+              <el-icon v-else :size="16" class="is-loading"><Loading /></el-icon>
+            </span>
+          </button>
+          <input
+            ref="teamAvatarInputRef"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            style="display: none"
+            @change="onTeamAvatarSelected"
+          />
           <div class="cd-team-detail-title">
             <div class="cd-team-detail-nav">
               <a href="#" class="cd-team-list-link" @click.prevent="backToList">团队空间</a>
@@ -676,6 +789,10 @@ onUnmounted(disconnectUploadWs)
           <el-button @click="openMembers">
             <el-icon><User /></el-icon>
             成员管理
+          </el-button>
+          <el-button v-if="canManageMembers" @click="openTeamAvatarPicker">
+            <el-icon><Picture /></el-icon>
+            更换头像
           </el-button>
           <el-button v-if="canManageMembers" @click="openRenameDialog()">
             <el-icon><EditPen /></el-icon>
@@ -742,7 +859,7 @@ onUnmounted(disconnectUploadWs)
             :items="gridFiles"
             :loading="loading"
             simple
-            @open="enterFolder"
+            @open="handleGridOpen"
             @download="downloadFile"
             @preview="previewFile"
             @delete="deleteItem"
@@ -793,8 +910,10 @@ onUnmounted(disconnectUploadWs)
       <p class="cd-dialog-desc">与成员共享和管理文件</p>
       <el-input v-model="createName" placeholder="输入团队名称" maxlength="64" @keyup.enter="submitCreate" />
       <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" @click="createVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="creating" @click="submitCreate">创建</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -802,8 +921,10 @@ onUnmounted(disconnectUploadWs)
     <el-dialog v-model="renameVisible" title="重命名团队" width="420px" destroy-on-close>
       <el-input v-model="renameName" placeholder="输入新的团队名称" maxlength="64" @keyup.enter="submitRename" />
       <template #footer>
-        <el-button @click="renameVisible = false">取消</el-button>
-        <el-button type="primary" :loading="renaming" @click="submitRename">保存</el-button>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" @click="renameVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="renaming" @click="submitRename">保存</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -832,8 +953,10 @@ onUnmounted(disconnectUploadWs)
         @keyup.enter="submitInvite"
       />
       <template #footer>
-        <el-button @click="inviteVisible = false">取消</el-button>
-        <el-button type="primary" :loading="inviting" @click="submitInvite">邀请</el-button>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" @click="inviteVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="inviting" @click="submitInvite">邀请</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -852,8 +975,17 @@ onUnmounted(disconnectUploadWs)
             <el-icon :size="16"><Close /></el-icon>
           </button>
           <div class="cd-member-hero-top">
-            <div class="cd-member-team-avatar" :style="teamAvatarStyle(membersContext.id)">
-              {{ membersContext.name.charAt(0).toUpperCase() }}
+            <div
+              class="cd-member-team-avatar"
+              :style="membersContext.avatar ? {} : teamAvatarStyle(membersContext.id)"
+            >
+              <img
+                v-if="membersContext.avatar"
+                :src="teamAvatarSrc(membersContext)"
+                class="cd-team-avatar-img"
+                alt=""
+              />
+              <template v-else>{{ membersContext.name.charAt(0).toUpperCase() }}</template>
             </div>
             <div class="cd-member-team-text">
               <div class="cd-member-team-name">{{ membersContext.name }}</div>
@@ -925,6 +1057,42 @@ onUnmounted(disconnectUploadWs)
 </template>
 
 <style scoped>
+.cd-team-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.cd-team-avatar-zone {
+  position: relative;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  overflow: hidden;
+  display: inline-flex;
+}
+
+.cd-team-avatar-zone:hover .cd-team-avatar-mask,
+.cd-team-avatar-zone.uploading .cd-team-avatar-mask {
+  opacity: 1;
+}
+
+.cd-team-avatar-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border-radius: 14px;
+}
+
 .cd-team-body {
   min-height: 0;
 }
@@ -1284,6 +1452,7 @@ onUnmounted(disconnectUploadWs)
   font-weight: 800;
   flex-shrink: 0;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
 }
 
 .cd-member-team-text {

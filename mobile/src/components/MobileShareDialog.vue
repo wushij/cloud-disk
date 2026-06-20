@@ -67,8 +67,9 @@ async function createShare() {
       data: body
     })
     result.value = data
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'
-    fullShareUrl.value = `${origin}${data.shareUrl}`
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5174'
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/'
+    fullShareUrl.value = `${origin}${pathname}#/pages/share/view?code=${encodeURIComponent(data.shareCode)}`
     uni.showToast({ title: '分享创建成功', icon: 'success' })
   } catch (e: any) {
     uni.showToast({ title: e.message || '创建分享失败', icon: 'none' })

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import http, { TOKEN_KEY } from '@/api/http'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 const auth = useAuthStore()
+const confirmDialog = useConfirmDialogStore()
 
 interface UserRow {
   id: number
@@ -96,11 +98,13 @@ function onAvatarError(userId: number) {
 async function toggleUser(row: UserRow) {
   const next = row.status === 1 ? 0 : 1
   const action = next === 0 ? '禁用' : '启用'
-  try {
-    await ElMessageBox.confirm(`确定${action}用户「${row.username}」？`, '确认', { type: 'warning' })
-  } catch {
-    return
-  }
+  const ok = await confirmDialog.open({
+    title: '确认',
+    message: `确定${action}用户「${row.username}」？`,
+    confirmText: '确定',
+    danger: next === 0
+  })
+  if (!ok) return
   try {
     await http.put(`/api/admin/users/${row.id}/status`, { status: next })
     row.status = next
@@ -354,8 +358,10 @@ onMounted(loadAll)
       </div>
 
       <template #footer>
-        <el-button class="cd-quota-cancel" @click="quotaVisible = false">取消</el-button>
-        <el-button type="primary" :loading="quotaSaving" @click="submitQuota">确定</el-button>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" class="cd-quota-cancel" @click="quotaVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="quotaSaving" @click="submitQuota">确定</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>

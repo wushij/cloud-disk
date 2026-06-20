@@ -15,6 +15,7 @@ import { isTextFile } from '@/utils/filePreview'
 import VideoPreview from '@/components/VideoPreview.vue'
 
 import OnlyOfficeEditor from '@/components/OnlyOfficeEditor.vue'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 
 
@@ -272,6 +273,13 @@ async function previewSingle() {
 
 }
 
+const isArchive = (item: ShareItem) => {
+  if (item.type !== 'file') return false
+  const name = item.name.toLowerCase()
+  const ext = name.split('.').pop() || ''
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
+}
+
 function getFileIconName(item: ShareItem) {
   if (item.type === 'folder') return 'Folder'
   const name = item.name.toLowerCase()
@@ -341,7 +349,9 @@ function getSingleShareImageUrl() {
             class="cd-share-logo-cover"
             alt=""
           />
-          <el-icon v-else :size="28"><Share /></el-icon>
+          <svg v-else class="cd-share-logo-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
+          </svg>
         </div>
         <div class="cd-share-title-area">
           <h1 class="cd-share-title">{{ info.shareType === 'FOLDER' ? info.folderName : info.fileName }}</h1>
@@ -375,7 +385,7 @@ function getSingleShareImageUrl() {
 
           />
 
-          <el-button type="primary" size="large" @click="verify">
+          <el-button type="primary" size="large" round @click="verify">
 
             <el-icon><Check /></el-icon>
 
@@ -428,13 +438,11 @@ function getSingleShareImageUrl() {
             >
 
               <div class="cd-share-file-icon">
-
-                <el-icon :size="36" :style="{ color: getIconColorStyle(item) }">
-
+                <FolderTypeIcon v-if="item.type === 'folder'" :size="48" />
+                <FolderTypeIcon v-else-if="isArchive(item)" :archive="true" :size="48" />
+                <el-icon v-else :size="36" :style="{ color: getIconColorStyle(item) }">
                   <component :is="getFileIconName(item)" />
-
                 </el-icon>
-
               </div>
 
               <div class="cd-share-file-info">
@@ -553,7 +561,7 @@ function getSingleShareImageUrl() {
 
   padding: 24px;
 
-  background: linear-gradient(135deg, #070b19 0%, #0d1527 50%, #171026 100%);
+  background: linear-gradient(135deg, #f0f4ff 0%, #f8f9fd 50%, #fdf2f8 100%);
 
   display: flex;
 
@@ -593,7 +601,7 @@ function getSingleShareImageUrl() {
 
   filter: blur(120px);
 
-  opacity: 0.28;
+  opacity: 0.18;
 
   animation: orbFloat 10s ease-in-out infinite;
 
@@ -607,7 +615,7 @@ function getSingleShareImageUrl() {
 
   height: 500px;
 
-  background: #3b82f6;
+  background: #93c5fd;
 
   top: -120px;
 
@@ -623,7 +631,7 @@ function getSingleShareImageUrl() {
 
   height: 400px;
 
-  background: #7c3aed;
+  background: #c4b5fd;
 
   bottom: -100px;
 
@@ -661,7 +669,7 @@ function getSingleShareImageUrl() {
 
   z-index: 1;
 
-  background: rgba(13, 21, 39, 0.55);
+  background: rgba(255, 255, 255, 0.72);
 
   backdrop-filter: blur(24px);
 
@@ -669,9 +677,9 @@ function getSingleShareImageUrl() {
 
   border-radius: var(--cd-radius-xl);
 
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(240, 212, 212, 0.72);
 
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 28px rgba(239, 68, 68, 0.08), 0 2px 10px rgba(239, 68, 68, 0.05);
 
   margin-top: 60px;
 
@@ -703,7 +711,7 @@ function getSingleShareImageUrl() {
 
   padding-bottom: 28px;
 
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--cd-border-light);
 
   margin-bottom: 28px;
 
@@ -719,7 +727,7 @@ function getSingleShareImageUrl() {
 
   border-radius: 20px;
 
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: var(--cd-primary-bg, rgba(99, 102, 241, 0.08));
 
   display: flex;
 
@@ -727,12 +735,18 @@ function getSingleShareImageUrl() {
 
   justify-content: center;
 
-  color: #fff;
+  color: var(--cd-primary, #6366f1);
 
   flex-shrink: 0;
 
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+  box-shadow: none;
 
+}
+
+.cd-share-logo-svg {
+  width: 32px;
+  height: 32px;
+  fill: currentColor;
 }
 
 
@@ -743,7 +757,7 @@ function getSingleShareImageUrl() {
 
   font-weight: 800;
 
-  color: #fff;
+  color: var(--cd-text-primary, #0f172a);
 
   margin: 0 0 6px;
 
@@ -765,7 +779,7 @@ function getSingleShareImageUrl() {
 
   gap: 10px;
 
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--cd-text-secondary, #64748b);
 
   font-size: 13px;
 
@@ -795,9 +809,11 @@ function getSingleShareImageUrl() {
 
   justify-content: center;
 
+  width: 100%;
+
   gap: 10px;
 
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--cd-text-secondary, #475569);
 
   font-size: 15px;
 
@@ -825,9 +841,9 @@ function getSingleShareImageUrl() {
 
 .cd-extract-form :deep(.el-input__wrapper) {
 
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: #fff !important;
 
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--cd-border, #e2e8f0) !important;
 
   box-shadow: none !important;
 
@@ -843,9 +859,9 @@ function getSingleShareImageUrl() {
 
   border-color: rgba(59, 130, 246, 0.6) !important;
 
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: #fff !important;
 
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1) !important;
 
 }
 
@@ -853,7 +869,7 @@ function getSingleShareImageUrl() {
 
 .cd-extract-form :deep(.el-input__inner) {
 
-  color: #fff !important;
+  color: var(--cd-text-primary, #0f172a) !important;
 
   font-weight: 500;
 
@@ -863,7 +879,7 @@ function getSingleShareImageUrl() {
 
 .cd-extract-form :deep(.el-input__inner::placeholder) {
 
-  color: rgba(255, 255, 255, 0.35) !important;
+  color: var(--cd-text-placeholder, #94a3b8) !important;
 
 }
 
@@ -899,7 +915,7 @@ function getSingleShareImageUrl() {
 
 .cd-share-breadcrumb :deep(.el-breadcrumb__inner a) {
 
-  color: rgba(255, 255, 255, 0.6) !important;
+  color: var(--cd-text-secondary, #64748b) !important;
 
   font-weight: 600;
 
@@ -917,7 +933,7 @@ function getSingleShareImageUrl() {
 
 .cd-share-breadcrumb :deep(.el-breadcrumb__separator) {
 
-  color: rgba(255, 255, 255, 0.3) !important;
+  color: var(--cd-text-placeholder, #94a3b8) !important;
 
 }
 
@@ -939,9 +955,9 @@ function getSingleShareImageUrl() {
 
 .cd-share-file {
 
-  background: rgba(255, 255, 255, 0.03);
+  background: #fff;
 
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--cd-border-light, #f1f5f9);
 
   border-radius: var(--cd-radius-lg);
 
@@ -951,7 +967,7 @@ function getSingleShareImageUrl() {
 
   cursor: pointer;
 
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--cd-shadow-card, 0 2px 8px rgba(0,0,0,0.06));
 
 }
 
@@ -959,13 +975,13 @@ function getSingleShareImageUrl() {
 
 .cd-share-file:hover {
 
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--cd-bg-surface, #f8f9fd);
 
   border-color: rgba(59, 130, 246, 0.4);
 
   transform: translateY(-4px);
 
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.12);
 
 }
 
@@ -991,7 +1007,7 @@ function getSingleShareImageUrl() {
 
 .cd-share-file-name {
 
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--cd-text-primary, #0f172a);
 
   font-size: 14px;
 
@@ -1023,7 +1039,7 @@ function getSingleShareImageUrl() {
 
 .cd-share-file-actions :deep(.el-button) {
 
-  color: rgba(255, 255, 255, 0.55) !important;
+  color: var(--cd-text-secondary, #64748b) !important;
 
   font-weight: 700;
 
@@ -1057,11 +1073,11 @@ function getSingleShareImageUrl() {
 
 .cd-single-actions .el-button:not(.el-button--primary) {
 
-  background: rgba(255, 255, 255, 0.05) !important;
+  background: #fff !important;
 
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--cd-border, #e2e8f0) !important;
 
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: var(--cd-text-primary, #0f172a) !important;
 
 }
 
@@ -1069,9 +1085,9 @@ function getSingleShareImageUrl() {
 
 .cd-single-actions .el-button:not(.el-button--primary):hover {
 
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: var(--cd-bg-surface, #f8f9fd) !important;
 
-  color: #fff !important;
+  color: var(--cd-primary, #3b82f6) !important;
 
 }
 
@@ -1097,13 +1113,13 @@ function getSingleShareImageUrl() {
 
   max-width: 440px;
 
-  background: rgba(13, 21, 39, 0.55);
+  background: rgba(255, 255, 255, 0.72);
 
   border-radius: var(--cd-radius-xl);
 
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(240, 212, 212, 0.72);
 
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 28px rgba(239, 68, 68, 0.08);
 
 }
 
@@ -1111,7 +1127,7 @@ function getSingleShareImageUrl() {
 
 .cd-invalid-text {
 
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--cd-text-secondary, #64748b);
 
   font-size: 16px;
 
@@ -1134,7 +1150,7 @@ function getSingleShareImageUrl() {
 
 .cd-share-logo-img {
   background: transparent !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1) !important;
   overflow: hidden;
 }
 

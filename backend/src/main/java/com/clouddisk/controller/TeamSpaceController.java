@@ -98,4 +98,21 @@ public class TeamSpaceController {
         teamSpaceService.leaveSpace(id);
         return Map.of("message", "已退出团队空间");
     }
+
+    /** 上传团队头像 */
+    @PostMapping("/{id}/avatar")
+    public Map<String, String> uploadAvatar(
+            @PathVariable Long id,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        String path = teamSpaceService.uploadAvatar(id, file);
+        return Map.of("avatar", path);
+    }
+
+    /** 获取团队头像 */
+    @GetMapping("/{id}/avatar")
+    public ResponseEntity<Resource> getAvatar(
+            @PathVariable Long id,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return teamSpaceService.loadTeamAvatar(id, request);
+    }
 }

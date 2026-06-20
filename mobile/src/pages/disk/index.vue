@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onLoad } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useFileStore, type FileItem } from '@/stores/file'
@@ -14,6 +14,7 @@ import FileGridCard from '@/components/FileGridCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileShareDialog from '@/components/MobileShareDialog.vue'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fileApiUrl, TOKEN_KEY } from '@/api/http'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
 import { isTextFile } from '@/utils/filePreview'
@@ -29,6 +30,11 @@ const { activeTaskCount } = storeToRefs(transferStore)
 const viewMode = ref<'grid' | 'list'>('list')
 const selectMode = ref(false)
 const selectedItems = ref<FileItem[]>([])
+
+const deleteDialogVisible = ref(false)
+const itemToDelete = ref<FileItem | null>(null)
+
+const batchDeleteDialogVisible = ref(false)
 
 function toggleSelectMode() {
   selectMode.value = !selectMode.value
@@ -85,26 +91,23 @@ function handleBatchDownload() {
 
 function handleBatchDelete() {
   if (selectedItems.value.length === 0) return
-  uni.showModal({
-    title: '确认删除',
-    content: `确定删除这 ${selectedItems.value.length} 个项目吗？`,
-    success: async (res) => {
-      if (!res.confirm) return
-      uni.showLoading({ title: '正在删除...' })
-      try {
-        for (const item of selectedItems.value) {
-          await fileStore.deleteItem(item)
-        }
-        uni.showToast({ title: '批量删除成功', icon: 'success' })
-        clearSelection()
-        selectMode.value = false
-      } catch {
-        uni.showToast({ title: '删除失败', icon: 'none' })
-      } finally {
-        uni.hideLoading()
-      }
+  batchDeleteDialogVisible.value = true
+}
+
+async function handleBatchDeleteConfirm() {
+  uni.showLoading({ title: '正在删除...' })
+  try {
+    for (const item of selectedItems.value) {
+      await fileStore.deleteItem(item)
     }
-  })
+    uni.showToast({ title: '批量删除成功', icon: 'success' })
+    clearSelection()
+    selectMode.value = false
+  } catch {
+    uni.showToast({ title: '删除失败', icon: 'none' })
+  } finally {
+    uni.hideLoading()
+  }
 }
 const actionVisible = ref(false)
 const actionItem = ref<FileItem | null>(null)
@@ -144,7 +147,19 @@ const actionList = computed(() => {
 
 const pageSubtitle = computed(() => `${items.value.length} 项`)
 
+onLoad(async (query) => {
+  const folderId = Number(query?.folderId || 0)
+  if (folderId > 0) {
+    fileStore.currentFolderId = folderId
+    await fileStore.loadBreadcrumbs(folderId)
+  } else {
+    fileStore.currentFolderId = 0
+    fileStore.breadcrumb = [{ id: 0, name: '全部文件' }]
+  }
+})
+
 onShow(async () => {
+  uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
   await fileStore.loadList()
 })
@@ -298,15 +313,21 @@ async function submitRename(name: string) {
 }
 
 function confirmDelete(row: FileItem) {
-  uni.showModal({
-    title: '确认删除',
-    content: `确定删除「${row.name}」？`,
-    success: async (res) => {
-      if (!res.confirm) return
-      await fileStore.deleteItem(row)
-      uni.showToast({ title: '已移入回收站', icon: 'success' })
-    }
-  })
+  itemToDelete.value = row
+  deleteDialogVisible.value = true
+}
+
+async function handleDeleteConfirm() {
+  const row = itemToDelete.value
+  if (!row) return
+  try {
+    await fileStore.deleteItem(row)
+    uni.showToast({ title: '已移入回收站', icon: 'success' })
+  } catch {
+    /* handled */
+  } finally {
+    itemToDelete.value = null
+  }
 }
 
 function promptCreateFolder() {
@@ -395,27 +416,25 @@ async function chooseAndUpload() {
       <template #extra>
         <BreadcrumbBar :crumbs="breadcrumb" @select="fileStore.gotoCrumb" />
         <view class="search-wrap">
-          <view class="search-box">
-            <u-icon name="search" size="16" color="#94a3b8" class="search-icon" />
-            <u-search
-              v-model="keyword"
-              placeholder="搜索文件名"
-              bg-color="transparent"
-              color="#0f172a"
-              placeholder-color="#b0bdc9"
-              :show-action="false"
-              shape="round"
-              @search="onSearch"
-              @clear="onSearch"
-            />
-          </view>
+          <u-search
+            v-model="keyword"
+            placeholder="搜索文件名"
+            bg-color="#f4f7fb"
+            color="#0f172a"
+            placeholder-color="#b0bdc9"
+            :show-action="false"
+            shape="round"
+            height="38"
+            @search="onSearch"
+            @clear="onSearch"
+          />
         </view>
       </template>
     </MobileHeader>
 
     <scroll-view scroll-y class="file-scroll">
       <!-- 加载状态 -->
-      <view v-if="loading" class="state-box">
+      <view v-if="loading && !items.length" class="state-box">
         <view class="loading-wrap">
           <u-loading-icon size="28" color="var(--cd-primary)" />
           <text class="loading-text">加载中...</text>
@@ -529,6 +548,24 @@ async function chooseAndUpload() {
       :folder-id="shareFolderId"
       :item-name="shareItemName"
     />
+
+    <MobileConfirmDialog
+      v-model:show="deleteDialogVisible"
+      title="确认删除"
+      :message="itemToDelete ? `确定删除「${itemToDelete.name}」？` : ''"
+      confirm-text="删除"
+      danger
+      @confirm="handleDeleteConfirm"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="batchDeleteDialogVisible"
+      title="确认删除"
+      :message="`确定删除这 ${selectedItems.length} 个项目吗？`"
+      confirm-text="删除"
+      danger
+      @confirm="handleBatchDeleteConfirm"
+    />
   </view>
 </template>
 
@@ -557,23 +594,25 @@ async function chooseAndUpload() {
 }
 
 .search-wrap {
-  margin-top: 18rpx;
+  margin-top: 6rpx;
 }
 
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  background: #f4f7fb;
-  border: 1rpx solid var(--cd-border);
-  border-radius: 999rpx;
-  padding: 0 28rpx 0 22rpx;
-  height: 74rpx;
-  overflow: hidden;
+.search-wrap :deep(.u-search) {
+  padding: 0 !important;
 }
 
-.search-icon {
-  flex-shrink: 0;
+.search-wrap :deep(.u-search__content) {
+  border: none !important;
+  background: #f4f7fb !important;
+  border-radius: 999rpx !important;
+}
+
+.search-wrap :deep(.u-search__input-wrap) {
+  padding: 0 16rpx !important;
+}
+
+.search-wrap :deep(.u-search__input-wrap .u-icon) {
+  transform: scale(0.75);
 }
 
 .file-scroll {

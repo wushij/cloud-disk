@@ -10,6 +10,7 @@ export interface AppNotification {
   refId?: string
   read: boolean
   createdAt: number
+  inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
 }
 
 interface NotificationDto {
@@ -20,6 +21,7 @@ interface NotificationDto {
   refId?: string
   isRead: number
   createdAt: string
+  inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
 }
 
 function toAppNotification(dto: NotificationDto): AppNotification {
@@ -30,7 +32,8 @@ function toAppNotification(dto: NotificationDto): AppNotification {
     content: dto.content || '',
     refId: dto.refId,
     read: dto.isRead === 1,
-    createdAt: dto.createdAt ? new Date(dto.createdAt).getTime() : Date.now()
+    createdAt: dto.createdAt ? new Date(dto.createdAt).getTime() : Date.now(),
+    inviteStatus: dto.inviteStatus
   }
 }
 
@@ -85,17 +88,37 @@ export const useNotificationStore = defineStore('notification', () => {
     })
   }
 
-  async function acceptTeamInvite(refId?: string) {
-    if (!refId) throw new Error('邀请无效')
-    await http.post(`/api/team-invitations/${refId}/accept`)
+  async function remove(id: string) {
+    await http.delete(`/api/notifications/${id}`)
+    items.value = items.value.filter((n) => n.id !== id)
   }
 
-  async function rejectTeamInvite(refId?: string) {
-    if (!refId) throw new Error('邀请无效')
-    await http.post(`/api/team-invitations/${refId}/reject`)
+  async function clearAll() {
+    await http.delete('/api/notifications/clear-all')
+    items.value = []
+  }
+
+  async function acceptTeamInvite(notification: AppNotification) {
+    if (!notification.refId) throw new Error('邀请无效')
+    await http.post(`/api/team-invitations/${notification.refId}/accept`)
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.inviteStatus = 'ACCEPTED'
+    }
+  }
+
+  async function rejectTeamInvite(notification: AppNotification) {
+    if (!notification.refId) throw new Error('邀请无效')
+    await http.post(`/api/team-invitations/${notification.refId}/reject`)
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.inviteStatus = 'REJECTED'
+    }
   }
 
   const unreadCount = () => items.value.filter((n) => !n.read).length
 
-  return { items, loaded, loadFromApi, push, markRead, markAllRead, acceptTeamInvite, rejectTeamInvite, unreadCount }
+  return { items, loaded, loadFromApi, push, markRead, markAllRead, remove, clearAll, acceptTeamInvite, rejectTeamInvite, unreadCount }
 })

@@ -2,6 +2,7 @@ package com.clouddisk.service;
 
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.clouddisk.cache.CacheService;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.config.CloudDiskProperties;
@@ -27,6 +28,8 @@ import java.util.*;
 public class ShareService {
 
     private static final long SHARE_CACHE_TTL = 600;
+    /** 同一访客对同一分享文件的重复下载请求去重窗口（秒） */
+    private static final long DOWNLOAD_DEDUPE_TTL = 120;
 
     private final ShareMapper shareMapper;
     private final FileMapper fileMapper;
@@ -75,9 +78,21 @@ public class ShareService {
         if (share == null || !share.getUserId().equals(userId)) {
             throw new BusinessException("分享不存在");
         }
-        share.setStatus(0);
-        shareMapper.updateById(share);
         cacheService.delete(shareCacheKey(share.getShareCode()));
+        if (isShareExpired(share)) {
+            shareMapper.deleteById(shareId);
+        } else {
+            share.setStatus(0);
+            shareMapper.updateById(share);
+        }
+    }
+
+    private boolean isShareExpired(ShareRecord share) {
+        if (share.getStatus() != null && share.getStatus() == 0) {
+            return true;
+        }
+        LocalDateTime expireTime = share.getExpireTime();
+        return expireTime != null && expireTime.isBefore(LocalDateTime.now());
     }
 
     public Map<String, Object> create(ShareCreateRequest req) {
@@ -241,7 +256,7 @@ public class ShareService {
         ShareRecord share = getValidShare(shareCode);
         verifyExtractCode(share, extractCode);
         FileRecord file = resolveSharedFile(share, fileId);
-        incrementDownloadCount(share);
+        incrementDownloadCount(share, file.getId());
         return file;
     }
 
@@ -272,9 +287,16 @@ public class ShareService {
         return fileService.getForDownload(share.getFileId());
     }
 
-    private void incrementDownloadCount(ShareRecord share) {
-        share.setDownloadCount(share.getDownloadCount() + 1);
-        shareMapper.updateById(share);
+    private void incrementDownloadCount(ShareRecord share, long downloadedFileId) {
+        String dedupeKey = "share:dl:" + share.getShareCode() + ":" + downloadedFileId + ":" + clientIp();
+        if (cacheService.increment(dedupeKey, DOWNLOAD_DEDUPE_TTL) > 1) {
+            return;
+        }
+        shareMapper.update(null, new LambdaUpdateWrapper<ShareRecord>()
+                .eq(ShareRecord::getId, share.getId())
+                .setSql("download_count = COALESCE(download_count, 0) + 1"));
+        int current = share.getDownloadCount() != null ? share.getDownloadCount() : 0;
+        share.setDownloadCount(current + 1);
         cacheShare(share);
     }
 

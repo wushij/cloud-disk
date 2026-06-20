@@ -6,7 +6,7 @@ defineProps<{
   subtitle?: string
   gradient?: boolean
   /** 图标类型：不同页面传入不同值，不传则不显示图标 */
-  iconType?: 'cloud' | 'recycle' | 'share' | 'team'
+  iconType?: 'cloud' | 'recycle' | 'share' | 'team' | 'bell'
   /** 图标下方的副标语（可选） */
   caption?: string
 }>()
@@ -20,6 +20,7 @@ defineProps<{
           <view class="m-header-texts">
             <view class="m-header-title-row">
               <HeaderIcon v-if="iconType" :type="iconType" />
+              <slot name="left" />
               <text class="m-title">{{ title }}</text>
               <view v-if="subtitle" class="m-subtitle-chip">
                 <text class="m-subtitle-text">{{ subtitle }}</text>

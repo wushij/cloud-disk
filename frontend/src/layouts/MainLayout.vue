@@ -16,12 +16,14 @@ import { useTransferStore } from '@/stores/transfer'
 
 import TransferPanel from '@/components/TransferPanel.vue'
 import PromptDialog from '@/components/PromptDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 
 import http from '@/api/http'
 
 import { ElMessage } from 'element-plus'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 import { subscribeWs } from '@/utils/ws'
 
@@ -36,6 +38,7 @@ const auth = useAuthStore()
 const notifyStore = useNotificationStore()
 
 const transferStore = useTransferStore()
+const confirmDialog = useConfirmDialogStore()
 
 const { runningCount: runningTransfersCount } = storeToRefs(transferStore)
 
@@ -205,17 +208,46 @@ function logout() {
 
 
 
-function openNotify(item: { id: string; read: boolean; type: string }) {
-  if (item.type === 'TEAM_INVITED') return
-  notifyStore.markRead(item.id)
+const detailVisible = ref(false)
+const selectedNotify = ref<any>(null)
+
+async function openNotify(item: any) {
+  selectedNotify.value = { ...item }
+  detailVisible.value = true
+  if (!item.read) {
+    await notifyStore.markRead(item.id)
+  }
+}
+
+function getNotifyIcon(type: string, title: string) {
+  if (type === 'TEAM_INVITED') return 'User'
+  if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'Share'
+  return 'Bell'
+}
+
+function getNotifyColorClass(type: string, title: string) {
+  if (type === 'TEAM_INVITED') return 'teal'
+  if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'orange'
+  return 'indigo'
+}
+
+function formatTime(createdAt: number) {
+  if (!createdAt) return ''
+  const d = new Date(createdAt)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 async function acceptTeamInvite(item: { id: string; refId?: string }) {
   if (!item.refId) return
   try {
-    await notifyStore.acceptTeamInvite(item.refId)
-    await notifyStore.markRead(item.id)
+    await notifyStore.acceptTeamInvite(item as any)
     ElMessage.success('已加入团队')
+    const storeItem = notifyStore.items.find(x => x.id === item.id)
+    if (storeItem) {
+      storeItem.title = '已接受邀请'
+      storeItem.content = '你已成功加入团队，现在可以在团队空间中查看和协作。'
+    }
   } catch {
     /* global toast */
   }
@@ -224,12 +256,65 @@ async function acceptTeamInvite(item: { id: string; refId?: string }) {
 async function rejectTeamInvite(item: { id: string; refId?: string }) {
   if (!item.refId) return
   try {
-    await notifyStore.rejectTeamInvite(item.refId)
-    await notifyStore.markRead(item.id)
+    await notifyStore.rejectTeamInvite(item as any)
     ElMessage.info('已拒绝邀请')
+    const storeItem = notifyStore.items.find(x => x.id === item.id)
+    if (storeItem) {
+      storeItem.title = '已拒绝邀请'
+      storeItem.content = '你已拒绝该团队的邀请。'
+    }
   } catch {
     /* global toast */
   }
+}
+
+async function handleAcceptInDetail(item: any) {
+  await acceptTeamInvite(item)
+  item.read = true
+  item.inviteStatus = 'ACCEPTED'
+  if (item.type === 'TEAM_INVITED') {
+    item.title = '已接受邀请'
+    item.content = '你已成功加入团队，现在可以在团队空间中查看和协作。'
+  }
+}
+
+async function handleRejectInDetail(item: any) {
+  await rejectTeamInvite(item)
+  item.read = true
+  item.inviteStatus = 'REJECTED'
+  if (item.type === 'TEAM_INVITED') {
+    item.title = '已拒绝邀请'
+    item.content = '你已拒绝该团队的邀请。'
+  }
+}
+
+async function deleteNotify(item: any) {
+  const ok = await confirmDialog.open({
+    title: '删除通知',
+    message: '确定删除这条通知吗？',
+    confirmText: '删除',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    await notifyStore.remove(item.id)
+    ElMessage.success('已删除通知')
+  } catch {
+    /* global toast */
+  }
+}
+
+
+async function handleClearAll() {
+  const ok = await confirmDialog.open({
+    title: '清空通知',
+    message: '确定清空所有通知吗？清空后所有消息将被永久删除，且不可恢复。',
+    confirmText: '确认清空',
+    danger: true
+  })
+  if (!ok) return
+  await notifyStore.clearAll()
+  ElMessage.success('已清空所有通知')
 }
 
 </script>
@@ -343,7 +428,8 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
           <div class="cd-header-transfer-wrap" @click="toggleTransferList">
             <button class="cd-header-btn cd-transfer-btn" :class="{ active: runningTransfersCount > 0 }">
               <svg viewBox="0 0 24 24" fill="none" class="cd-transfer-btn-icon">
-                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor"/>
+                <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
             <span v-if="runningTransfersCount > 0" class="cd-transfer-btn-badge">
@@ -351,15 +437,14 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
             </span>
           </div>
 
-          <el-badge :value="unread" :hidden="unread === 0" :max="99">
-
-            <el-button class="cd-header-btn" circle @click="notifyVisible = true">
-
+          <div class="cd-notify-wrap" @click="notifyVisible = true">
+            <button class="cd-header-btn cd-notify-btn">
               <el-icon :size="18"><Bell /></el-icon>
-
-            </el-button>
-
-          </el-badge>
+            </button>
+            <span v-if="unread > 0" class="cd-notify-dot">
+              {{ unread > 99 ? '99+' : unread }}
+            </span>
+          </div>
 
           <ThemePicker />
 
@@ -442,7 +527,11 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
 
           <span class="cd-notify-title">消息通知</span>
 
-          <el-button link type="primary" @click="notifyStore.markAllRead()">全部已读</el-button>
+          <div class="cd-notify-header-actions">
+            <el-button size="small" text @click="notifyStore.markAllRead()">全部已读</el-button>
+            <el-divider direction="vertical" />
+            <el-button v-if="notifyStore.items.length" size="small" text type="danger" @click="handleClearAll">清空</el-button>
+          </div>
 
         </div>
 
@@ -459,17 +548,43 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
           :class="{ unread: !item.read }"
           @click="openNotify(item)"
         >
-          <div v-if="!item.read" class="cd-notify-dot" />
+          <div class="cd-notify-icon-box" :class="getNotifyColorClass(item.type, item.title)">
+            <el-icon :size="16">
+              <component :is="getNotifyIcon(item.type, item.title)" />
+            </el-icon>
+          </div>
           <div class="cd-notify-content">
-            <div class="cd-notify-item-title">{{ item.title }}</div>
+            <div class="cd-notify-item-title-row">
+              <span class="cd-notify-item-title">{{ item.title }}</span>
+              <div class="cd-notify-item-right-meta">
+                <span class="cd-notify-item-time">{{ formatTime(item.createdAt) }}</span>
+                <el-button
+                  class="cd-notify-delete-btn"
+                  size="small"
+                  link
+                  type="danger"
+                  @click.stop="deleteNotify(item)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+            </div>
             <div class="cd-notify-item-text">{{ item.content }}</div>
             <div
-              v-if="item.type === 'TEAM_INVITED' && item.refId && !item.read"
+              v-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus === 'PENDING'"
               class="cd-notify-actions"
               @click.stop
             >
               <el-button size="small" type="primary" @click="acceptTeamInvite(item)">接受</el-button>
               <el-button size="small" @click="rejectTeamInvite(item)">拒绝</el-button>
+            </div>
+            <div
+              v-else-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus !== 'PENDING'"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge" :class="item.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'">
+                {{ item.inviteStatus === 'ACCEPTED' ? '已接受邀请' : item.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '已失效' }}
+              </span>
             </div>
           </div>
         </div>
@@ -478,9 +593,49 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
 
     </el-drawer>
 
+    <!-- 消息详情对话框 -->
+    <el-dialog
+      v-model="detailVisible"
+      title="通知详情"
+      width="420px"
+      align-center
+      destroy-on-close
+    >
+      <div v-if="selectedNotify" class="cd-notify-detail-content">
+        <div class="cd-notify-detail-icon-wrap" :class="getNotifyColorClass(selectedNotify.type, selectedNotify.title)">
+          <el-icon :size="32">
+            <component :is="getNotifyIcon(selectedNotify.type, selectedNotify.title)" />
+          </el-icon>
+        </div>
+        <h3 class="cd-notify-detail-title">{{ selectedNotify.title }}</h3>
+        <div class="cd-notify-detail-time">{{ formatTime(selectedNotify.createdAt) }}</div>
+        <div class="cd-notify-detail-body">
+          {{ selectedNotify.content }}
+        </div>
+        <div v-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus === 'PENDING'" class="cd-notify-detail-actions cd-dialog-footer-pills">
+          <el-button type="primary" size="large" @click="handleAcceptInDetail(selectedNotify)">接受邀请</el-button>
+          <el-button type="danger" size="large" @click="handleRejectInDetail(selectedNotify)">拒绝邀请</el-button>
+        </div>
+        <div v-else-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus !== 'PENDING'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large" :class="selectedNotify.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'">
+            {{ selectedNotify.inviteStatus === 'ACCEPTED' ? '已接受邀请' : selectedNotify.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '邀请已失效' }}
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div
+          v-if="selectedNotify && !(selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus === 'PENDING')"
+          class="cd-dialog-footer-pills"
+        >
+          <el-button size="large" @click="detailVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 全局传输进度面板 -->
     <TransferPanel />
     <PromptDialog />
+    <ConfirmDialog />
 
   </el-container>
 
@@ -811,153 +966,365 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
    ============================================ */
 
 .cd-notify-header {
-
   display: flex;
-
   align-items: center;
-
   justify-content: space-between;
-
   width: 100%;
-
+  padding-right: 36px;
 }
 
 
 
 .cd-notify-title {
-
   font-size: 16px;
-
   font-weight: 700;
-
   color: var(--cd-text-primary);
+}
 
+.cd-clear-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fff7ed;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9a3412;
+}
+
+.cd-clear-warn span {
+  flex: 1;
+}
+
+.cd-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cd-dialog-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--cd-radius);
+  background: var(--cd-primary-bg);
+  color: var(--cd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cd-dialog-icon.danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.cd-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cd-text-primary);
+}
+
+.cd-dialog-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--cd-text-secondary);
+  line-height: 1.4;
+}
+
+.cd-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cd-notify-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 
 
 .cd-notify-list {
-
   display: flex;
-
   flex-direction: column;
-
   gap: 8px;
-
 }
-
-
 
 .cd-notify-item {
-
+  position: relative;
   padding: 14px 16px;
-
   border-radius: var(--cd-radius-lg);
-
   border: 1px solid var(--cd-border-light);
-
+  border-left: 4px solid transparent;
   cursor: pointer;
-
   transition: var(--cd-transition-fast);
-
   display: flex;
-
-  gap: 10px;
-
+  gap: 12px;
   align-items: flex-start;
-
+  background: #ffffff;
 }
-
-
 
 .cd-notify-item:hover {
-
   border-color: var(--cd-primary-light);
-
   background: var(--cd-primary-bg);
-
 }
-
-
 
 .cd-notify-item.unread {
-
-  background: #F0F5FF;
-
-  border-color: #C6DBFA;
-
+  background: rgba(79, 124, 255, 0.02);
+  border-color: rgba(79, 124, 255, 0.15);
+  border-left: 4px solid var(--cd-primary);
 }
 
-
-
-.cd-notify-dot {
-
-  width: 8px;
-
-  height: 8px;
-
-  border-radius: 50%;
-
-  background: var(--cd-primary);
-
+.cd-notify-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-
-  margin-top: 6px;
-
-  box-shadow: 0 0 6px rgba(79, 124, 255, 0.4);
-
 }
 
+.cd-notify-icon-box.teal {
+  background: rgba(13, 148, 136, 0.08);
+  color: #0d9488;
+}
 
+.cd-notify-icon-box.orange {
+  background: rgba(249, 115, 22, 0.08);
+  color: #f97316;
+}
+
+.cd-notify-icon-box.indigo {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+}
+
+.cd-notify-item-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.cd-notify-item-time {
+  font-size: 11px;
+  color: var(--cd-text-placeholder);
+}
 
 .cd-notify-content {
-
   flex: 1;
-
   min-width: 0;
-
 }
-
-
 
 .cd-notify-item-title {
-
   font-weight: 600;
-
   font-size: 14px;
-
   color: var(--cd-text-primary);
-
-  margin-bottom: 4px;
-
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-
-
 .cd-notify-item-text {
-
   color: var(--cd-text-secondary);
-
   font-size: 13px;
-
   line-height: 1.5;
-
   overflow: hidden;
-
   text-overflow: ellipsis;
-
   display: -webkit-box;
-
   -webkit-line-clamp: 2;
-
   -webkit-box-orient: vertical;
-
 }
 
 .cd-notify-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* 通知详情弹窗样式 */
+.cd-notify-detail-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 0;
+}
+
+.cd-notify-detail-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.cd-notify-detail-icon-wrap.teal {
+  background: rgba(13, 148, 136, 0.08);
+  color: #0d9488;
+}
+
+.cd-notify-detail-icon-wrap.orange {
+  background: rgba(249, 115, 22, 0.08);
+  color: #f97316;
+}
+
+.cd-notify-detail-icon-wrap.indigo {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+}
+
+.cd-notify-detail-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: var(--cd-text-primary);
+}
+
+.cd-notify-detail-time {
+  font-size: 12px;
+  color: var(--cd-text-placeholder);
+  margin-bottom: 20px;
+}
+
+.cd-notify-detail-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--cd-text-secondary);
+  text-align: left;
+  background: var(--cd-bg-aside);
+  padding: 16px;
+  border-radius: var(--cd-radius-lg);
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 28px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--cd-border-light);
+}
+
+.cd-notify-detail-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+.cd-notify-detail-actions .el-button {
+  flex: 1;
+}
+
+
+/* 通知角标 - 仿传输按钮的角标做法，避免被 el-badge 默认尺寸影响 */
+.cd-notify-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--cd-text-secondary);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.cd-notify-wrap:hover {
+  background: var(--cd-primary-bg);
+  color: var(--cd-primary);
+}
+.cd-notify-btn {
+  width: 36px !important;
+  height: 36px !important;
+  background: transparent !important;
+  border: none !important;
+  color: inherit !important;
+}
+.cd-notify-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 99px;
+  background: var(--theme-primary-gradient, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%));
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: none;
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.25);
+  animation: badgePopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cd-notify-item-right-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cd-notify-delete-btn {
+  padding: 0 !important;
+  height: auto !important;
+  font-size: 14px !important;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.cd-notify-item:hover .cd-notify-delete-btn {
+  opacity: 1;
+}
+
+.cd-notify-status-row {
+  margin-top: 8px;
+}
+
+.invite-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.invite-status-badge.accepted {
+  background: rgba(13, 148, 136, 0.08);
+  color: #0d9488;
+}
+
+.invite-status-badge.rejected {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.invite-status-badge.large {
+  font-size: 14px;
+  padding: 8px 24px;
+  border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.detail-actions-col {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
 }
 
 </style>

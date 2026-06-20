@@ -7,10 +7,11 @@ import { request } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fmtSize } from '@/utils/fileCover'
+import { globalStorageUsage, updateStorageUsage } from '@/utils/sharedState'
 
 const auth = useAuthStore()
 const notifyStore = useNotificationStore()
-const usage = ref<{ usedBytes?: number; quotaBytes?: number } | null>(null)
+const usage = globalStorageUsage
 
 const unreadCount = computed(() => notifyStore.unreadCount())
 
@@ -25,13 +26,15 @@ const aboutVisible = ref(false)
 const logoutVisible = ref(false)
 
 onShow(async () => {
+  uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
   try {
     auth.fetchProfile().catch(() => {})
     notifyStore.loadFromApi().catch(() => {})
-    usage.value = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    updateStorageUsage(data)
   } catch {
-    usage.value = null
+    /* Keep cached data */
   }
 })
 
@@ -66,11 +69,12 @@ function logout() {
 
 function confirmLogout() {
   auth.logout()
+  updateStorageUsage(null)
   uni.reLaunch({ url: '/pages/login/index' })
 }
 
 function goTeams() {
-  uni.navigateTo({ url: '/pages/teams/index' })
+  uni.switchTab({ url: '/pages/teams/index' })
 }
 
 function goNotifications() {
@@ -82,7 +86,7 @@ function goTransfer() {
 }
 
 function goShares() {
-  uni.reLaunch({ url: '/pages/shares/index' })
+  uni.switchTab({ url: '/pages/shares/index' })
 }
 
 function goRecycle() {

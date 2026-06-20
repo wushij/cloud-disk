@@ -6,6 +6,7 @@ import { request } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fmtSize, fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 
@@ -22,6 +23,14 @@ interface RecycleItem {
 const auth = useAuthStore()
 const list = ref<RecycleItem[]>([])
 const loading = ref(false)
+
+const restoreDialogVisible = ref(false)
+const itemToRestore = ref<RecycleItem | null>(null)
+
+const purgeDialogVisible = ref(false)
+const itemToPurge = ref<RecycleItem | null>(null)
+
+const clearAllDialogVisible = ref(false)
 
 async function loadList() {
   loading.value = true
@@ -50,42 +59,62 @@ function formatDate(d?: string) {
   return `删除于 ${dt.getFullYear()}/${m}/${day} ${h}:${min}`
 }
 
-async function restoreItem(item: RecycleItem) {
+function restoreItem(item: RecycleItem) {
+  itemToRestore.value = item
+  restoreDialogVisible.value = true
+}
+
+async function handleRestoreConfirm() {
+  const item = itemToRestore.value
+  if (!item) return
   const url =
     item.type === 'folder'
       ? `/api/recycle/restore/folder/${item.id}`
       : `/api/recycle/restore/file/${item.id}`
-  await request({ url, method: 'POST' })
-  uni.showToast({ title: '已恢复', icon: 'success' })
-  await loadList()
+  try {
+    await request({ url, method: 'POST' })
+    uni.showToast({ title: '已恢复', icon: 'success' })
+    await loadList()
+  } catch {
+    /* handled */
+  } finally {
+    itemToRestore.value = null
+  }
 }
 
-async function purgeItem(item: RecycleItem) {
-  uni.showModal({
-    title: '彻底删除',
-    content: `确定彻底删除「${item.name}」？此操作无法撤销！`,
-    success: async (res) => {
-      if (!res.confirm) return
-      const url =
-        item.type === 'folder' ? `/api/recycle/folder/${item.id}` : `/api/recycle/file/${item.id}`
-      await request({ url, method: 'DELETE' })
-      uni.showToast({ title: '已删除', icon: 'success' })
-      await loadList()
-    }
-  })
+function purgeItem(item: RecycleItem) {
+  itemToPurge.value = item
+  purgeDialogVisible.value = true
+}
+
+async function handlePurgeConfirm() {
+  const item = itemToPurge.value
+  if (!item) return
+  const url =
+    item.type === 'folder' ? `/api/recycle/folder/${item.id}` : `/api/recycle/file/${item.id}`
+  try {
+    await request({ url, method: 'DELETE' })
+    uni.showToast({ title: '已删除', icon: 'success' })
+    await loadList()
+  } catch {
+    /* handled */
+  } finally {
+    itemToPurge.value = null
+  }
 }
 
 function confirmClearAll() {
-  uni.showModal({
-    title: '清空回收站',
-    content: '确定要清空回收站中的所有项目吗？此操作将永久删除且无法撤销！',
-    success: async (res) => {
-      if (!res.confirm) return
-      await request({ url: '/api/recycle/clear', method: 'DELETE' })
-      uni.showToast({ title: '回收站已清空', icon: 'success' })
-      await loadList()
-    }
-  })
+  clearAllDialogVisible.value = true
+}
+
+async function handleClearAllConfirm() {
+  try {
+    await request({ url: '/api/recycle/clear', method: 'DELETE' })
+    uni.showToast({ title: '回收站已清空', icon: 'success' })
+    await loadList()
+  } catch {
+    /* handled */
+  }
 }
 </script>
 
@@ -181,6 +210,32 @@ function confirmClearAll() {
         </view>
       </view>
     </scroll-view>
+
+    <MobileConfirmDialog
+      v-model:show="purgeDialogVisible"
+      title="彻底删除"
+      :message="itemToPurge ? `确定彻底删除「${itemToPurge.name}」？此操作无法撤销！` : ''"
+      confirm-text="确定"
+      danger
+      @confirm="handlePurgeConfirm"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="clearAllDialogVisible"
+      title="清空回收站"
+      message="确定要清空回收站中的所有项目吗？此操作将永久删除且无法撤销！"
+      confirm-text="清空"
+      danger
+      @confirm="handleClearAllConfirm"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="restoreDialogVisible"
+      title="恢复项目"
+      :message="itemToRestore ? `确定要恢复「${itemToRestore.name}」？` : ''"
+      confirm-text="恢复"
+      @confirm="handleRestoreConfirm"
+    />
   </view>
 </template>
 
@@ -349,8 +404,8 @@ function confirmClearAll() {
 }
 
 .btn {
-  padding: 10rpx 20rpx;
-  border-radius: var(--cd-radius-xs);
+  padding: 10rpx 24rpx;
+  border-radius: var(--cd-radius-full);
   font-size: 22rpx;
   font-weight: 600;
   text-align: center;

@@ -41,4 +41,18 @@ public class NotificationController {
         notificationService.markAllRead();
         return Map.of("message", "已全部标记为已读");
     }
+
+    /** 删除单条通知 */
+    @DeleteMapping("/{id}")
+    public Map<String, String> delete(@PathVariable Long id) {
+        notificationService.deleteNotification(id);
+        return Map.of("message", "已删除");
+    }
+
+    /** 清空所有通知 */
+    @DeleteMapping("/clear-all")
+    public Map<String, String> clearAll() {
+        notificationService.clearAllNotifications();
+        return Map.of("message", "已清空所有通知");
+    }
 }

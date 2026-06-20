@@ -73,6 +73,52 @@ public class RecycleService {
 
 
 
+        // 1. 先查询所有的已删除文件夹，并记录它们的 ID 以便做层级过滤
+
+        List<Folder> folders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+
+                .eq(Folder::getUserId, userId)
+
+                .eq(Folder::getDeleted, 1)
+
+                .orderByDesc(Folder::getUpdateTime));
+
+
+
+        List<Folder> teamFolders = new ArrayList<>();
+
+        if (!teamFolderScope.isEmpty()) {
+
+            teamFolders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+
+                    .eq(Folder::getDeleted, 1)
+
+                    .in(Folder::getId, teamFolderScope)
+
+                    .orderByDesc(Folder::getUpdateTime));
+
+        }
+
+
+
+        Set<Long> deletedFolderIds = new HashSet<>();
+
+        for (Folder f : folders) {
+
+            deletedFolderIds.add(f.getId());
+
+        }
+
+        for (Folder f : teamFolders) {
+
+            deletedFolderIds.add(f.getId());
+
+        }
+
+
+
+        // 2. 查询并过滤文件：如果文件所在的直接父文件夹也在已删除列表中，则在此列表内隐藏该文件（只保留最上层被删文件夹）
+
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 
                 .eq(FileRecord::getUserId, userId)
@@ -82,6 +128,12 @@ public class RecycleService {
                 .orderByDesc(FileRecord::getUpdateTime));
 
         for (FileRecord f : files) {
+
+            if (f.getFolderId() != null && f.getFolderId() > 0 && deletedFolderIds.contains(f.getFolderId())) {
+
+                continue;
+
+            }
 
             appendFileItem(items, seenFileIds, f);
 
@@ -101,6 +153,12 @@ public class RecycleService {
 
             for (FileRecord f : teamFiles) {
 
+                if (f.getFolderId() != null && f.getFolderId() > 0 && deletedFolderIds.contains(f.getFolderId())) {
+
+                    continue;
+
+                }
+
                 appendFileItem(items, seenFileIds, f);
 
             }
@@ -109,15 +167,15 @@ public class RecycleService {
 
 
 
-        List<Folder> folders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
-
-                .eq(Folder::getUserId, userId)
-
-                .eq(Folder::getDeleted, 1)
-
-                .orderByDesc(Folder::getUpdateTime));
+        // 3. 过滤并追加文件夹：如果文件夹的父文件夹也在已删除列表中，则说明它是被级联删除的子目录，不在此处单独展示
 
         for (Folder f : folders) {
+
+            if (f.getParentId() != null && f.getParentId() > 0 && deletedFolderIds.contains(f.getParentId())) {
+
+                continue;
+
+            }
 
             appendFolderItem(items, seenFolderIds, f);
 
@@ -125,28 +183,24 @@ public class RecycleService {
 
 
 
-        if (!teamFolderScope.isEmpty()) {
+        for (Folder f : teamFolders) {
 
-            List<Folder> teamFolders = folderMapper.selectList(new LambdaQueryWrapper<Folder>()
+            if (f.getParentId() != null && f.getParentId() > 0 && deletedFolderIds.contains(f.getParentId())) {
 
-                    .eq(Folder::getDeleted, 1)
-
-                    .in(Folder::getId, teamFolderScope)
-
-                    .orderByDesc(Folder::getUpdateTime));
-
-            for (Folder f : teamFolders) {
-
-                appendFolderItem(items, seenFolderIds, f);
+                continue;
 
             }
+
+            appendFolderItem(items, seenFolderIds, f);
 
         }
 
 
 
         items.sort(Comparator.comparing(
+
                 (Map<String, Object> item) -> (LocalDateTime) item.get("deletedAt"),
+
                 Comparator.nullsLast(Comparator.reverseOrder())));
 
         return items;
@@ -365,7 +419,7 @@ public class RecycleService {
 
         for (FileRecord f : files) {
 
-            permanentDeleteFile(f.getId());
+            silentDeleteFile(f.getId());
 
         }
 
@@ -383,7 +437,7 @@ public class RecycleService {
 
                 if (!Objects.equals(f.getUserId(), userId)) {
 
-                    permanentDeleteFile(f.getId());
+                    silentDeleteFile(f.getId());
 
                 }
 
@@ -401,7 +455,7 @@ public class RecycleService {
 
         for (Folder folder : folders) {
 
-            permanentDeleteFolder(folder.getId());
+            silentDeleteFolder(folder.getId());
 
         }
 
@@ -419,7 +473,7 @@ public class RecycleService {
 
                 if (!Objects.equals(folder.getUserId(), userId)) {
 
-                    permanentDeleteFolder(folder.getId());
+                    silentDeleteFolder(folder.getId());
 
                 }
 
@@ -427,6 +481,52 @@ public class RecycleService {
 
         }
 
+    }
+
+    /**
+     * 幂等删除文件：已被级联删除的文件直接跳过，不抛异常。
+     */
+    private void silentDeleteFile(Long id) {
+        FileRecord file = fileMapper.selectById(id);
+        if (file == null || file.getStatus() == null || file.getStatus() != 0) {
+            return;
+        }
+        long refs = fileMapper.selectCount(new LambdaQueryWrapper<FileRecord>()
+                .eq(FileRecord::getStoragePath, file.getStoragePath())
+                .ne(FileRecord::getId, id));
+        if (refs == 0) {
+            storageService.delete(file.getStoragePath());
+            if (file.getThumbnailPath() != null) storageService.delete(file.getThumbnailPath());
+            if (file.getPosterPath() != null && !file.getPosterPath().equals(file.getThumbnailPath())) {
+                storageService.delete(file.getPosterPath());
+            }
+            if (file.getTranscodePath() != null) storageService.delete(file.getTranscodePath());
+        }
+        fileMapper.deleteById(id);
+        if (file.getStatus() != null && file.getStatus() == 1) {
+            quotaService.subtractUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
+        }
+    }
+
+    /**
+     * 幂等删除文件夹：已被级联删除的文件夹直接跳过，不抛异常。
+     */
+    private void silentDeleteFolder(Long id) {
+        Folder folder = folderMapper.selectById(id);
+        if (folder == null || folder.getDeleted() == 0) {
+            return;
+        }
+        List<Long> folderIds = folderTreeHelper.collectRecycledSubtreeIds(id);
+        List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
+                .in(FileRecord::getFolderId, folderIds)
+                .eq(FileRecord::getStatus, 0));
+        for (FileRecord f : files) {
+            silentDeleteFile(f.getId());
+        }
+        folderIds.sort(Comparator.reverseOrder());
+        for (Long fid : folderIds) {
+            folderMapper.deleteById(fid);
+        }
     }
 
 

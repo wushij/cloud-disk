@@ -107,11 +107,13 @@ async function confirm() {
     </div>
 
     <template #footer>
-      <el-button @click="close">取消</el-button>
-      <el-button type="primary" @click="confirm">
-        <el-icon><Check /></el-icon>
-        确定
-      </el-button>
+      <div class="cd-dialog-footer-pills">
+        <el-button size="large" @click="close">取消</el-button>
+        <el-button type="primary" size="large" @click="confirm">
+          <el-icon><Check /></el-icon>
+          确定
+        </el-button>
+      </div>
     </template>
   </el-dialog>
 </template>

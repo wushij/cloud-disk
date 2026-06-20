@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.clouddisk.entity.Notification;
+import com.clouddisk.entity.TeamInvitation;
 import com.clouddisk.mapper.NotificationMapper;
+import com.clouddisk.mapper.TeamInvitationMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,7 @@ import java.util.*;
 public class NotificationService {
 
     private final NotificationMapper notificationMapper;
+    private final TeamInvitationMapper teamInvitationMapper;
 
     /**
      * 获取当前用户的通知列表（使用 MyBatis-Plus Page 分页，避免 SQL 注入）
@@ -37,6 +40,21 @@ public class NotificationService {
             m.put("refId", n.getRefId());
             m.put("isRead", n.getIsRead());
             m.put("createdAt", n.getCreateTime());
+            
+            if ("TEAM_INVITED".equals(n.getType()) && n.getRefId() != null) {
+                try {
+                    Long invitationId = Long.parseLong(n.getRefId());
+                    TeamInvitation invitation = teamInvitationMapper.selectById(invitationId);
+                    if (invitation != null) {
+                        m.put("inviteStatus", invitation.getStatus());
+                    } else {
+                        m.put("inviteStatus", "EXPIRED");
+                    }
+                } catch (Exception e) {
+                    m.put("inviteStatus", "EXPIRED");
+                }
+            }
+            
             result.add(m);
         }
         return result;
@@ -90,5 +108,24 @@ public class NotificationService {
         n.setIsRead(0);
         notificationMapper.insert(n);
         return n;
+    }
+
+    /**
+     * 删除单条通知
+     */
+    public void deleteNotification(Long notificationId) {
+        long userId = AuthService.currentUserId();
+        notificationMapper.delete(new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getId, notificationId)
+                .eq(Notification::getUserId, userId));
+    }
+
+    /**
+     * 清空当前用户的所有通知
+     */
+    public void clearAllNotifications() {
+        long userId = AuthService.currentUserId();
+        notificationMapper.delete(new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getUserId, userId));
     }
 }

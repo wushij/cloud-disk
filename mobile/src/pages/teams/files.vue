@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useTransferStore } from '@/stores/transfer'
-import { request, fileApiUrl, TOKEN_KEY } from '@/api/http'
+import { request, fileApiUrl, uploadFile, TOKEN_KEY } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
@@ -16,12 +16,82 @@ import { isTextFile } from '@/utils/filePreview'
 import { useH5BackGuard } from '@/composables/useH5BackGuard'
 import type { FileItem } from '@/stores/file'
 import { downloadZip } from '@/utils/download'
+import { updateUrlQueryParam } from '@/utils/navUrlHelper'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
+import { globalTeamList } from '@/utils/sharedState'
+import { bumpTeamAvatarVersion, teamAvatarVersions } from '@/utils/teamAvatar'
 
 const spaceId = ref(0)
 const spaceName = ref('')
+const spaceAvatar = ref('')
+
+function getTeamAvatarUrl(teamId: number) {
+  const v = teamAvatarVersions.value[teamId] || 0
+  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  return v ? `${base}&v=${v}` : base
+}
+
+function changeTeamAvatar() {
+  if (myRole.value !== 'OWNER' && myRole.value !== 'ADMIN') return
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0]
+      uni.showLoading({ title: '上传中...' })
+      try {
+        const data = await uploadFile({
+          url: `/api/teams/${spaceId.value}/avatar`,
+          filePath: tempFilePath,
+          name: 'file'
+        }) as { avatar: string }
+        
+        spaceAvatar.value = data.avatar
+        bumpTeamAvatarVersion(spaceId.value)
+        uni.showToast({ title: '修改成功', icon: 'success' })
+        
+        // 同步更新全局状态中的头像
+        const idx = globalTeamList.value.findIndex(t => t.id === spaceId.value)
+        if (idx >= 0) {
+          globalTeamList.value[idx].avatar = data.avatar
+        }
+      } catch (err) {
+        uni.showToast({ title: '上传失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  })
+}
+
+const gradients = [
+  'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', // 靛蓝
+  'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)', // 蔚蓝
+  'linear-gradient(135deg, #10b981 0%, #059669 100%)', // 翡翠
+  'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', // 琥珀
+  'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', // 玫瑰
+  'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'  // 罗兰
+]
+
+const shadowColors = [
+  'rgba(79, 70, 229, 0.22)',
+  'rgba(14, 165, 233, 0.22)',
+  'rgba(16, 185, 129, 0.22)',
+  'rgba(245, 158, 11, 0.22)',
+  'rgba(236, 72, 153, 0.22)',
+  'rgba(139, 92, 246, 0.22)'
+]
+
+function getAvatarStyle(teamId: number) {
+  const idx = teamId % gradients.length
+  return {
+    background: gradients[idx],
+    boxShadow: `0 4rpx 12rpx ${shadowColors[idx]}`
+  }
+}
 const rootFolderId = ref(0)
 const currentFolderId = ref(0)
 const breadcrumb = ref<{ id: number; name: string }[]>([])
@@ -97,28 +167,8 @@ function handleBatchDownload() {
 
 function handleBatchDelete() {
   if (selectedItems.value.length === 0) return
-  uni.showModal({
-    title: '确认删除',
-    content: `确定删除这 ${selectedItems.value.length} 个项目吗？`,
-    success: async (res) => {
-      if (!res.confirm) return
-      uni.showLoading({ title: '正在删除...' })
-      try {
-        for (const item of selectedItems.value) {
-          const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
-          await request({ url, method: 'DELETE' })
-        }
-        uni.showToast({ title: '批量删除成功', icon: 'success' })
-        clearSelection()
-        selectMode.value = false
-        loadFiles()
-      } catch {
-        uni.showToast({ title: '删除失败', icon: 'none' })
-      } finally {
-        uni.hideLoading()
-      }
-    }
-  })
+  confirmAction.value = 'batch_delete'
+  confirmVisible.value = true
 }
 
 // 菜单状态
@@ -127,7 +177,7 @@ const menuVisible = ref(false)
 const renameVisible = ref(false)
 const renaming = ref(false)
 
-type ConfirmAction = 'dissolve' | 'leave' | 'delete'
+type ConfirmAction = 'dissolve' | 'leave' | 'delete' | 'batch_delete'
 const confirmVisible = ref(false)
 const confirmAction = ref<ConfirmAction>('dissolve')
 const confirmFile = ref<FileItem | null>(null)
@@ -141,6 +191,7 @@ const confirmTitle = computed(() => {
     case 'dissolve': return '解散团队'
     case 'leave': return '退出团队'
     case 'delete': return '删除确认'
+    case 'batch_delete': return '确认删除'
     default: return '确认操作'
   }
 })
@@ -155,6 +206,8 @@ const confirmMessage = computed(() => {
       const f = confirmFile.value
       return f ? `确定删除「${f.name}」吗？文件将移至回收站` : ''
     }
+    case 'batch_delete':
+      return `确定删除这 ${selectedItems.value.length} 个项目吗？`
     default: return ''
   }
 })
@@ -164,6 +217,7 @@ const confirmButtonText = computed(() => {
     case 'dissolve': return '解散'
     case 'leave': return '退出'
     case 'delete': return '删除'
+    case 'batch_delete': return '删除'
     default: return '确定'
   }
 })
@@ -192,6 +246,7 @@ const actionList = computed(() => {
 const menuList = computed(() => {
   const list: { name: string; color?: string }[] = [{ name: '成员管理' }]
   if (myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
+    list.push({ name: '更换团队头像' })
     list.push({ name: '重命名团队' })
   }
   if (myRole.value === 'OWNER') {
@@ -205,8 +260,9 @@ const menuList = computed(() => {
 async function syncSpaceMeta() {
   if (!spaceId.value) return
   try {
-    const space = await request<{ name: string }>({ url: `/api/teams/${spaceId.value}` })
+    const space = await request<{ name: string; avatar?: string }>({ url: `/api/teams/${spaceId.value}` })
     spaceName.value = space.name
+    spaceAvatar.value = space.avatar || ''
     if (breadcrumb.value.length > 0 && breadcrumb.value[0].id === rootFolderId.value) {
       breadcrumb.value[0].name = space.name
     }
@@ -215,13 +271,33 @@ async function syncSpaceMeta() {
   }
 }
 
-onLoad((query) => {
+onLoad(async (query) => {
   spaceId.value = Number(query?.spaceId || 0)
   spaceName.value = decodeURIComponent(query?.name || '团队空间')
   rootFolderId.value = Number(query?.rootFolderId || 0)
-  currentFolderId.value = rootFolderId.value
-  breadcrumb.value = [{ id: rootFolderId.value, name: spaceName.value }]
   myRole.value = query?.myRole || ''
+  spaceAvatar.value = decodeURIComponent(query?.avatar || '')
+
+  const queryFolderId = Number(query?.folderId || 0)
+  if (queryFolderId > 0 && queryFolderId !== rootFolderId.value) {
+    currentFolderId.value = queryFolderId
+    try {
+      const data = await request<{ id: number; name: string }[]>({
+        url: `/api/folders/${queryFolderId}/breadcrumbs`
+      })
+      if (Array.isArray(data)) {
+        breadcrumb.value = data
+      } else {
+        breadcrumb.value = [{ id: rootFolderId.value, name: spaceName.value }]
+      }
+    } catch {
+      breadcrumb.value = [{ id: rootFolderId.value, name: spaceName.value }]
+    }
+  } else {
+    currentFolderId.value = rootFolderId.value
+    breadcrumb.value = [{ id: rootFolderId.value, name: spaceName.value }]
+  }
+
   loadFiles()
 })
 
@@ -252,6 +328,17 @@ async function submitRenameTeam(name: string) {
     await request({ url: `/api/teams/${spaceId.value}`, method: 'PUT', data: { name: trimmed } })
     renameVisible.value = false
     uni.showToast({ title: '已重命名', icon: 'success' })
+    
+    // 同步更新本地和全局共享状态
+    spaceName.value = trimmed
+    if (breadcrumb.value.length > 0 && breadcrumb.value[0].id === rootFolderId.value) {
+      breadcrumb.value[0].name = trimmed
+    }
+    const idx = globalTeamList.value.findIndex(t => t.id === spaceId.value)
+    if (idx >= 0) {
+      globalTeamList.value[idx].name = trimmed
+    }
+    
     await syncSpaceMeta()
   } catch {
     /* handled */
@@ -281,6 +368,23 @@ async function onConfirmAction() {
       uni.showToast({ title: '已移至回收站', icon: 'success' })
       loadFiles()
     }
+    if (confirmAction.value === 'batch_delete') {
+      uni.showLoading({ title: '正在删除...' })
+      try {
+        for (const item of selectedItems.value) {
+          const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
+          await request({ url, method: 'DELETE' })
+        }
+        uni.showToast({ title: '批量删除成功', icon: 'success' })
+        clearSelection()
+        selectMode.value = false
+        loadFiles()
+      } catch {
+        uni.showToast({ title: '删除失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
   } catch {
     /* handled */
   }
@@ -290,8 +394,10 @@ function onMenuSelect(item: { name: string }) {
   menuVisible.value = false
   if (item.name === '成员管理') {
     uni.navigateTo({
-      url: `/pages/teams/members?spaceId=${spaceId.value}&name=${encodeURIComponent(spaceName.value)}&myRole=${myRole.value}`
+      url: `/pages/teams/members?spaceId=${spaceId.value}&name=${encodeURIComponent(spaceName.value)}&myRole=${myRole.value}&avatar=${encodeURIComponent(spaceAvatar.value || '')}`
     })
+  } else if (item.name === '更换团队头像') {
+    changeTeamAvatar()
   } else if (item.name === '重命名团队') {
     renameVisible.value = true
   } else if (item.name === '解散团队') {
@@ -330,6 +436,7 @@ function openItem(row: FileItem) {
   if (row.type === 'folder') {
     breadcrumb.value.push({ id: row.id, name: row.name })
     currentFolderId.value = row.id
+    updateUrlQueryParam({ folderId: row.id })
     loadFiles()
     return
   }
@@ -355,6 +462,7 @@ function gotoCrumb(idx: number) {
   const target = breadcrumb.value[idx]
   breadcrumb.value = breadcrumb.value.slice(0, idx + 1)
   currentFolderId.value = target.id
+  updateUrlQueryParam({ folderId: target.id === rootFolderId.value ? null : target.id })
   loadFiles()
 }
 
@@ -435,6 +543,12 @@ function openShare(row: FileItem) {
       :subtitle="`${items.length} 项`"
       gradient
     >
+      <template #left>
+        <view class="team-avatar-header" :class="{ 'cd-pressable': myRole === 'OWNER' || myRole === 'ADMIN' }" :style="spaceAvatar ? {} : getAvatarStyle(spaceId)" @click="changeTeamAvatar">
+          <image v-if="spaceAvatar" :src="getTeamAvatarUrl(spaceId)" class="team-avatar-img" mode="aspectFill" />
+          <text v-else class="team-avatar-header-text">{{ (spaceName || 'T').charAt(0).toUpperCase() }}</text>
+        </view>
+      </template>
       <template #right>
         <view class="header-right-group">
           <!-- 多选切换按钮 -->
@@ -584,6 +698,31 @@ function openShare(row: FileItem) {
 .header-right-group {
   display: flex;
   align-items: center;
+}
+
+.team-avatar-header {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 4rpx;
+  overflow: hidden;
+  transition: opacity var(--cd-transition-fast);
+}
+
+.team-avatar-header-text {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.team-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
 }
 
 /* 移动端批量操作栏 */

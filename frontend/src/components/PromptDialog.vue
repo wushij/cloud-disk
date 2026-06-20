@@ -49,7 +49,7 @@ watch(visible, async (show) => {
     />
 
     <template #footer>
-      <div class="cd-prompt-footer">
+      <div class="cd-dialog-footer-pills">
         <el-button size="large" @click="store.cancel()">取消</el-button>
         <el-button type="primary" size="large" @click="store.confirm()">
           <el-icon v-if="icon === 'folder'"><FolderAdd /></el-icon>
@@ -90,12 +90,6 @@ watch(visible, async (show) => {
   font-size: 13px;
   color: var(--cd-text-secondary);
   line-height: 1.4;
-}
-
-.cd-prompt-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 .cd-prompt-dialog :deep(.el-input__wrapper) {

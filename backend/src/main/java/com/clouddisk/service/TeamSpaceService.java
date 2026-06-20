@@ -89,6 +89,7 @@ public class TeamSpaceService {
             m.put("ownerId", space.getOwnerId());
             m.put("rootFolderId", space.getRootFolderId());
             m.put("maxSize", space.getMaxSize());
+            m.put("avatar", space.getAvatar());
             m.put("myRole", member != null ? member.getRole() : "MEMBER");
             m.put("memberCount", teamMemberMapper.selectCount(
                     new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getSpaceId, space.getId())));
@@ -293,6 +294,53 @@ public class TeamSpaceService {
 
         var resource = storageService.loadAsResource(user.getAvatar());
         return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
+    }
+
+    /**
+     * 上传团队空间头像
+     */
+    public String uploadAvatar(Long spaceId, org.springframework.web.multipart.MultipartFile file) {
+        long currentUserId = AuthService.currentUserId();
+        requireAdmin(spaceId, currentUserId);
+
+        if (file.isEmpty()) throw new BusinessException("文件为空");
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new BusinessException("请上传图片文件");
+        }
+
+        String path = "team-avatars/" + spaceId + ".jpg";
+        try {
+            storageService.store(file.getInputStream(), path, file.getSize(), contentType);
+        } catch (Exception e) {
+            throw new BusinessException("保存图片失败");
+        }
+
+        TeamSpace space = getOwnedSpace(spaceId, currentUserId);
+        space.setAvatar(path);
+        teamSpaceMapper.updateById(space);
+
+        return path;
+    }
+
+    /**
+     * 获取团队空间头像
+     */
+    public ResponseEntity<org.springframework.core.io.Resource> loadTeamAvatar(
+            Long spaceId, jakarta.servlet.http.HttpServletRequest request) {
+        long userId = com.clouddisk.util.AuthHelper.requireUserId(request);
+        getOwnedSpace(spaceId, userId);
+
+        TeamSpace space = teamSpaceMapper.selectById(spaceId);
+        if (space == null || !StringUtils.hasText(space.getAvatar())) {
+            throw new BusinessException("头像不存在");
+        }
+
+        var resource = storageService.loadAsResource(space.getAvatar());
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .body(resource);
     }
 
     /**

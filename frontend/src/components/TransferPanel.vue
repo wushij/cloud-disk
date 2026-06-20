@@ -4,8 +4,11 @@ import { storeToRefs } from 'pinia'
 import { useTransferStore, type TransferTask } from '@/stores/transfer'
 import { fmtSize } from '@/utils/fileMeta'
 import { TOKEN_KEY } from '@/api/http'
+import { ElMessage } from 'element-plus'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 const transferStore = useTransferStore()
+const confirmDialog = useConfirmDialogStore()
 const { tasks, isCollapsed, runningCount } = storeToRefs(transferStore)
 const activeTab = ref<'transferring' | 'completed'>('transferring')
 const coverFallback = ref<Record<string, boolean>>({})
@@ -102,6 +105,45 @@ function progressGradient(status: string): string {
 function handleCollapseToggle() {
   transferStore.toggleCollapse()
 }
+
+async function handleCancelTask(task: TransferTask) {
+  const isCompleted = task.status === 'done' || task.status === 'instant' || task.status === 'error'
+  const confirmMsg = isCompleted
+    ? `确定要删除完成记录「${task.name}」吗？`
+    : `确定要取消文件「${task.name}」的传输吗？`
+
+  const ok = await confirmDialog.open({
+    title: '提示',
+    message: confirmMsg,
+    confirmText: '确定',
+    danger: isCompleted
+  })
+  if (!ok) return
+
+  try {
+    await transferStore.cancelTask(task.id)
+    ElMessage.success(isCompleted ? '已删除记录' : '已取消传输')
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function handleClearCompleted() {
+  const ok = await confirmDialog.open({
+    title: '提示',
+    message: '确定要清除所有已完成的传输记录吗？',
+    confirmText: '清除',
+    danger: true
+  })
+  if (!ok) return
+
+  try {
+    await transferStore.clearCompleted()
+    ElMessage.success('已清除已完成记录')
+  } catch (e) {
+    console.error(e)
+  }
+}
 </script>
 
 <template>
@@ -110,11 +152,8 @@ function handleCollapseToggle() {
     <div v-if="isCollapsed" class="cd-transfer-mini" @click="handleCollapseToggle">
       <div class="mini-inner" :class="{ pulse: runningCount > 0 }">
         <svg class="mini-icon" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-            fill="currentColor"
-            opacity="0.9"
-          />
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
       <span class="mini-text">
@@ -134,7 +173,7 @@ function handleCollapseToggle() {
           <button
             v-if="completedTasks.length && activeTab === 'completed'"
             class="header-text-btn"
-            @click="transferStore.clearCompleted"
+            @click="handleClearCompleted"
           >
             清除
           </button>
@@ -253,7 +292,7 @@ function handleCollapseToggle() {
                   ▶
                 </button>
               </template>
-              <button class="action-circle cancel" title="取消" @click="transferStore.cancelTask(t.id)">
+              <button class="action-circle cancel" title="取消" @click="handleCancelTask(t)">
                 ✕
               </button>
             </div>
@@ -322,7 +361,7 @@ function handleCollapseToggle() {
               </div>
             </div>
 
-            <button class="done-remove-btn" title="删除记录" @click="transferStore.cancelTask(t.id)">
+            <button class="done-remove-btn" title="删除记录" @click="handleCancelTask(t)">
               <svg viewBox="0 0 24 24" fill="none" class="remove-svg">
                 <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
               </svg>

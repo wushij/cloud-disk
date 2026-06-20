@@ -513,6 +513,66 @@ public class FolderService {
 
     }
 
+    public List<Map<String, Object>> getBreadcrumbs(Long folderId, long userId) {
+        List<Map<String, Object>> crumbs = new ArrayList<>();
+        if (folderId == null || folderId <= 0) {
+            Map<String, Object> rootCrumb = new LinkedHashMap<>();
+            rootCrumb.put("id", 0L);
+            rootCrumb.put("name", "全部文件");
+            crumbs.add(rootCrumb);
+            return crumbs;
+        }
+
+        Folder folder = getOwnedOrShared(folderId, userId);
+        Folder current = folder;
+        int depth = 0;
+        while (current != null && depth < 30) {
+            Map<String, Object> crumb = new LinkedHashMap<>();
+            crumb.put("id", current.getId());
+            crumb.put("name", current.getFolderName());
+            crumbs.add(0, crumb);
+
+            Long parentId = current.getParentId();
+            if (parentId == null || parentId <= 0) {
+                break;
+            }
+            current = folderMapper.selectById(parentId);
+            depth++;
+        }
+
+        TeamSpace space = resolveTeamSpaceForFolder(folderId);
+        if (space != null) {
+            Long rootFolderId = space.getRootFolderId();
+            int rootIndex = -1;
+            for (int i = 0; i < crumbs.size(); i++) {
+                if (Objects.equals(crumbs.get(i).get("id"), rootFolderId)) {
+                    rootIndex = i;
+                    break;
+                }
+            }
+            if (rootIndex >= 0) {
+                crumbs = crumbs.subList(rootIndex, crumbs.size());
+                List<Map<String, Object>> copy = new ArrayList<>();
+                for (int i = 0; i < crumbs.size(); i++) {
+                    Map<String, Object> original = crumbs.get(i);
+                    Map<String, Object> m = new LinkedHashMap<>(original);
+                    if (i == 0) {
+                        m.put("name", space.getName());
+                    }
+                    copy.add(m);
+                }
+                crumbs = copy;
+            }
+        } else {
+            Map<String, Object> rootCrumb = new LinkedHashMap<>();
+            rootCrumb.put("id", 0L);
+            rootCrumb.put("name", "全部文件");
+            crumbs.add(0, rootCrumb);
+        }
+
+        return crumbs;
+    }
+
 }
 
 

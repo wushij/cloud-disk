@@ -24,7 +24,8 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
   let lastSyncedDepth = options.depth()
 
   function pushTrap(depth: number) {
-    history.pushState({ cdBackGuard: true, depth }, '', location.href)
+    const currentState = history.state || {}
+    history.pushState({ ...currentState, cdBackGuard: true, depth }, '', location.href)
   }
 
   function onPopState(event: PopStateEvent) {
@@ -70,7 +71,8 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
       lastSyncedDepth = newDepth
       // 只有当 onAppBack 真正减少了层级，且仍在子目录中，才重新推入 trap 维持拦截
       if (newDepth < prevDepth && newDepth > 0) {
-        history.pushState({ cdBackGuard: true, depth: newDepth }, '', location.href)
+        const currentState = history.state || {}
+        history.pushState({ ...currentState, cdBackGuard: true, depth: newDepth }, '', location.href)
       }
       return
     }
@@ -102,10 +104,9 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
   })
 
   onMounted(() => {
-    // 初始化当前历史项 state（depth 此时为0表示根目录），使后退到此项时能感知到 depth=0 并放行
-    if (history.state === null || typeof history.state.depth !== 'number') {
-      history.replaceState({ cdBackGuard: true, depth: options.depth() }, '', location.href)
-    }
+    // 强制同步当前历史项状态，确保刷新后如果深度重构/重置，历史记录中的 depth 与 UI 的深度完全一致
+    const currentState = history.state || {}
+    history.replaceState({ ...currentState, cdBackGuard: true, depth: options.depth() }, '', location.href)
     window.addEventListener('popstate', onPopState)
   })
 

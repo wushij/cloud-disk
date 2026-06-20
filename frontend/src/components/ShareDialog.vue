@@ -132,7 +132,7 @@ async function copyLink() {
     </div>
 
     <template v-if="!result" #footer>
-      <div class="cd-share-footer">
+      <div class="cd-dialog-footer-pills">
         <el-button size="large" @click="close">取消</el-button>
         <el-button type="primary" size="large" :loading="loading" @click="createShare">
           <el-icon><Share /></el-icon>
@@ -180,12 +180,6 @@ async function copyLink() {
 
 .cd-share-form :deep(.el-radio-button__inner) {
   padding: 8px 14px;
-}
-
-.cd-share-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 .cd-share-dialog.is-result :deep(.el-dialog__body) {
@@ -275,7 +269,8 @@ async function copyLink() {
 .cd-share-done-btn {
   width: 100%;
   margin-top: 4px;
-  border-radius: var(--cd-radius);
-  font-weight: 600;
+  height: 44px;
+  border-radius: 999px;
+  font-weight: 700;
 }
 </style>

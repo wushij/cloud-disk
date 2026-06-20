@@ -3,6 +3,7 @@ package com.clouddisk.service;
 import com.clouddisk.cache.CacheService;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.config.CloudDiskProperties;
+import com.clouddisk.entity.FileRecord;
 import com.clouddisk.entity.ShareRecord;
 import com.clouddisk.mapper.ShareMapper;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,5 +70,32 @@ class ShareServiceTest {
         assertEquals("分享已过期", ex.getMessage());
         verify(shareMapper).updateById(share);
         assertEquals(0, share.getStatus());
+    }
+
+    @Test
+    void verifyAndGetFile_duplicateRequests_countOnceWithinDedupeWindow() {
+        ShareRecord share = new ShareRecord();
+        share.setId(10L);
+        share.setShareCode("abc12345");
+        share.setShareType("FILE");
+        share.setFileId(100L);
+        share.setStatus(1);
+        share.setDownloadCount(0);
+
+        FileRecord file = new FileRecord();
+        file.setId(100L);
+        file.setStatus(1);
+
+        when(cacheService.get(any())).thenReturn(null);
+        when(shareMapper.selectOne(any())).thenReturn(share);
+        when(fileService.getForDownload(100L)).thenReturn(file);
+        when(cacheService.increment(any(), eq(120L))).thenReturn(1L, 2L, 3L);
+
+        shareService.verifyAndGetFile("abc12345", null);
+        shareService.verifyAndGetFile("abc12345", null);
+        shareService.verifyAndGetFile("abc12345", null);
+
+        verify(shareMapper, times(1)).update(any(), any());
+        assertEquals(1, share.getDownloadCount());
     }
 }

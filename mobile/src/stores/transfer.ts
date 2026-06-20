@@ -17,6 +17,8 @@ export interface TransferTask {
   filePath?: string
   folderId?: number
   fileId?: number
+  /** 本地图片预览地址（上传图片时使用 filePath） */
+  coverUrl?: string
   // 控制句柄
   abortController?: AbortController // 上传使用
   downloadTask?: UniApp.DownloadTask // 原生下载使用
@@ -126,9 +128,13 @@ export const useTransferStore = defineStore('transfer', () => {
     tasks.value.splice(idx, 1)
   }
 
+  // 图片扩展名
+  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']
+
   // 添加上传任务
   async function addUploadTask(filePath: string, name: string, size: number, folderId: number) {
     const taskId = createTaskId()
+    const ext = name.split('.').pop()?.toLowerCase() || ''
     const task = pushTask({
       id: taskId,
       type: 'upload',
@@ -140,6 +146,7 @@ export const useTransferStore = defineStore('transfer', () => {
       status: 'waiting',
       filePath,
       folderId,
+      coverUrl: imageExts.includes(ext) ? filePath : undefined,
       abortController: new AbortController(),
       startTime: Date.now()
     })

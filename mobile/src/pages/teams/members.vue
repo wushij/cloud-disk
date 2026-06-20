@@ -6,6 +6,7 @@ import { request, fileApiUrl } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import { teamAvatarVersions } from '@/utils/teamAvatar'
 
 const auth = useAuthStore()
 
@@ -21,6 +22,7 @@ interface TeamMember {
 
 const spaceId = ref(0)
 const spaceName = ref('')
+const spaceAvatar = ref('')
 const myRole = ref('')
 const members = ref<TeamMember[]>([])
 const membersLoading = ref(false)
@@ -33,6 +35,12 @@ const removeTarget = ref<TeamMember | null>(null)
 const canInvite = computed(() => myRole.value === 'OWNER' || myRole.value === 'ADMIN')
 
 const teamInitial = computed(() => (spaceName.value.charAt(0) || 'T').toUpperCase())
+
+function getTeamAvatarUrl(teamId: number) {
+  const v = teamAvatarVersions.value[teamId] || 0
+  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  return v ? `${base}&v=${v}` : base
+}
 
 const teamAvatarStyle = computed(() => {
   const gradients = [
@@ -61,6 +69,7 @@ const teamAvatarStyle = computed(() => {
 onLoad((query) => {
   spaceId.value = Number(query?.spaceId || 0)
   spaceName.value = decodeURIComponent(query?.name || '团队空间')
+  spaceAvatar.value = decodeURIComponent(query?.avatar || '')
   myRole.value = query?.myRole || ''
 })
 
@@ -74,8 +83,9 @@ onShow(() => {
 async function syncSpaceMeta() {
   if (!spaceId.value) return
   try {
-    const space = await request<{ name: string }>({ url: `/api/teams/${spaceId.value}` })
+    const space = await request<{ name: string; avatar?: string }>({ url: `/api/teams/${spaceId.value}` })
     spaceName.value = space.name
+    spaceAvatar.value = space.avatar || ''
   } catch {
     /* handled */
   }
@@ -198,8 +208,14 @@ async function confirmRemove() {
       </template>
       <template #extra>
         <view class="team-hero">
-          <view class="team-avatar" :style="teamAvatarStyle">
-            <text class="team-avatar-text">{{ teamInitial }}</text>
+          <view class="team-avatar" :style="spaceAvatar ? {} : teamAvatarStyle">
+            <image
+              v-if="spaceAvatar"
+              :src="getTeamAvatarUrl(spaceId)"
+              class="team-avatar-img"
+              mode="aspectFill"
+            />
+            <text v-else class="team-avatar-text">{{ teamInitial }}</text>
           </view>
           <view class="team-hero-text">
             <text class="team-hero-name">{{ spaceName }}</text>
@@ -314,6 +330,12 @@ async function confirmRemove() {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.team-avatar-img {
+  width: 100%;
+  height: 100%;
 }
 
 .team-avatar-text {
