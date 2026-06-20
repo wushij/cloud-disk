@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "后端 dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "$env:SPRING_PROFILES_ACTIVE='local'; mvn spring-boot:run \"-DskipTests\"",
+      "cwd": "${workspaceFolder}/backend"
+    },
+    {
+      "name": "前端 dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "移动端 dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:h5",
+      "cwd": "${workspaceFolder}/mobile"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "全栈",
+      "configurations": ["后端 dev", "前端 dev", "移动端 dev"]
+    }
+  ]
+}
