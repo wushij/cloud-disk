@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
 import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
@@ -24,6 +25,8 @@ const emit = defineEmits<{
   (e: 'more'): void
   (e: 'check-change', val: boolean): void
 }>()
+
+const coverBroken = ref(false)
 
 function onMoreClick() {
   emit('more')
@@ -54,12 +57,13 @@ function onMoreClick() {
       }"
     >
       <image
-        v-if="fileHasCover(item) && fileCoverKind(item) === 'image'"
+        v-if="fileHasCover(item) && fileCoverKind(item) === 'image' && !coverBroken"
         :src="fileCoverUrl(item)"
         class="file-cover"
         mode="aspectFill"
+        @error="coverBroken = true"
       />
-      <view v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video'" class="file-video-wrap">
+      <view v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video' && !coverBroken" class="file-video-wrap">
         <video
           :src="fileCoverUrl(item)"
           class="file-cover"

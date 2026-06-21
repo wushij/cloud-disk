@@ -9,6 +9,20 @@
       "cwd": "${workspaceFolder}/backend"
     },
     {
+      "name": "后端 dev + 监控",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "$env:SPRING_PROFILES_ACTIVE='local,monitoring'; mvn spring-boot:run \"-DskipTests\"",
+      "cwd": "${workspaceFolder}/backend"
+    },
+    {
+      "name": "后端 docker dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "$env:SPRING_PROFILES_ACTIVE='docker'; mvn spring-boot:run \"-DskipTests\"",
+      "cwd": "${workspaceFolder}/backend"
+    },
+    {
       "name": "前端 dev",
       "type": "node-terminal",
       "request": "launch",

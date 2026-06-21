@@ -210,6 +210,14 @@ function logout() {
 
 }
 
+function onUserCommand(cmd: string) {
+  if (cmd === 'profile') {
+    router.push('/profile')
+  } else if (cmd === 'logout') {
+    logout()
+  }
+}
+
 
 
 const detailVisible = ref(false)
@@ -558,7 +566,7 @@ async function handleClearAll() {
 
           <ThemePicker />
 
-          <el-dropdown trigger="click" @command="logout">
+          <el-dropdown trigger="click" @command="onUserCommand">
 
             <div class="cd-user-info">
 
@@ -583,7 +591,7 @@ async function handleClearAll() {
 
               <el-dropdown-menu>
 
-                <el-dropdown-item command="profile" @click="router.push('/profile')">
+                <el-dropdown-item command="profile">
 
                   <el-icon><User /></el-icon> 个人中心
 

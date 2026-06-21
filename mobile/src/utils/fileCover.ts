@@ -15,13 +15,15 @@ function isVideo(mime?: string | null, name?: string) {
 export function fileHasCover(row: FileItem): boolean {
   if (row.type !== 'file') return false
   if (row.hasThumbnail) return true
-  return isImage(row.mimeType) || isVideo(row.mimeType, row.name)
+  if (isImage(row.mimeType)) return true
+  // 视频需等缩略图生成后再展示封面（H5 列表内 video 预览不稳定）
+  if (isVideo(row.mimeType, row.name)) return false
+  return false
 }
 
 export function fileCoverKind(row: FileItem): 'image' | 'video' | null {
   if (!fileHasCover(row)) return null
   if (row.hasThumbnail || isImage(row.mimeType)) return 'image'
-  if (isVideo(row.mimeType, row.name)) return 'video'
   return null
 }
 

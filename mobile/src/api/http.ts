@@ -5,6 +5,15 @@ export const ROLE_KEY = 'cd_role'
 
 const BASE_URL = import.meta.env.VITE_API_BASE || ''
 
+function apiOrigin(): string {
+  const base = BASE_URL.trim()
+  if (/^https?:\/\//.test(base)) return base.replace(/\/$/, '')
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  return ''
+}
+
 interface RequestOptions {
   url: string
   method?: UniApp.RequestOptions['method']
@@ -27,7 +36,9 @@ export class ApiError extends Error {
 
 function buildUrl(url: string) {
   if (/^https?:\/\//.test(url)) return url
-  return `${BASE_URL}${url}`
+  const path = url.startsWith('/') ? url : `/${url}`
+  const origin = apiOrigin()
+  return origin ? `${origin}${path}` : path
 }
 
 /** 常见英文错误消息 → 中文翻译 */

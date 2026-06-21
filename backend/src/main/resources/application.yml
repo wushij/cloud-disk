@@ -15,7 +15,11 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRestClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ReactiveElasticsearchClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ReactiveElasticsearchRepositoriesAutoConfiguration
   rabbitmq:
     host: 127.0.0.1
     port: 5672
@@ -26,8 +30,6 @@ spring:
       simple:
         acknowledge-mode: manual
         prefetch: 5
-  elasticsearch:
-    uris: http://127.0.0.1:9200
   servlet:
     multipart:
       max-file-size: 128MB
@@ -183,3 +185,10 @@ management:
       show-details: when_authorized
       probes:
         enabled: true
+  health:
+    ldap:
+      enabled: ${clouddisk.ldap.enabled:false}
+    elasticsearch:
+      enabled: ${clouddisk.elasticsearch.enabled:false}
+    rabbit:
+      enabled: ${clouddisk.rabbitmq.enabled:false}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
 import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
@@ -23,6 +24,8 @@ const emit = defineEmits<{
   (e: 'longpress'): void
   (e: 'check-change', val: boolean): void
 }>()
+
+const coverBroken = ref(false)
 </script>
 
 <template>
@@ -47,13 +50,14 @@ const emit = defineEmits<{
       }"
     >
       <image
-        v-if="fileHasCover(item) && fileCoverKind(item) === 'image'"
+        v-if="fileHasCover(item) && fileCoverKind(item) === 'image' && !coverBroken"
         :src="fileCoverUrl(item)"
         class="grid-cover"
         mode="aspectFill"
+        @error="coverBroken = true"
       />
       <video
-        v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video'"
+        v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video' && !coverBroken"
         :src="fileCoverUrl(item)"
         class="grid-cover"
         muted

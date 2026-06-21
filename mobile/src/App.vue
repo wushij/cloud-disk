@@ -37,6 +37,10 @@ onLaunch(() => {
 })
 
 onShow(() => {
+  const auth = useAuthStore()
+  if (auth.isLoggedIn) {
+    auth.fetchProfile().catch(() => {})
+  }
   setupNotifications()
 })
 </script>

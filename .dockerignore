@@ -1,0 +1,15 @@
+.git
+.idea
+.cursor
+**/node_modules
+backend/target/*
+!backend/target/clouddisk-pro-*.jar
+frontend/dist
+mobile/dist
+docs
+clouddisk-data
+data
+uploads
+*.log
+.env
+.env.*

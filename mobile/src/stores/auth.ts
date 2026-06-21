@@ -15,7 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const displayName = computed(() => nickname.value || username.value || '用户')
 
   const avatarSrc = computed(() => {
-    if (!hasAvatar.value) return ''
+    if (!token.value) return ''
     return fileApiUrl('/api/auth/avatar/view') + `&v=${avatarVersion.value}`
   })
 

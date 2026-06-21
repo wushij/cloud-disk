@@ -27,3 +27,10 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    ldap:
+      enabled: ${clouddisk.ldap.enabled:false}
+    elasticsearch:
+      enabled: ${clouddisk.elasticsearch.enabled:false}
+    rabbit:
+      enabled: ${clouddisk.rabbitmq.enabled:false}

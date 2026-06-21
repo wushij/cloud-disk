@@ -1,34 +1,73 @@
-# Docker Compose 依赖栈：MySQL 映射宿主机 3307；默认仍用内存缓存（clouddisk.redis.enabled=false）
+# 本地 Docker 依赖栈（docker/docker-compose.yml）
+# MySQL 3307 + Redis + MinIO + RabbitMQ + ES，均映射到宿主机 127.0.0.1
+#
+# docker compose -f docker/docker-compose.yml up -d
+# SPRING_PROFILES_ACTIVE=docker mvn spring-boot:run -DskipTests
 spring:
   config:
     activate:
       on-profile: docker
   autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - cn.dev33.satoken.dao.SaTokenDaoRedisJackson
+    exclude: []
   datasource:
-    url: jdbc:mysql://127.0.0.1:3307/cloud_disk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${CLOUDDISK_DB_HOST:127.0.0.1}:${CLOUDDISK_DB_PORT:3307}/cloud_disk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
-      password:
+      host: ${CLOUDDISK_REDIS_HOST:127.0.0.1}
+      port: ${CLOUDDISK_REDIS_PORT:6379}
+      password: ${CLOUDDISK_REDIS_PASSWORD:}
       database: 0
+  rabbitmq:
+    host: ${CLOUDDISK_RABBITMQ_HOST:127.0.0.1}
+    port: ${CLOUDDISK_RABBITMQ_PORT:5672}
+    username: ${CLOUDDISK_RABBITMQ_USER:guest}
+    password: ${CLOUDDISK_RABBITMQ_PASS:guest}
+    virtual-host: /
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 5
+  elasticsearch:
+    uris: ${CLOUDDISK_ES_URIS:http://127.0.0.1:9200}
 
 clouddisk:
   redis:
+    enabled: true
+  rate-limit:
+    enabled: false
+  sentinel:
     enabled: false
   storage:
     type: minio
   minio:
-    endpoint: http://127.0.0.1:9000
-    access-key: minioadmin
-    secret-key: minioadmin
-    bucket: cloud-disk
+    endpoint: ${CLOUDDISK_MINIO_ENDPOINT:http://127.0.0.1:9000}
+    access-key: ${CLOUDDISK_MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${CLOUDDISK_MINIO_SECRET_KEY:minioadmin}
+    bucket: ${CLOUDDISK_MINIO_BUCKET:cloud-disk}
+  rabbitmq:
+    enabled: true
+  elasticsearch:
+    enabled: true
+    index-name: cloud_disk_file
+  cors:
+    allowed-origin-patterns:
+      - http://localhost:*
+      - http://127.0.0.1:*
+      - http://192.168.*:*
+      - http://10.*:*
+      - http://172.*:*
   ffmpeg:
     enabled: true
     path: ffmpeg
+    screenshot-time: "00:00:01"
+    video-codec: libx264
+    audio-codec: aac
+    transcode-suffix: _720p.mp4
+
+sa-token:
+  alone-redis:
+    database: 1
+    timeout: 86400

@@ -1,0 +1,16 @@
+# 本地已 mvn package 后构建，避免容器内拉 Maven/Alpine 包
+# cd backend && mvn package -DskipTests
+# docker compose --env-file docker/.env -f docker/docker-compose.yml --profile app build backend
+
+FROM eclipse-temurin:17-jre
+
+ENV TZ=Asia/Shanghai
+WORKDIR /app
+
+COPY backend/target/clouddisk-pro-*.jar app.jar
+
+ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+
+EXPOSE 8088
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
