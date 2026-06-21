@@ -4,6 +4,8 @@
 **/node_modules
 backend/target/*
 !backend/target/clouddisk-pro-*.jar
+monitoring/admin-server/target/*
+!monitoring/admin-server/target/clouddisk-admin-server-1.0.0.jar
 frontend/dist
 mobile/dist
 docs

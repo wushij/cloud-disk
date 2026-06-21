@@ -66,6 +66,36 @@ clouddisk:
     video-codec: libx264
     audio-codec: aac
     transcode-suffix: _720p.mp4
+  monitoring:
+    admin-client-enabled: true
+    admin-server-url: ${CLOUDDISK_MONITORING_ADMIN_SERVER_URL:http://admin-server:8090}
+
+spring.boot.admin.client:
+  enabled: true
+  url: ${clouddisk.monitoring.admin-server-url}
+  instance:
+    service-host-type: IP
+    service-base-url: ${CLOUDDISK_ADMIN_SERVICE_BASE_URL:http://backend:8088}
+    management-url: ${CLOUDDISK_ADMIN_MANAGEMENT_URL:http://backend:8088/actuator}
+    metadata:
+      tags:
+        environment: docker
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,loggers,threaddump,heapdump
+  endpoint:
+    health:
+      show-details: always
+  health:
+    ldap:
+      enabled: false
+    elasticsearch:
+      enabled: ${clouddisk.elasticsearch.enabled:false}
+    rabbit:
+      enabled: ${clouddisk.rabbitmq.enabled:false}
 
 sa-token:
   alone-redis:

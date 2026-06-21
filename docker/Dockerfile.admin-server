@@ -1,0 +1,14 @@
+# 本地已 mvn package 后构建
+# cd monitoring/admin-server && mvn package -DskipTests
+# docker compose --env-file docker/.env -f docker/docker-compose.yml --profile app build admin-server
+
+FROM eclipse-temurin:17-jre-alpine
+
+ENV TZ=Asia/Shanghai
+WORKDIR /app
+
+COPY monitoring/admin-server/target/clouddisk-admin-server-1.0.0.jar app.jar
+
+EXPOSE 8090
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

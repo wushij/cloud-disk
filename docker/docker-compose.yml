@@ -5,11 +5,14 @@
 #   SPRING_PROFILES_ACTIVE=docker mvn spring-boot:run -DskipTests   # backend/
 #   npm run dev                                                        # frontend/
 #
-# 全栈（Nginx + 后端容器，需先 build 前端）:
+# 全栈（Nginx + 后端 + Admin 监控，需先 build 前端与 JAR）:
 #   cd frontend && npm run build
 #   cd mobile && npm run build:h5
-#   docker compose -f docker/docker-compose.yml --profile app up -d --build
-#   浏览器: http://localhost:8080（同一域名，Nginx 按 UA 自动分 PC / 移动端）
+#   cd backend && mvn package -DskipTests
+#   cd monitoring/admin-server && mvn package -DskipTests
+#   docker compose --env-file docker/.env -f docker/docker-compose.yml --profile app up -d --build
+#   浏览器: http://localhost:8080（PC / 移动端同域）
+#   监控:   http://localhost:8090
 #
 # 停止:  docker compose -f docker/docker-compose.yml --profile app down
 # 日志:  docker compose -f docker/docker-compose.yml logs -f
@@ -113,6 +116,19 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  admin-server:
+    profiles: [app]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.admin-server
+    image: wu17/disk:admin-server-latest
+    container_name: clouddisk-admin-server
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+
   backend:
     profiles: [app]
     build:
@@ -134,9 +150,14 @@ services:
       CLOUDDISK_MINIO_ENDPOINT: http://minio:9000
       CLOUDDISK_RABBITMQ_HOST: rabbitmq
       CLOUDDISK_ES_URIS: http://elasticsearch:9200
+      CLOUDDISK_MONITORING_ADMIN_SERVER_URL: http://admin-server:8090
+      CLOUDDISK_ADMIN_SERVICE_BASE_URL: http://backend:8088
+      CLOUDDISK_ADMIN_MANAGEMENT_URL: http://backend:8088/actuator
     ports:
       - "8088:8088"
     depends_on:
+      admin-server:
+        condition: service_started
       mysql:
         condition: service_healthy
       redis:
