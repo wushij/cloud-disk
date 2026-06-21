@@ -96,6 +96,10 @@ function goRecycle() {
 function showAbout() {
   aboutVisible.value = true
 }
+
+function goUserManage() {
+  uni.navigateTo({ url: '/pages/admin/users' })
+}
 </script>
 
 <template>
@@ -171,6 +175,20 @@ function showAbout() {
     <!-- 菜单分组 -->
     <view class="section-label">管理与设置</view>
     <view class="menu-group-card">
+      <!-- 用户管理 -->
+      <view v-if="auth.isAdmin" class="menu-item cd-pressable" @click="goUserManage">
+        <view class="menu-icon-box indigo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="#4f46e5"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">用户管理</text>
+          <text class="menu-desc">管理用户角色、状态及容量配额</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
       <!-- 消息通知 -->
       <view class="menu-item cd-pressable" @click="goNotifications">
         <view class="menu-icon-box blue">
@@ -203,6 +221,21 @@ function showAbout() {
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>
 
+      <!-- 回收站 -->
+      <view class="menu-item cd-pressable" @click="goRecycle">
+        <view class="menu-icon-box orange">
+          <!-- 🗑 回收站 -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="#f97316"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">回收站</text>
+          <text class="menu-desc">找回误删的个人或团队文件</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
       <!-- 团队空间 -->
       <view class="menu-item cd-pressable" @click="goTeams">
         <view class="menu-icon-box teal">
@@ -229,21 +262,6 @@ function showAbout() {
         <view class="menu-body">
           <text class="menu-name">我的分享</text>
           <text class="menu-desc">管理已创建的外链与分享记录</text>
-        </view>
-        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
-      </view>
-
-      <!-- 回收站 -->
-      <view class="menu-item cd-pressable" @click="goRecycle">
-        <view class="menu-icon-box orange">
-          <!-- 🗑 回收站 -->
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="#f97316"/>
-          </svg>
-        </view>
-        <view class="menu-body">
-          <text class="menu-name">回收站</text>
-          <text class="menu-desc">找回误删的个人或团队文件</text>
         </view>
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>

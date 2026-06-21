@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.clouddisk.entity.Notification;
 import com.clouddisk.entity.TeamInvitation;
+import com.clouddisk.entity.User;
+import com.clouddisk.common.UserStatus;
 import com.clouddisk.mapper.NotificationMapper;
 import com.clouddisk.mapper.TeamInvitationMapper;
+import com.clouddisk.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +21,7 @@ public class NotificationService {
 
     private final NotificationMapper notificationMapper;
     private final TeamInvitationMapper teamInvitationMapper;
+    private final UserMapper userMapper;
 
     /**
      * 获取当前用户的通知列表（使用 MyBatis-Plus Page 分页，避免 SQL 注入）
@@ -42,17 +46,11 @@ public class NotificationService {
             m.put("createdAt", n.getCreateTime());
             
             if ("TEAM_INVITED".equals(n.getType()) && n.getRefId() != null) {
-                try {
-                    Long invitationId = Long.parseLong(n.getRefId());
-                    TeamInvitation invitation = teamInvitationMapper.selectById(invitationId);
-                    if (invitation != null) {
-                        m.put("inviteStatus", invitation.getStatus());
-                    } else {
-                        m.put("inviteStatus", "EXPIRED");
-                    }
-                } catch (Exception e) {
-                    m.put("inviteStatus", "EXPIRED");
-                }
+                m.put("inviteStatus", resolveInviteStatus(n.getRefId()));
+            }
+
+            if ("USER_REGISTER".equals(n.getType()) && n.getRefId() != null) {
+                m.put("registrationStatus", resolveRegistrationStatus(n.getRefId()));
             }
             
             result.add(m);
@@ -128,4 +126,51 @@ public class NotificationService {
         notificationMapper.delete(new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId));
     }
+
+    private String resolveInviteStatus(String refId) {
+        try {
+            Long invitationId = Long.parseLong(refId);
+            TeamInvitation invitation = teamInvitationMapper.selectById(invitationId);
+            if (invitation != null) {
+                return invitation.getStatus();
+            }
+            return "EXPIRED";
+        } catch (Exception e) {
+            return "EXPIRED";
+        }
+    }
+
+    private String resolveRegistrationStatus(String refId) {
+        try {
+            User user = userMapper.selectById(Long.parseLong(refId));
+            if (user == null) {
+                return "REJECTED";
+            }
+            if (user.getStatus() != null && user.getStatus() == UserStatus.PENDING) {
+                return "PENDING";
+            }
+            if (user.getStatus() != null && user.getStatus() == UserStatus.ACTIVE) {
+                return "APPROVED";
+            }
+            if (user.getStatus() == null) {
+                return "PENDING";
+            }
+            return "REJECTED";
+        } catch (Exception e) {
+            return "PENDING";
+        }
+    }
+
+    /** 供 WebSocket 推送时附带可操作状态 */
+    public Map<String, String> resolveActionStatuses(String type, String refId) {
+        Map<String, String> statuses = new LinkedHashMap<>();
+        if ("TEAM_INVITED".equals(type) && refId != null) {
+            statuses.put("inviteStatus", resolveInviteStatus(refId));
+        }
+        if ("USER_REGISTER".equals(type) && refId != null) {
+            statuses.put("registrationStatus", resolveRegistrationStatus(refId));
+        }
+        return statuses;
+    }
 }
+

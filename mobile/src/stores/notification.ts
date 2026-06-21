@@ -11,6 +11,7 @@ export interface AppNotification {
   read: boolean
   createdAt: number
   inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
+  registrationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
 
 interface NotificationDto {
@@ -22,6 +23,7 @@ interface NotificationDto {
   isRead: number
   createdAt: string
   inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
+  registrationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
 
 function toAppNotification(dto: NotificationDto): AppNotification {
@@ -33,7 +35,8 @@ function toAppNotification(dto: NotificationDto): AppNotification {
     refId: dto.refId,
     read: dto.isRead === 1,
     createdAt: dto.createdAt ? new Date(dto.createdAt).getTime() : Date.now(),
-    inviteStatus: dto.inviteStatus
+    inviteStatus: dto.inviteStatus,
+    registrationStatus: dto.registrationStatus
   }
 }
 
@@ -66,18 +69,23 @@ export const useNotificationStore = defineStore('notification', () => {
     title?: string
     content?: string
     refId?: string
+    inviteStatus?: AppNotification['inviteStatus']
+    registrationStatus?: AppNotification['registrationStatus']
   }) {
     const id = payload.id != null ? String(payload.id) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     if (items.value.find((x) => x.id === id)) return
 
+    const type = payload.type || 'info'
     items.value.unshift({
       id,
-      type: payload.type || 'info',
+      type,
       title: payload.title || '通知',
       content: payload.content || '',
       refId: payload.refId,
       read: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      inviteStatus: payload.inviteStatus ?? (type === 'TEAM_INVITED' ? 'PENDING' : undefined),
+      registrationStatus: payload.registrationStatus ?? (type === 'USER_REGISTER' ? 'PENDING' : undefined)
     })
     if (items.value.length > 50) {
       items.value.length = 50
@@ -118,6 +126,26 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  async function approveRegistration(notification: AppNotification) {
+    if (!notification.refId) throw new Error('申请无效')
+    await request({ url: `/api/admin/registrations/${notification.refId}/approve`, method: 'POST' })
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.registrationStatus = 'APPROVED'
+    }
+  }
+
+  async function rejectRegistration(notification: AppNotification) {
+    if (!notification.refId) throw new Error('申请无效')
+    await request({ url: `/api/admin/registrations/${notification.refId}/reject`, method: 'POST' })
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.registrationStatus = 'REJECTED'
+    }
+  }
+
   async function deleteNotification(id: string) {
     await request({ url: `/api/notifications/${id}`, method: 'DELETE' })
     items.value = items.value.filter((x) => x.id !== id)
@@ -146,6 +174,8 @@ export const useNotificationStore = defineStore('notification', () => {
     markSeen,
     acceptTeamInvite,
     rejectTeamInvite,
+    approveRegistration,
+    rejectRegistration,
     deleteNotification,
     clearAllNotifications,
     unreadCount

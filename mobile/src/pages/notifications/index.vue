@@ -17,6 +17,71 @@ const detailVisible = ref(false)
 const clearAllVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const itemToDelete = ref<AppNotification | null>(null)
+const actionConfirmVisible = ref(false)
+const actionConfirmTitle = ref('')
+const actionConfirmMessage = ref('')
+const actionConfirmText = ref('确定')
+const actionConfirmDanger = ref(false)
+const pendingAction = ref<(() => Promise<void>) | null>(null)
+const resultAlertVisible = ref(false)
+const resultAlertTitle = ref('')
+const resultAlertMessage = ref('')
+const resultAlertTone = ref<'info' | 'success'>('success')
+
+function isInvitePending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+function isRegistrationPending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+function getRegistrationSubject(content: string) {
+  const match = content.match(/^(.+?)（.+?）申请注册/)
+  return match ? match[1] : '该用户'
+}
+
+function getTeamName(content: string) {
+  const match = content.match(/加入团队「(.+?)」/)
+  return match ? match[1] : '该团队'
+}
+
+function syncNotifyItem(item: AppNotification, patch: Partial<AppNotification>) {
+  const storeItem = notifyStore.items.find(x => x.id === item.id)
+  if (storeItem) Object.assign(storeItem, patch)
+  Object.assign(item, patch)
+  if (selectedItem.value?.id === item.id) {
+    Object.assign(selectedItem.value, patch)
+  }
+}
+
+function openActionConfirm(
+  title: string,
+  message: string,
+  confirmText: string,
+  danger: boolean,
+  action: () => Promise<void>
+) {
+  actionConfirmTitle.value = title
+  actionConfirmMessage.value = message
+  actionConfirmText.value = confirmText
+  actionConfirmDanger.value = danger
+  pendingAction.value = action
+  actionConfirmVisible.value = true
+}
+
+function showResultAlert(title: string, message: string, tone: 'info' | 'success' = 'success') {
+  resultAlertTitle.value = title
+  resultAlertMessage.value = message
+  resultAlertTone.value = tone
+  resultAlertVisible.value = true
+}
+
+async function handleActionConfirm() {
+  const action = pendingAction.value
+  pendingAction.value = null
+  if (action) await action()
+}
 
 const unread = computed(() => notifyStore.unreadCount())
 
@@ -49,27 +114,48 @@ async function showDetail(item: AppNotification) {
 }
 
 async function handleAccept(item: AppNotification) {
-  await acceptInvite(item)
-  if (selectedItem.value && selectedItem.value.id === item.id) {
-    selectedItem.value.inviteStatus = 'ACCEPTED'
-    selectedItem.value.read = true
-  }
+  requestAcceptInvite(item)
 }
 
 async function handleReject(item: AppNotification) {
-  await rejectInvite(item)
-  if (selectedItem.value && selectedItem.value.id === item.id) {
-    selectedItem.value.inviteStatus = 'REJECTED'
-    selectedItem.value.read = true
-  }
+  requestRejectInvite(item)
 }
 
-async function acceptInvite(item: AppNotification) {
+function requestAcceptInvite(item: AppNotification) {
   if (!item.refId || actingId.value) return
+  const teamName = getTeamName(item.content)
+  openActionConfirm(
+    '接受团队邀请',
+    `确定加入团队「${teamName}」吗？加入后可在团队空间中查看和协作。`,
+    '接受',
+    false,
+    () => doAcceptInvite(item, teamName)
+  )
+}
+
+function requestRejectInvite(item: AppNotification) {
+  if (!item.refId || actingId.value) return
+  const teamName = getTeamName(item.content)
+  openActionConfirm(
+    '拒绝团队邀请',
+    `确定拒绝加入团队「${teamName}」吗？`,
+    '拒绝',
+    true,
+    () => doRejectInvite(item, teamName)
+  )
+}
+
+async function doAcceptInvite(item: AppNotification, teamName: string) {
   actingId.value = item.id
   try {
     await notifyStore.acceptTeamInvite(item)
-    uni.showToast({ title: '已加入团队', icon: 'success' })
+    syncNotifyItem(item, {
+      title: '已接受邀请',
+      content: '你已成功加入团队，现在可以在团队空间中查看和协作。',
+      inviteStatus: 'ACCEPTED',
+      read: true
+    })
+    showResultAlert('已加入团队', `你已成功加入「${teamName}」，可在底部导航进入团队空间。`, 'success')
   } catch {
     /* handled */
   } finally {
@@ -77,17 +163,90 @@ async function acceptInvite(item: AppNotification) {
   }
 }
 
-async function rejectInvite(item: AppNotification) {
-  if (!item.refId || actingId.value) return
+async function doRejectInvite(item: AppNotification, teamName: string) {
   actingId.value = item.id
   try {
     await notifyStore.rejectTeamInvite(item)
-    uni.showToast({ title: '已拒绝邀请', icon: 'none' })
+    syncNotifyItem(item, {
+      title: '已拒绝邀请',
+      content: '你已拒绝该团队的邀请。',
+      inviteStatus: 'REJECTED',
+      read: true
+    })
+    showResultAlert('已拒绝邀请', `你已拒绝加入「${teamName}」。`, 'info')
   } catch {
     /* handled */
   } finally {
     actingId.value = null
   }
+}
+
+function requestApproveRegistration(item: AppNotification) {
+  if (!item.refId || actingId.value) return
+  const subject = getRegistrationSubject(item.content)
+  openActionConfirm(
+    '通过注册申请',
+    `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`,
+    '通过',
+    false,
+    () => doApproveRegistration(item, subject)
+  )
+}
+
+function requestRejectRegistration(item: AppNotification) {
+  if (!item.refId || actingId.value) return
+  const subject = getRegistrationSubject(item.content)
+  openActionConfirm(
+    '拒绝注册申请',
+    `确定拒绝「${subject}」的注册申请吗？该用户将无法登录云盘。`,
+    '拒绝',
+    true,
+    () => doRejectRegistration(item, subject)
+  )
+}
+
+async function doApproveRegistration(item: AppNotification, subject: string) {
+  actingId.value = item.id
+  try {
+    await notifyStore.approveRegistration(item)
+    syncNotifyItem(item, {
+      title: '已通过注册',
+      content: '该用户现在可以登录使用云盘（200GB 空间）。',
+      registrationStatus: 'APPROVED',
+      read: true
+    })
+    showResultAlert('已通过注册', `「${subject}」的账号已激活，可正常登录使用云盘。`, 'success')
+  } catch {
+    /* handled */
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function doRejectRegistration(item: AppNotification, subject: string) {
+  actingId.value = item.id
+  try {
+    await notifyStore.rejectRegistration(item)
+    syncNotifyItem(item, {
+      title: '已拒绝注册',
+      content: '该用户的注册申请已被拒绝。',
+      registrationStatus: 'REJECTED',
+      read: true
+    })
+    showResultAlert('已拒绝注册', `已拒绝「${subject}」的注册申请。`, 'info')
+  } catch {
+    /* handled */
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleApproveRegistration(item: AppNotification) {
+  requestApproveRegistration(item)
+}
+
+async function handleRejectRegistration(item: AppNotification) {
+  requestRejectRegistration(item)
 }
 
 function triggerDeleteNotification(item: AppNotification) {
@@ -137,12 +296,14 @@ async function markAllRead() {
 
 function getNotificationIcon(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'team'
+  if (type === 'USER_REGISTER') return 'register'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'share'
   return 'bell'
 }
 
 function getNotificationColorClass(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'teal'
+  if (type === 'USER_REGISTER') return 'blue'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'orange'
   return 'indigo'
 }
@@ -159,7 +320,9 @@ onShow(() => {
         type: data.notifyType,
         title: data.title,
         content: data.content,
-        refId: data.refId
+        refId: data.refId,
+        inviteStatus: data.inviteStatus,
+        registrationStatus: data.registrationStatus
       })
     }
   })
@@ -251,35 +414,75 @@ onUnload(() => {
 
             <!-- Invite action pills -->
             <view
-              v-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus === 'PENDING'"
+              v-if="item.type === 'TEAM_INVITED' && item.refId && isInvitePending(item.inviteStatus)"
               class="notify-card-actions"
               @click.stop
             >
               <view
                 class="action-pill danger cd-pressable"
                 :class="{ disabled: actingId === item.id }"
-                @click="rejectInvite(item)"
+                @click="requestRejectInvite(item)"
               >
                 <text>拒绝</text>
               </view>
               <view
                 class="action-pill primary cd-pressable"
                 :class="{ disabled: actingId === item.id }"
-                @click="acceptInvite(item)"
+                @click="requestAcceptInvite(item)"
               >
                 <text>接受</text>
               </view>
             </view>
-            <!-- Invite status label when not pending -->
             <view
-              v-else-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus !== 'PENDING'"
+              v-else-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus === 'ACCEPTED'"
               class="notify-card-status-row"
             >
+              <view class="invite-status-badge accepted">
+                <text>✓ 已接受邀请</text>
+              </view>
+            </view>
+            <view
+              v-else-if="item.type === 'TEAM_INVITED' && item.refId && (item.inviteStatus === 'REJECTED' || item.inviteStatus === 'EXPIRED')"
+              class="notify-card-status-row"
+            >
+              <view class="invite-status-badge rejected">
+                <text>{{ item.inviteStatus === 'REJECTED' ? '✕ 已拒绝邀请' : '已失效' }}</text>
+              </view>
+            </view>
+            <view
+              v-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && isRegistrationPending(item.registrationStatus)"
+              class="notify-card-actions"
+              @click.stop
+            >
               <view
-                class="invite-status-badge"
-                :class="item.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'"
+                class="action-pill danger cd-pressable"
+                :class="{ disabled: actingId === item.id }"
+                @click="requestRejectRegistration(item)"
               >
-                <text>{{ item.inviteStatus === 'ACCEPTED' ? '✓ 已接受邀请' : item.inviteStatus === 'REJECTED' ? '✕ 已拒绝邀请' : '已失效' }}</text>
+                <text>拒绝</text>
+              </view>
+              <view
+                class="action-pill primary cd-pressable"
+                :class="{ disabled: actingId === item.id }"
+                @click="requestApproveRegistration(item)"
+              >
+                <text>通过</text>
+              </view>
+            </view>
+            <view
+              v-else-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && item.registrationStatus === 'APPROVED'"
+              class="notify-card-status-row"
+            >
+              <view class="invite-status-badge accepted">
+                <text>✓ 已通过注册</text>
+              </view>
+            </view>
+            <view
+              v-else-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && item.registrationStatus === 'REJECTED'"
+              class="notify-card-status-row"
+            >
+              <view class="invite-status-badge rejected">
+                <text>✕ 已拒绝注册</text>
               </view>
             </view>
           </view>
@@ -311,7 +514,7 @@ onUnload(() => {
         </scroll-view>
 
         <!-- Pending invite: show accept/reject -->
-        <view v-if="selectedItem.type === 'TEAM_INVITED' && selectedItem.refId && selectedItem.inviteStatus === 'PENDING'" class="detail-actions">
+        <view v-if="selectedItem.type === 'TEAM_INVITED' && selectedItem.refId && isInvitePending(selectedItem.inviteStatus)" class="detail-actions">
           <view class="detail-action-btn danger cd-pressable" @click="handleReject(selectedItem)">
             <text>拒绝</text>
           </view>
@@ -319,13 +522,41 @@ onUnload(() => {
             <text>接受邀请</text>
           </view>
         </view>
-        <!-- Non-pending invite: show status badge + close -->
-        <view v-else-if="selectedItem.type === 'TEAM_INVITED' && selectedItem.refId && selectedItem.inviteStatus !== 'PENDING'" class="detail-actions detail-actions-col">
-          <view
-            class="invite-status-badge large"
-            :class="selectedItem.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'"
-          >
-            <text>{{ selectedItem.inviteStatus === 'ACCEPTED' ? '✓ 已接受邀请' : selectedItem.inviteStatus === 'REJECTED' ? '✕ 已拒绝邀请' : '邀请已失效' }}</text>
+        <view v-else-if="selectedItem.type === 'TEAM_INVITED' && selectedItem.refId && selectedItem.inviteStatus === 'ACCEPTED'" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large accepted">
+            <text>✓ 已接受邀请</text>
+          </view>
+          <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
+            <text>关闭</text>
+          </view>
+        </view>
+        <view v-else-if="selectedItem.type === 'TEAM_INVITED' && selectedItem.refId && (selectedItem.inviteStatus === 'REJECTED' || selectedItem.inviteStatus === 'EXPIRED')" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large rejected">
+            <text>{{ selectedItem.inviteStatus === 'REJECTED' ? '✕ 已拒绝邀请' : '邀请已失效' }}</text>
+          </view>
+          <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
+            <text>关闭</text>
+          </view>
+        </view>
+        <view v-else-if="auth.isAdmin && selectedItem.type === 'USER_REGISTER' && selectedItem.refId && isRegistrationPending(selectedItem.registrationStatus)" class="detail-actions">
+          <view class="detail-action-btn danger cd-pressable" @click="handleRejectRegistration(selectedItem)">
+            <text>拒绝</text>
+          </view>
+          <view class="detail-action-btn primary cd-pressable" @click="handleApproveRegistration(selectedItem)">
+            <text>通过注册</text>
+          </view>
+        </view>
+        <view v-else-if="auth.isAdmin && selectedItem.type === 'USER_REGISTER' && selectedItem.refId && selectedItem.registrationStatus === 'APPROVED'" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large accepted">
+            <text>✓ 已通过注册</text>
+          </view>
+          <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
+            <text>关闭</text>
+          </view>
+        </view>
+        <view v-else-if="auth.isAdmin && selectedItem.type === 'USER_REGISTER' && selectedItem.refId && selectedItem.registrationStatus === 'REJECTED'" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large rejected">
+            <text>✕ 已拒绝注册</text>
           </view>
           <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
             <text>关闭</text>
@@ -339,6 +570,26 @@ onUnload(() => {
       </view>
     </view>
   </view>
+
+  <!-- Action Confirm Dialog -->
+  <MobileConfirmDialog
+    v-model:show="actionConfirmVisible"
+    :title="actionConfirmTitle"
+    :message="actionConfirmMessage"
+    :confirm-text="actionConfirmText"
+    :danger="actionConfirmDanger"
+    @confirm="handleActionConfirm"
+  />
+
+  <!-- Result Alert Dialog -->
+  <MobileConfirmDialog
+    v-model:show="resultAlertVisible"
+    :title="resultAlertTitle"
+    :message="resultAlertMessage"
+    confirm-text="好的"
+    alert-only
+    :tone="resultAlertTone"
+  />
 
   <!-- Clear All Confirm Dialog -->
   <MobileConfirmDialog
@@ -475,6 +726,11 @@ onUnload(() => {
 .notify-icon-box.teal {
   background: rgba(13, 148, 136, 0.08);
   color: #0d9488;
+}
+
+.notify-icon-box.blue {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
 }
 
 .notify-icon-box.orange {
@@ -679,6 +935,11 @@ onUnload(() => {
 .detail-icon-wrap.teal {
   background: rgba(13, 148, 136, 0.08);
   color: #0d9488;
+}
+
+.detail-icon-wrap.blue {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
 }
 
 .detail-icon-wrap.orange {

@@ -104,6 +104,13 @@
         "navigationBarTitleText": "传输列表",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/admin/users",
+      "style": {
+        "navigationBarTitleText": "用户管理",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

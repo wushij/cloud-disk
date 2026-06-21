@@ -182,6 +182,18 @@ onMounted(load)
           :row-class-name="tableRowClassName"
           class="cd-shares-table"
         >
+          <template #empty>
+            <div class="shares-empty">
+              <div class="shares-empty-icon-wrapper">
+                <div class="shares-empty-icon-bg" />
+                <div class="shares-empty-icon">
+                  <el-icon :size="32"><Share /></el-icon>
+                </div>
+              </div>
+              <h3 class="shares-empty-title">暂无分享链接</h3>
+              <p class="shares-empty-desc">在网盘文件列表中，选择文件生成分享链接，在此可以统一管理</p>
+            </div>
+          </template>
           <el-table-column label="文件" min-width="220">
             <template #default="{ row }">
               <div class="cd-file-name">
@@ -256,12 +268,18 @@ onMounted(load)
 </template>
 
 <style scoped>
-.cd-shares-table :deep(.el-table__row) {
-  transition: background-color var(--cd-transition-fast), opacity var(--cd-transition-fast);
+.cd-page :deep(.cd-page-header-icon) {
+  background: var(--cd-primary-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cd-primary) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
 }
 
-.cd-shares-table :deep(.el-table__row:hover) {
-  background-color: var(--cd-bg-surface) !important;
+.cd-shares-table :deep(.el-table__row) {
+  transition: all 0.25s ease !important;
+}
+
+.cd-shares-table :deep(.el-table__row:hover > td) {
+  background-color: color-mix(in srgb, var(--cd-primary) 3.5%, #ffffff) !important;
 }
 
 .cd-shares-table :deep(.el-table__row.is-expired-row) {
@@ -283,6 +301,42 @@ onMounted(load)
   opacity: 1;
 }
 
+.cd-shares-table :deep(.el-table__inner-wrapper::before) {
+  display: none !important;
+}
+
+.cd-shares-table :deep(.el-table__border-left-patch) {
+  display: none !important;
+}
+
+.cd-shares-table :deep(td.el-table__cell) {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.cd-shares-table :deep(th.el-table__cell) {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.cd-shares-table :deep(.el-tag) {
+  border-radius: var(--cd-radius-full);
+  font-weight: 600;
+  padding: 4px 10px;
+  line-height: 1;
+  height: auto;
+}
+
+.cd-shares-table :deep(.el-tag--success) {
+  background-color: rgba(16, 185, 129, 0.06) !important;
+  border-color: rgba(16, 185, 129, 0.15) !important;
+  color: #10b981 !important;
+}
+
+.cd-shares-table :deep(.el-tag--info) {
+  background-color: rgba(100, 116, 139, 0.06) !important;
+  border-color: rgba(100, 116, 139, 0.15) !important;
+  color: #64748b !important;
+}
+
 .cd-shares-tabs {
   margin-top: 16px;
   margin-bottom: 4px;
@@ -302,16 +356,16 @@ onMounted(load)
   font-weight: 700;
 }
 
-
 .cd-share-code {
   font-family: monospace;
   padding: 3px 8px;
-  background: var(--cd-border-light);
-  border: 1px solid var(--cd-border);
+  background: color-mix(in srgb, var(--cd-primary) 5%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 12%, transparent) !important;
   border-radius: var(--cd-radius-xs);
-  color: var(--cd-text-regular);
-  font-size: 13px;
+  color: var(--cd-primary) !important;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .cd-share-filename-text {
@@ -343,5 +397,162 @@ onMounted(load)
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ---- 空状态美化 ---- */
+.shares-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  position: relative;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--cd-primary) 4%, transparent) 0%, transparent 70%);
+}
+
+.shares-empty-icon-wrapper {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shares-empty-icon-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cd-primary) 15%, transparent) 0%, transparent 75%);
+  animation: sharePulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes sharePulseGlow {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+.shares-empty-icon {
+  position: relative;
+  z-index: 1;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 8%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 12%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 18%, transparent);
+  color: var(--cd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 10px 24px color-mix(in srgb, var(--cd-primary) 6%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s;
+}
+
+.shares-empty-icon:hover {
+  transform: translateY(-4px) scale(1.05);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 12%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 18%, transparent) 100%);
+  box-shadow: 
+    0 12px 30px color-mix(in srgb, var(--cd-primary) 12%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.shares-empty-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: 0.5px;
+}
+
+.shares-empty-desc {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.2px;
+}
+
+/* ---- 操作动作 ---- */
+.cd-action-pills {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.cd-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--cd-radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: transparent;
+  line-height: 1.2;
+}
+
+.cd-action-pill.primary {
+  color: var(--cd-primary) !important;
+  background: color-mix(in srgb, var(--cd-primary) 8%, #ffffff) !important;
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 15%, transparent) !important;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--cd-primary) 4%, transparent) !important;
+}
+
+.cd-action-pill.primary:hover {
+  background: var(--cd-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--cd-primary) !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cd-primary) 20%, transparent) !important;
+  transform: translateY(-1px) !important;
+}
+
+.cd-action-pill.primary:active {
+  transform: translateY(0) !important;
+}
+
+.cd-action-pill.muted {
+  color: #64748b !important;
+  background: rgba(100, 116, 139, 0.05) !important;
+  border: 1px solid rgba(100, 116, 139, 0.12) !important;
+  box-shadow: 0 2px 6px rgba(100, 116, 139, 0.02) !important;
+}
+
+.cd-action-pill.muted:hover {
+  background: #64748b !important;
+  color: #ffffff !important;
+  border-color: #64748b !important;
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.15) !important;
+  transform: translateY(-1px) !important;
+}
+
+.cd-action-pill.muted:active {
+  transform: translateY(0) !important;
+}
+
+.cd-action-pill.danger {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+  border: 1px solid rgba(239, 68, 68, 0.12) !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.02) !important;
+}
+
+.cd-action-pill.danger:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+.cd-action-pill.danger:active {
+  transform: translateY(0) !important;
 }
 </style>

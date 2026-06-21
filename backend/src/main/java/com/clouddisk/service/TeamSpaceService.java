@@ -31,6 +31,7 @@ public class TeamSpaceService {
     private final NotificationDispatcher notificationDispatcher;
     private final FolderTreeHelper folderTreeHelper;
     private final FileService fileService;
+    private final StoragePathService storagePathService;
 
     // ==================== 团队空间 CRUD ====================
 
@@ -140,6 +141,7 @@ public class TeamSpaceService {
         }
 
         TeamSpace space = getOwnedSpace(spaceId, userId);
+        String oldAvatar = space.getAvatar();
         space.setName(name);
         teamSpaceMapper.updateById(space);
 
@@ -150,7 +152,27 @@ public class TeamSpaceService {
                 folderMapper.updateById(root);
             }
         }
+
+        syncTeamAvatarPath(space, oldAvatar);
         return space;
+    }
+
+    /** 团队重命名后同步 MinIO 头像路径（含团队名，便于识别） */
+    private void syncTeamAvatarPath(TeamSpace space, String previousAvatarPath) {
+        if (!StringUtils.hasText(previousAvatarPath)) {
+            return;
+        }
+        String newPath = storagePathService.buildTeamAvatarPath(space.getName(), space.getId());
+        if (newPath.equals(previousAvatarPath)) {
+            return;
+        }
+        try {
+            storageService.move(previousAvatarPath, newPath);
+            space.setAvatar(newPath);
+            teamSpaceMapper.updateById(space);
+        } catch (Exception e) {
+            log.warn("团队头像路径同步失败 spaceId={}: {}", space.getId(), e.getMessage());
+        }
     }
 
     /** 获取团队详情（当前登录成员） */
@@ -310,14 +332,19 @@ public class TeamSpaceService {
             throw new BusinessException("请上传图片文件");
         }
 
-        String path = "team-avatars/" + spaceId + ".jpg";
+        TeamSpace space = getOwnedSpace(spaceId, currentUserId);
+        String path = storagePathService.buildTeamAvatarPath(space.getName(), spaceId);
+
+        if (StringUtils.hasText(space.getAvatar()) && !path.equals(space.getAvatar())) {
+            storageService.delete(space.getAvatar());
+        }
+
         try {
             storageService.store(file.getInputStream(), path, file.getSize(), contentType);
         } catch (Exception e) {
             throw new BusinessException("保存图片失败");
         }
 
-        TeamSpace space = getOwnedSpace(spaceId, currentUserId);
         space.setAvatar(path);
         teamSpaceMapper.updateById(space);
 

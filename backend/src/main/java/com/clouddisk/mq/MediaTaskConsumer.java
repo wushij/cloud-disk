@@ -15,6 +15,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -73,8 +75,10 @@ public class MediaTaskConsumer {
         try {
             var saved = notificationService.save(message.getUserId(), message.getType(),
                     message.getTitle(), message.getContent(), message.getRefId());
-            progressHandler.sendNotification(message.getUserId(), message.getType(),
-                    message.getTitle(), message.getContent(), message.getRefId(), saved.getId());
+            Map<String, String> statuses = notificationService.resolveActionStatuses(
+                    message.getType(), message.getRefId());
+            progressHandler.sendNotificationWithStatuses(message.getUserId(), message.getType(),
+                    message.getTitle(), message.getContent(), message.getRefId(), saved.getId(), statuses);
             channel.basicAck(tag, false);
         } catch (Exception e) {
             log.error("通知队列处理失败 userId={}", message.getUserId(), e);

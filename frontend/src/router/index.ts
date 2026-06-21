@@ -17,7 +17,8 @@ const router = createRouter({
         { path: 'teams', component: () => import('@/views/TeamSpace.vue') },
         { path: 'recycle', component: () => import('@/views/Recycle.vue') },
         { path: 'profile', component: () => import('@/views/Profile.vue') },
-        { path: 'admin', component: () => import('@/views/Admin.vue'), meta: { admin: true } }
+        { path: 'admin', component: () => import('@/views/Admin.vue'), meta: { admin: true } },
+        { path: 'admin/users', component: () => import('@/views/UserManage.vue'), meta: { admin: true } }
       ]
     }
   ]

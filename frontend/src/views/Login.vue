@@ -4,12 +4,16 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Cloudy, Connection, Link, Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY } from '@/api/http'
 import { getApiErrorMessage } from '@/utils/error'
+import { validateRegisterUsername } from '@/utils/username'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const confirmDialog = useConfirmDialogStore()
 
 const mode = ref<'login' | 'register'>('login')
 const username = ref('')
@@ -87,6 +91,13 @@ async function submit() {
     ElMessage.warning(isRegister ? '请填写用户名和密码' : '请输入账号和密码')
     return
   }
+  if (isRegister) {
+    const usernameError = validateRegisterUsername(u)
+    if (usernameError) {
+      ElMessage.warning(usernameError)
+      return
+    }
+  }
   if (showCaptcha.value && !captchaAnswer.value.trim()) {
     ElMessage.warning('请完成验证码')
     return
@@ -102,7 +113,20 @@ async function submit() {
       await auth.login(u, p, captchaPayload)
       ElMessage.success('登录成功')
     } else {
-      await auth.register(u, p, nickname.value.trim() || undefined, captchaPayload)
+      const data = await auth.register(u, p, nickname.value.trim() || undefined, captchaPayload)
+      if (data?.pending) {
+        await confirmDialog.openAlert({
+          title: data.title || '注册申请已提交',
+          message: data.message || '管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。',
+          confirmText: '我知道了',
+          tone: 'info'
+        })
+        mode.value = 'login'
+        password.value = ''
+        nickname.value = ''
+        await syncCaptchaState()
+        return
+      }
       ElMessage.success('注册成功')
     }
 
@@ -232,6 +256,7 @@ onMounted(() => {
               placeholder="用户名"
               autocomplete="username"
               size="large"
+              :maxlength="mode === 'register' ? 12 : undefined"
               :prefix-icon="User"
             />
           </el-form-item>
@@ -328,6 +353,7 @@ onMounted(() => {
       </section>
     </div>
   </div>
+  <ConfirmDialog />
 </template>
 
 <style scoped>

@@ -7,11 +7,13 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
 import com.clouddisk.common.BusinessException;
+import com.clouddisk.common.UserStatus;
 
 import com.clouddisk.config.CloudDiskProperties;
 import com.clouddisk.dto.LoginRequest;
 import com.clouddisk.dto.ProfileUpdateRequest;
 import com.clouddisk.dto.RegisterRequest;
+import com.clouddisk.util.UsernameValidator;
 import com.clouddisk.entity.User;
 import com.clouddisk.security.CaptchaService;
 import com.clouddisk.security.LoginProtectionService;
@@ -27,9 +29,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.stereotype.Service;
 
+import org.springframework.util.StringUtils;
+
 
 
 import java.util.HashMap;
+
+import java.util.List;
 
 import java.util.Map;
 
@@ -59,6 +65,10 @@ public class AuthService {
 
     private final CloudDiskProperties cloudDiskProperties;
 
+    private final NotificationDispatcher notificationDispatcher;
+
+    private final StoragePathService storagePathService;
+
 
 
     @PostConstruct
@@ -77,9 +87,11 @@ public class AuthService {
 
             admin.setNickname("管理员");
 
-            admin.setStatus(1);
+            admin.setStatus(UserStatus.ACTIVE);
 
             admin.setRole("ADMIN");
+
+            admin.setStorageQuota(0L);
 
             userMapper.insert(admin);
 
@@ -117,8 +129,11 @@ public class AuthService {
             throw new BusinessException("用户名或密码错误");
         }
 
-        if (user.getStatus() != null && user.getStatus() == 0) {
+        if (user.getStatus() != null && user.getStatus() == UserStatus.DISABLED) {
             throw new BusinessException("账号已被禁用");
+        }
+        if (user.getStatus() != null && user.getStatus() == UserStatus.PENDING) {
+            throw new BusinessException("您的账号尚未通过审核，请等待管理员批准后再登录");
         }
 
         loginProtection.clearOnSuccess(ip, username);
@@ -134,33 +149,60 @@ public class AuthService {
             captchaService.verify(req.getCaptchaId(), req.getCaptchaAnswer());
         }
 
-        Long exists = userMapper.selectCount(new LambdaQueryWrapper<User>()
-                .eq(User::getUsername, req.getUsername()));
+        String username = UsernameValidator.normalize(req.getUsername());
+        UsernameValidator.validate(username);
+        req.setUsername(username);
 
-        if (exists > 0) {
+        User existing = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getUsername, username));
 
+        if (existing != null) {
+            if (existing.getStatus() != null && existing.getStatus() == UserStatus.PENDING) {
+                throw new BusinessException("该用户名已提交注册申请，请等待管理员审核，无需重复注册");
+            }
             throw new BusinessException("用户名已存在");
-
         }
 
         User user = new User();
 
-        user.setUsername(req.getUsername());
+        user.setUsername(username);
 
         user.setPassword(passwordEncoder.encode(req.getPassword()));
 
         user.setNickname(req.getNickname() != null ? req.getNickname() : req.getUsername());
 
-        user.setStatus(1);
+        user.setStatus(UserStatus.PENDING);
 
         user.setRole("USER");
 
+        user.setStorageQuota(UserStatus.DEFAULT_QUOTA_BYTES);
+
         userMapper.insert(user);
 
-        StpUtil.login(user.getId());
+        notifyAdminsPendingRegistration(user);
 
-        return buildAuthResponse(user);
+        Map<String, Object> m = new HashMap<>();
 
+        m.put("pending", true);
+
+        m.put("title", "注册申请已提交");
+
+        m.put("message", "管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。");
+
+        return m;
+
+    }
+
+    private void notifyAdminsPendingRegistration(User user) {
+        List<User> admins = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "ADMIN")
+                .eq(User::getStatus, UserStatus.ACTIVE));
+        String displayName = user.getNickname() != null ? user.getNickname() : user.getUsername();
+        String content = displayName + "（" + user.getUsername() + "）申请注册账号，请审核是否通过";
+        for (User admin : admins) {
+            notificationDispatcher.dispatch(admin.getId(), "USER_REGISTER", "新用户注册",
+                    content, String.valueOf(user.getId()));
+        }
     }
 
 
@@ -243,13 +285,17 @@ public class AuthService {
 
         }
 
-        String path = "avatars/" + userId + ".jpg";
-
-        storageService.store(file.getInputStream(), path, file.getSize(), contentType);
+        String path = storagePathService.buildUserAvatarPath(userId);
 
         User user = userMapper.selectById(userId);
 
         if (user == null) throw new BusinessException("用户不存在");
+
+        if (StringUtils.hasText(user.getAvatar()) && !path.equals(user.getAvatar())) {
+            storageService.delete(user.getAvatar());
+        }
+
+        storageService.store(file.getInputStream(), path, file.getSize(), contentType);
 
         user.setAvatar(path);
 
@@ -318,4 +364,3 @@ public class AuthService {
     }
 
 }
-

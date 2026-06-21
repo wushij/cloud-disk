@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
+import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import { validateRegisterUsername } from '@/utils/username'
 
 const auth = useAuthStore()
 
+const mode = ref<'login' | 'register'>('login')
 const username = ref('')
 const password = ref('')
+const nickname = ref('')
 const loading = ref(false)
 const showPass = ref(false)
 const focusField = ref('')
@@ -15,6 +19,10 @@ const captchaId = ref('')
 const captchaQuestion = ref('')
 const captchaAnswer = ref('')
 const showCaptcha = ref(false)
+
+const pendingDialogVisible = ref(false)
+const pendingDialogTitle = ref('注册申请已提交')
+const pendingDialogMessage = ref('管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。')
 
 async function refreshCaptcha() {
   const data = await request<{ id: string; question: string }>({
@@ -28,6 +36,11 @@ async function refreshCaptcha() {
 }
 
 async function syncCaptchaState() {
+  if (mode.value === 'register') {
+    showCaptcha.value = true
+    await refreshCaptcha()
+    return
+  }
   try {
     const data = await request<{ required?: boolean }>({
       url: '/api/auth/captcha/required',
@@ -41,6 +54,10 @@ async function syncCaptchaState() {
   }
 }
 
+watch(mode, () => {
+  void syncCaptchaState()
+})
+
 onMounted(() => {
   void syncCaptchaState()
 })
@@ -48,10 +65,19 @@ onMounted(() => {
 async function submit() {
   const u = username.value.trim()
   const p = password.value
+  const nick = nickname.value.trim()
+  const isRegister = mode.value === 'register'
 
   if (!u || !p) {
-    uni.showToast({ title: '请输入用户名和密码', icon: 'none' })
+    uni.showToast({ title: isRegister ? '请填写用户名和密码' : '请输入用户名和密码', icon: 'none' })
     return
+  }
+  if (isRegister) {
+    const usernameError = validateRegisterUsername(u)
+    if (usernameError) {
+      uni.showToast({ title: usernameError, icon: 'none' })
+      return
+    }
   }
   if (showCaptcha.value && !captchaAnswer.value.trim()) {
     uni.showToast({ title: '请完成验证码', icon: 'none' })
@@ -64,16 +90,35 @@ async function submit() {
     : undefined
 
   try {
-    await auth.login(u, p, captchaPayload)
-    uni.showToast({ title: '登录成功', icon: 'success' })
-    uni.reLaunch({ url: '/pages/disk/index' })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : '登录失败'
+    if (mode.value === 'login') {
+      await auth.login(u, p, captchaPayload)
+      uni.showToast({ title: '登录成功', icon: 'success' })
+      uni.reLaunch({ url: '/pages/disk/index' })
+    } else {
+      const res = await auth.register(u, p, nick || undefined, captchaPayload) as { pending?: boolean; title?: string; message?: string } | undefined
+      if (res?.pending) {
+        pendingDialogTitle.value = res.title || '注册申请已提交'
+        pendingDialogMessage.value = res.message || '管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。'
+        pendingDialogVisible.value = true
+      } else {
+        uni.showToast({ title: '注册成功', icon: 'success' })
+        uni.reLaunch({ url: '/pages/disk/index' })
+      }
+    }
+  } catch (e: any) {
+    const msg = e instanceof Error ? e.message : (isRegister ? '注册失败' : '登录失败')
     uni.showToast({ title: msg, icon: 'none' })
     await syncCaptchaState()
   } finally {
     loading.value = false
   }
+}
+
+function onPendingDialogConfirm() {
+  mode.value = 'login'
+  password.value = ''
+  nickname.value = ''
+  void syncCaptchaState()
 }
 </script>
 
@@ -95,6 +140,41 @@ async function submit() {
       <view class="card">
         <text class="card-title">CloudDisk Pro</text>
 
+        <!-- 注册登录模式切换 -->
+        <view class="auth-tabs">
+          <view
+            class="auth-tab"
+            :class="{ active: mode === 'login' }"
+            @click="mode = 'login'"
+          >
+            <text class="auth-tab-text">登录</text>
+            <view class="auth-tab-line" />
+          </view>
+          <view
+            class="auth-tab"
+            :class="{ active: mode === 'register' }"
+            @click="mode = 'register'"
+          >
+            <text class="auth-tab-text">注册</text>
+            <view class="auth-tab-line" />
+          </view>
+        </view>
+
+        <!-- 注册专用昵称输入 -->
+        <view v-if="mode === 'register'" class="field" :class="{ focused: focusField === 'nickname' }">
+          <view class="field-prefix">
+            <u-icon name="account" size="19" color="#a0aec0" />
+          </view>
+          <input
+            v-model="nickname"
+            class="field-input"
+            placeholder="昵称（可选）"
+            placeholder-class="ph"
+            @focus="focusField = 'nickname'"
+            @blur="focusField = ''"
+          />
+        </view>
+
         <view class="field" :class="{ focused: focusField === 'user' }">
           <view class="field-prefix">
             <u-icon name="account" size="19" color="#a0aec0" />
@@ -104,6 +184,7 @@ async function submit() {
             class="field-input"
             placeholder="用户名"
             placeholder-class="ph"
+            :maxlength="mode === 'register' ? 12 : 32"
             @focus="focusField = 'user'"
             @blur="focusField = ''"
           />
@@ -179,10 +260,20 @@ async function submit() {
           :disabled="loading"
           @click="submit"
         >
-          <text class="login-btn-text">登 录</text>
+          <text class="login-btn-text">{{ mode === 'login' ? '登 录' : '注 册' }}</text>
         </button>
       </view>
     </view>
+
+    <MobileConfirmDialog
+      v-model:show="pendingDialogVisible"
+      :title="pendingDialogTitle"
+      :message="pendingDialogMessage"
+      confirm-text="我知道了"
+      alert-only
+      tone="info"
+      @confirm="onPendingDialogConfirm"
+    />
   </view>
 </template>
 
@@ -404,5 +495,49 @@ async function submit() {
   font-weight: 700;
   color: #fff;
   letter-spacing: 4rpx;
+}
+
+.auth-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 64rpx;
+  margin-bottom: 12rpx;
+  border-bottom: 1rpx solid rgba(148, 163, 184, 0.1);
+  padding-bottom: 16rpx;
+}
+
+.auth-tab {
+  position: relative;
+  padding: 8rpx 16rpx;
+  
+  .auth-tab-text {
+    font-size: 32rpx;
+    font-weight: 600;
+    color: #64748b;
+    transition: all 0.25s ease;
+  }
+
+  &.active {
+    .auth-tab-text {
+      color: #0f172a;
+      font-weight: 800;
+    }
+  }
+}
+
+.auth-tab-line {
+  position: absolute;
+  bottom: -18rpx;
+  left: 12%;
+  width: 76%;
+  height: 4rpx;
+  border-radius: 99rpx;
+  background: linear-gradient(90deg, #4f7cff 0%, #0f172a 100%);
+  transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.auth-tab.active .auth-tab-line {
+  transform: scaleX(1);
 }
 </style>

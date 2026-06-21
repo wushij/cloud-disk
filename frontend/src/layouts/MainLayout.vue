@@ -82,6 +82,7 @@ const navItems = [
   { path: '/teams', label: '团队空间', icon: TeamSpaceIcon },
   { path: '/recycle', label: '回收站', icon: 'Delete' },
   { path: '/profile', label: '个人中心', icon: 'User' },
+  { path: '/admin/users', label: '用户管理', icon: 'UserFilled', admin: true as const },
   { path: '/admin', label: '系统管理', icon: 'Setting', admin: true as const }
 ]
 
@@ -178,7 +179,10 @@ onMounted(async () => {
 
         content: data.content,
 
-        refId: data.refId
+        refId: data.refId,
+
+        inviteStatus: data.inviteStatus as any,
+        registrationStatus: data.registrationStatus as any
 
       })
 
@@ -221,12 +225,14 @@ async function openNotify(item: any) {
 
 function getNotifyIcon(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'User'
+  if (type === 'USER_REGISTER') return 'UserFilled'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'Share'
   return 'Bell'
 }
 
 function getNotifyColorClass(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'teal'
+  if (type === 'USER_REGISTER') return 'blue'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'orange'
   return 'indigo'
 }
@@ -238,31 +244,139 @@ function formatTime(createdAt: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-async function acceptTeamInvite(item: { id: string; refId?: string }) {
+function isInvitePending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+function isRegistrationPending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+function getRegistrationSubject(content: string) {
+  const match = content.match(/^(.+?)（.+?）申请注册/)
+  return match ? match[1] : '该用户'
+}
+
+function getTeamName(content: string) {
+  const match = content.match(/加入团队「(.+?)」/)
+  return match ? match[1] : '该团队'
+}
+
+function syncNotifyItem(item: { id: string }, patch: Record<string, unknown>) {
+  const storeItem = notifyStore.items.find(x => x.id === item.id)
+  if (storeItem) Object.assign(storeItem, patch)
+  if (selectedNotify.value?.id === item.id) Object.assign(selectedNotify.value, patch)
+}
+
+async function acceptTeamInvite(item: { id: string; refId?: string; content?: string }) {
   if (!item.refId) return
+  const teamName = getTeamName(item.content || '')
+  const ok = await confirmDialog.open({
+    title: '接受团队邀请',
+    message: `确定加入团队「${teamName}」吗？加入后可在团队空间中查看和协作。`,
+    confirmText: '接受'
+  })
+  if (!ok) return
   try {
     await notifyStore.acceptTeamInvite(item as any)
-    ElMessage.success('已加入团队')
-    const storeItem = notifyStore.items.find(x => x.id === item.id)
-    if (storeItem) {
-      storeItem.title = '已接受邀请'
-      storeItem.content = '你已成功加入团队，现在可以在团队空间中查看和协作。'
-    }
+    syncNotifyItem(item, {
+      title: '已接受邀请',
+      content: '你已成功加入团队，现在可以在团队空间中查看和协作。',
+      inviteStatus: 'ACCEPTED',
+      read: true
+    })
+    await confirmDialog.openAlert({
+      title: '已加入团队',
+      message: `你已成功加入「${teamName}」，可在侧边栏进入团队空间。`,
+      confirmText: '好的',
+      tone: 'success'
+    })
   } catch {
     /* global toast */
   }
 }
 
-async function rejectTeamInvite(item: { id: string; refId?: string }) {
+async function rejectTeamInvite(item: { id: string; refId?: string; content?: string }) {
   if (!item.refId) return
+  const teamName = getTeamName(item.content || '')
+  const ok = await confirmDialog.open({
+    title: '拒绝团队邀请',
+    message: `确定拒绝加入团队「${teamName}」吗？`,
+    confirmText: '拒绝',
+    danger: true
+  })
+  if (!ok) return
   try {
     await notifyStore.rejectTeamInvite(item as any)
-    ElMessage.info('已拒绝邀请')
-    const storeItem = notifyStore.items.find(x => x.id === item.id)
-    if (storeItem) {
-      storeItem.title = '已拒绝邀请'
-      storeItem.content = '你已拒绝该团队的邀请。'
-    }
+    syncNotifyItem(item, {
+      title: '已拒绝邀请',
+      content: '你已拒绝该团队的邀请。',
+      inviteStatus: 'REJECTED',
+      read: true
+    })
+    await confirmDialog.openAlert({
+      title: '已拒绝邀请',
+      message: `你已拒绝加入「${teamName}」。`,
+      confirmText: '我知道了',
+      tone: 'info'
+    })
+  } catch {
+    /* global toast */
+  }
+}
+
+async function approveRegistration(item: { id: string; refId?: string; content?: string }) {
+  if (!item.refId) return
+  const subject = getRegistrationSubject(item.content || '')
+  const ok = await confirmDialog.open({
+    title: '通过注册申请',
+    message: `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`,
+    confirmText: '通过'
+  })
+  if (!ok) return
+  try {
+    await notifyStore.approveRegistration(item as any)
+    syncNotifyItem(item, {
+      title: '已通过注册',
+      content: '该用户现在可以登录使用云盘（200GB 空间）。',
+      registrationStatus: 'APPROVED',
+      read: true
+    })
+    await confirmDialog.openAlert({
+      title: '已通过注册',
+      message: `「${subject}」的账号已激活，可正常登录使用云盘。`,
+      confirmText: '好的',
+      tone: 'success'
+    })
+  } catch {
+    /* global toast */
+  }
+}
+
+async function rejectRegistration(item: { id: string; refId?: string; content?: string }) {
+  if (!item.refId) return
+  const subject = getRegistrationSubject(item.content || '')
+  const ok = await confirmDialog.open({
+    title: '拒绝注册申请',
+    message: `确定拒绝「${subject}」的注册申请吗？该用户将无法登录云盘。`,
+    confirmText: '拒绝',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    await notifyStore.rejectRegistration(item as any)
+    syncNotifyItem(item, {
+      title: '已拒绝注册',
+      content: '该用户的注册申请已被拒绝。',
+      registrationStatus: 'REJECTED',
+      read: true
+    })
+    await confirmDialog.openAlert({
+      title: '已拒绝注册',
+      message: `已拒绝「${subject}」的注册申请。`,
+      confirmText: '我知道了',
+      tone: 'info'
+    })
   } catch {
     /* global toast */
   }
@@ -270,22 +384,18 @@ async function rejectTeamInvite(item: { id: string; refId?: string }) {
 
 async function handleAcceptInDetail(item: any) {
   await acceptTeamInvite(item)
-  item.read = true
-  item.inviteStatus = 'ACCEPTED'
-  if (item.type === 'TEAM_INVITED') {
-    item.title = '已接受邀请'
-    item.content = '你已成功加入团队，现在可以在团队空间中查看和协作。'
-  }
 }
 
 async function handleRejectInDetail(item: any) {
   await rejectTeamInvite(item)
-  item.read = true
-  item.inviteStatus = 'REJECTED'
-  if (item.type === 'TEAM_INVITED') {
-    item.title = '已拒绝邀请'
-    item.content = '你已拒绝该团队的邀请。'
-  }
+}
+
+async function handleApproveRegistrationInDetail(item: any) {
+  await approveRegistration(item)
+}
+
+async function handleRejectRegistrationInDetail(item: any) {
+  await rejectRegistration(item)
 }
 
 async function deleteNotify(item: any) {
@@ -571,20 +681,46 @@ async function handleClearAll() {
             </div>
             <div class="cd-notify-item-text">{{ item.content }}</div>
             <div
-              v-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus === 'PENDING'"
+              v-if="item.type === 'TEAM_INVITED' && item.refId && isInvitePending(item.inviteStatus)"
               class="cd-notify-actions"
               @click.stop
             >
-              <el-button size="small" type="primary" @click="acceptTeamInvite(item)">接受</el-button>
-              <el-button size="small" @click="rejectTeamInvite(item)">拒绝</el-button>
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost" @click="rejectTeamInvite(item)">拒绝</button>
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary" @click="acceptTeamInvite(item)">接受</button>
             </div>
             <div
-              v-else-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus !== 'PENDING'"
+              v-else-if="item.type === 'TEAM_INVITED' && item.refId && item.inviteStatus === 'ACCEPTED'"
               class="cd-notify-status-row"
             >
-              <span class="invite-status-badge" :class="item.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'">
-                {{ item.inviteStatus === 'ACCEPTED' ? '已接受邀请' : item.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '已失效' }}
+              <span class="invite-status-badge accepted">已接受邀请</span>
+            </div>
+            <div
+              v-else-if="item.type === 'TEAM_INVITED' && item.refId && (item.inviteStatus === 'REJECTED' || item.inviteStatus === 'EXPIRED')"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge rejected">
+                {{ item.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '已失效' }}
               </span>
+            </div>
+            <div
+              v-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && isRegistrationPending(item.registrationStatus)"
+              class="cd-notify-actions"
+              @click.stop
+            >
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost" @click="rejectRegistration(item)">拒绝</button>
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary" @click="approveRegistration(item)">通过</button>
+            </div>
+            <div
+              v-else-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && item.registrationStatus === 'APPROVED'"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge accepted">已通过注册</span>
+            </div>
+            <div
+              v-else-if="auth.isAdmin && item.type === 'USER_REGISTER' && item.refId && item.registrationStatus === 'REJECTED'"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge rejected">已拒绝注册</span>
             </div>
           </div>
         </div>
@@ -612,20 +748,33 @@ async function handleClearAll() {
         <div class="cd-notify-detail-body">
           {{ selectedNotify.content }}
         </div>
-        <div v-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus === 'PENDING'" class="cd-notify-detail-actions cd-dialog-footer-pills">
-          <el-button type="primary" size="large" @click="handleAcceptInDetail(selectedNotify)">接受邀请</el-button>
-          <el-button type="danger" size="large" @click="handleRejectInDetail(selectedNotify)">拒绝邀请</el-button>
+        <div v-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && isInvitePending(selectedNotify.inviteStatus)" class="cd-notify-detail-actions">
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost cd-notify-action-pill--lg" @click="handleRejectInDetail(selectedNotify)">拒绝邀请</button>
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary cd-notify-action-pill--lg" @click="handleAcceptInDetail(selectedNotify)">接受邀请</button>
         </div>
-        <div v-else-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus !== 'PENDING'" class="cd-notify-detail-actions detail-actions-col">
-          <div class="invite-status-badge large" :class="selectedNotify.inviteStatus === 'ACCEPTED' ? 'accepted' : 'rejected'">
-            {{ selectedNotify.inviteStatus === 'ACCEPTED' ? '已接受邀请' : selectedNotify.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '邀请已失效' }}
+        <div v-else-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus === 'ACCEPTED'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large accepted">已接受邀请</div>
+        </div>
+        <div v-else-if="selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && (selectedNotify.inviteStatus === 'REJECTED' || selectedNotify.inviteStatus === 'EXPIRED')" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large rejected">
+            {{ selectedNotify.inviteStatus === 'REJECTED' ? '已拒绝邀请' : '邀请已失效' }}
           </div>
+        </div>
+        <div v-if="auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && isRegistrationPending(selectedNotify.registrationStatus)" class="cd-notify-detail-actions">
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost cd-notify-action-pill--lg" @click="handleRejectRegistrationInDetail(selectedNotify)">拒绝注册</button>
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary cd-notify-action-pill--lg" @click="handleApproveRegistrationInDetail(selectedNotify)">通过注册</button>
+        </div>
+        <div v-else-if="auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && selectedNotify.registrationStatus === 'APPROVED'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large accepted">已通过注册</div>
+        </div>
+        <div v-else-if="auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && selectedNotify.registrationStatus === 'REJECTED'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large rejected">已拒绝注册</div>
         </div>
       </div>
       <template #footer>
         <div
-          v-if="selectedNotify && !(selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && selectedNotify.inviteStatus === 'PENDING')"
-          class="cd-dialog-footer-pills"
+          v-if="selectedNotify && !(selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && isInvitePending(selectedNotify.inviteStatus)) && !(auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && isRegistrationPending(selectedNotify.registrationStatus))"
+          class="cd-dialog-footer-pills is-center"
         >
           <el-button size="large" @click="detailVisible = false">关闭</el-button>
         </div>
@@ -1093,6 +1242,11 @@ async function handleClearAll() {
   color: #0d9488;
 }
 
+.cd-notify-icon-box.blue {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+}
+
 .cd-notify-icon-box.orange {
   background: rgba(249, 115, 22, 0.08);
   color: #f97316;
@@ -1138,6 +1292,7 @@ async function handleClearAll() {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
@@ -1145,6 +1300,47 @@ async function handleClearAll() {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.cd-notify-action-pill {
+  flex: 1;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--cd-border-light);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cd-notify-action-pill:active {
+  transform: scale(0.98);
+}
+
+.cd-notify-action-pill--ghost {
+  background: #f8fafc;
+  color: var(--cd-text-secondary);
+}
+
+.cd-notify-action-pill--ghost:hover {
+  background: #f1f5f9;
+}
+
+.cd-notify-action-pill--primary {
+  background: var(--cd-primary-gradient);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 12px rgba(1, 7, 16, 0.15);
+}
+
+.cd-notify-action-pill--primary:hover {
+  opacity: 0.95;
+}
+
+.cd-notify-action-pill--lg {
+  height: 44px;
+  font-size: 14px;
 }
 
 /* 通知详情弹窗样式 */
@@ -1169,6 +1365,11 @@ async function handleClearAll() {
 .cd-notify-detail-icon-wrap.teal {
   background: rgba(13, 148, 136, 0.08);
   color: #0d9488;
+}
+
+.cd-notify-detail-icon-wrap.blue {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
 }
 
 .cd-notify-detail-icon-wrap.orange {
@@ -1217,8 +1418,9 @@ async function handleClearAll() {
   justify-content: center;
 }
 
-.cd-notify-detail-actions .el-button {
+.cd-notify-detail-actions .cd-notify-action-pill {
   flex: 1;
+  max-width: 180px;
 }
 
 
@@ -1250,13 +1452,14 @@ async function handleClearAll() {
 }
 .cd-notify-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 14px;
-  height: 14px;
+  top: 1px;
+  right: 1px;
+  height: 15px;
+  min-width: 15px;
   padding: 0 3px;
-  border-radius: 99px;
-  background: var(--theme-primary-gradient, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%));
+  border-radius: 10px;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: #fff;
   font-size: 9px;
   font-weight: 700;
@@ -1264,8 +1467,8 @@ async function handleClearAll() {
   align-items: center;
   justify-content: center;
   line-height: 1;
-  border: none;
-  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.25);
+  border: 1px solid #fff;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.25);
   animation: badgePopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 

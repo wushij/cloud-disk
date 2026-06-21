@@ -38,17 +38,17 @@ withDefaults(
 <style scoped>
 .cd-page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--cd-border-light);
   background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--theme-bg) 25%, #fff) 100%);
 }
 
 .cd-page-header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   min-width: 0;
 }
@@ -77,6 +77,7 @@ withDefaults(
   margin: 0;
   font-size: 17px;
   font-weight: 700;
+  line-height: 1.3;
   color: var(--cd-text-primary);
   letter-spacing: -0.02em;
 }

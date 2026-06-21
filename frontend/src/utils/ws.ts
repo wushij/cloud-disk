@@ -11,6 +11,8 @@ export type WsMessage = {
   refId?: string
   notifyType?: string
   notifyId?: string | number
+  inviteStatus?: string
+  registrationStatus?: string
 }
 
 type WsListener = (data: WsMessage) => void

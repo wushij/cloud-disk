@@ -53,6 +53,8 @@ public class FileService {
     private final VirusScanService virusScanService;
     private final FolderTreeHelper folderTreeHelper;
 
+    private final StoragePathService storagePathService;
+
     /** ElasticSearch 搜索服务（条件装配，ES 未启用时为 null） */
     @Autowired(required = false)
     private FileSearchService fileSearchService;
@@ -386,15 +388,11 @@ public class FileService {
     }
 
     public String buildStoragePath(long userId, String fileName) {
-        return userId + "/" + UUID.randomUUID().toString().replace("-", "") + "_" + sanitize(fileName);
+        return storagePathService.buildUserFilePath(userId, fileName);
     }
 
     public String chunkStoragePath(String uploadId, int chunkNo) {
         return "chunks/" + uploadId + "/" + chunkNo;
-    }
-
-    private String sanitize(String name) {
-        return name.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
     private void checkDuplicateFileName(long userId, Long folderId, String name, Long excludeId) {
@@ -402,6 +400,10 @@ public class FileService {
                 .eq(FileRecord::getFolderId, folderId)
                 .eq(FileRecord::getFileName, name)
                 .eq(FileRecord::getStatus, 1);
+        // 个人云盘按用户隔离；团队目录同一文件夹内全局唯一
+        if (!folderService.isSharedTeamFolder(folderId, userId)) {
+            q.eq(FileRecord::getUserId, userId);
+        }
         if (excludeId != null) q.ne(FileRecord::getId, excludeId);
         if (fileMapper.selectCount(q) > 0) {
             throw new BusinessException("同名文件已存在");

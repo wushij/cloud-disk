@@ -1,25 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import {
+  Setting,
+  Refresh,
+  UserFilled,
+  Files,
+  Coin,
+  DataAnalysis,
+  Box,
+  Clock,
+  List,
+  ArrowRight
+} from '@element-plus/icons-vue'
 import http, { TOKEN_KEY } from '@/api/http'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
-import { useConfirmDialogStore } from '@/stores/confirmDialog'
-
-const auth = useAuthStore()
-const confirmDialog = useConfirmDialogStore()
-
-interface UserRow {
-  id: number
-  username: string
-  nickname?: string
-  role: string
-  status: number
-  storageQuota?: number
-  storageUsed?: number
-  createTime?: string
-  hasAvatar?: boolean
-}
+import PageHeader from '@/components/PageHeader.vue'
 
 interface AuditRow {
   id?: number
@@ -30,91 +28,147 @@ interface AuditRow {
   createTime?: string
 }
 
+interface AdminUserRow {
+  id: number
+  username: string
+  nickname?: string
+  hasAvatar?: boolean
+}
+
+interface UserStorageStat {
+  userId: number
+  username: string
+  nickname?: string
+  hasAvatar?: boolean
+  storageUsed: number
+  storageQuota: number
+}
+
+const router = useRouter()
+const auth = useAuthStore()
 const loading = ref(false)
-const dashboard = ref<Record<string, unknown>>({})
-const users = ref<UserRow[]>([])
-const auditLogs = ref<AuditRow[]>([])
-const auditPageSize = 8
 const rebuilding = ref(false)
+const dashboard = ref<Record<string, unknown>>({})
+const auditLogs = ref<AuditRow[]>([])
+const userStats = ref<UserStorageStat[]>([])
+const adminUsers = ref<AdminUserRow[]>([])
 const avatarBroken = ref<Record<number, boolean>>({})
+const auditPageSize = 10
 
-const quotaVisible = ref(false)
-const quotaSaving = ref(false)
-const quotaTarget = ref<UserRow | null>(null)
-const quotaInput = ref('')
+const primaryStats = [
+  { key: 'userCount', label: '注册用户', icon: UserFilled, tone: 'indigo' },
+  { key: 'pendingUserCount', label: '待审核', icon: Clock, tone: 'amber' },
+  { key: 'fileCount', label: '活跃文件', icon: Files, tone: 'emerald' },
+  { key: 'totalUsedBytes', label: '存储用量', icon: Coin, tone: 'sky', size: true }
+] as const
 
-const statCards: {
-  key: string
-  label: string
-  icon: string
-  tone: string
-  text?: boolean
-  bool?: boolean
-}[] = [
-  { key: 'userCount', label: '用户数', icon: 'UserFilled', tone: 'indigo' },
-  { key: 'fileCount', label: '文件数', icon: 'Files', tone: 'emerald' },
-  { key: 'storageType', label: '存储类型', icon: 'Box', tone: 'violet', text: true },
-  { key: 'elasticsearchEnabled', label: 'ES 搜索', icon: 'DataAnalysis', tone: 'slate', bool: true }
-]
+const infraTags = computed(() => [
+  {
+    label: '对象存储',
+    value: dashboard.value.bucket
+      ? `${dashboard.value.storageType} · ${dashboard.value.bucket}`
+      : String(dashboard.value.storageType || '-'),
+    on: true
+  },
+  {
+    label: 'Redis',
+    value: dashboard.value.redisEnabled ? '已启用' : '未启用',
+    on: !!dashboard.value.redisEnabled
+  },
+  {
+    label: 'ElasticSearch',
+    value: dashboard.value.elasticsearchEnabled ? '已启用' : '未启用',
+    on: !!dashboard.value.elasticsearchEnabled
+  },
+  {
+    label: 'RabbitMQ',
+    value: dashboard.value.rabbitmqEnabled ? '已启用' : '未启用',
+    on: !!dashboard.value.rabbitmqEnabled
+  }
+])
+
+const quickLinks = computed(() => [
+  {
+    title: '用户管理',
+    icon: UserFilled,
+    onClick: () => router.push('/admin/users')
+  },
+  {
+    title: '注册审核',
+    icon: Clock,
+    badge: Number(dashboard.value.pendingUserCount || 0),
+    onClick: () => router.push('/admin/users')
+  },
+  {
+    title: '重建搜索索引',
+    icon: DataAnalysis,
+    disabled: !dashboard.value.elasticsearchEnabled,
+    loading: rebuilding.value,
+    onClick: rebuildIndex
+  }
+])
+
+const topStorageUsers = computed(() =>
+  [...userStats.value]
+    .filter((u) => (u.storageUsed || 0) > 0)
+    .sort((a, b) => (b.storageUsed || 0) - (a.storageUsed || 0))
+    .slice(0, 5)
+)
+
+const maxStorageUsed = computed(() => topStorageUsers.value[0]?.storageUsed || 1)
+const totalUsedBytes = computed(() => Number(dashboard.value.totalUsedBytes || 0))
 
 async function loadAll() {
   loading.value = true
+  avatarBroken.value = {}
+
   try {
-    const [dash, userList, logs] = await Promise.all([
-      http.get('/api/admin/dashboard'),
-      http.get('/api/admin/users'),
-      http.get('/api/admin/audit-logs', { params: { page: 0, size: auditPageSize } })
-    ])
-    dashboard.value = dash.data
-    users.value = userList.data
-    auditLogs.value = logs.data.content || []
+    const { data } = await http.get('/api/admin/dashboard')
+    dashboard.value = data || {}
   } catch {
     /* global toast */
+  }
+
+  try {
+    const { data } = await http.get('/api/admin/audit-logs', { params: { page: 0, size: auditPageSize } })
+    auditLogs.value = data.content || []
+  } catch {
+    /* global toast */
+  }
+
+  try {
+    const { data } = await http.get<AdminUserRow[]>('/api/admin/users')
+    adminUsers.value = data || []
+  } catch {
+    adminUsers.value = []
+  }
+
+  try {
+    const { data } = await http.get('/api/admin/storage/stats')
+    const userMap = new Map(adminUsers.value.map((u) => [u.id, u]))
+    userStats.value = (data.userStats || []).map((stat: UserStorageStat) => {
+      const profile = userMap.get(stat.userId)
+      return {
+        ...stat,
+        nickname: stat.nickname || profile?.nickname,
+        hasAvatar: Boolean(stat.hasAvatar ?? profile?.hasAvatar)
+      }
+    })
+  } catch {
+    userStats.value = []
   } finally {
     loading.value = false
   }
 }
 
-function statValue(card: (typeof statCards)[number]) {
+function statValue(card: (typeof primaryStats)[number]) {
   const raw = dashboard.value[card.key]
-  if (card.bool) return raw ? '已启用' : '未启用'
-  if (card.text) return String(raw || '-')
-  return raw || 0
-}
-
-function userAvatarSrc(row: UserRow) {
-  if (avatarBroken.value[row.id]) return ''
-  if (row.username === auth.username && auth.avatarSrc) return auth.avatarSrc
-  if (!row.hasAvatar) return ''
-  const token = localStorage.getItem(TOKEN_KEY)
-  if (!token) return ''
-  return `/api/admin/users/${row.id}/avatar?access_token=${encodeURIComponent(token)}&v=${auth.avatarVersion}`
-}
-
-function onAvatarError(userId: number) {
-  avatarBroken.value[userId] = true
-}
-
-async function toggleUser(row: UserRow) {
-  const next = row.status === 1 ? 0 : 1
-  const action = next === 0 ? '禁用' : '启用'
-  const ok = await confirmDialog.open({
-    title: '确认',
-    message: `确定${action}用户「${row.username}」？`,
-    confirmText: '确定',
-    danger: next === 0
-  })
-  if (!ok) return
-  try {
-    await http.put(`/api/admin/users/${row.id}/status`, { status: next })
-    row.status = next
-    ElMessage.success('操作成功')
-  } catch {
-    /* global toast */
-  }
+  if ('size' in card && card.size) return fmtSize(Number(raw || 0))
+  return raw ?? 0
 }
 
 async function rebuildIndex() {
+  if (!dashboard.value.elasticsearchEnabled || rebuilding.value) return
   rebuilding.value = true
   try {
     await http.post('/api/admin/search/rebuild')
@@ -126,671 +180,693 @@ async function rebuildIndex() {
   }
 }
 
-function actionLabel(action?: string) {
+function actionLabel(row: AuditRow) {
+  const action = row.action
   if (!action) return '操作'
   if (action === 'LOGIN') return '登录'
+  if (action.includes('APPROVE_REGISTER')) return '通过注册'
+  if (action.includes('REJECT_REGISTER')) return '拒绝注册'
   if (action.includes('DELETE')) return '删除'
   if (action.includes('UPLOAD')) return '上传'
+  if (action.includes('DISABLE') || action.includes('ENABLE')) {
+    const detail = (row.detail || '').trim()
+    if (detail === '启用' || detail === '禁用') return detail
+    return action.includes('DISABLE') ? '禁用' : '启用'
+  }
   if (action.includes('ADMIN')) return '管理'
   return action
 }
 
-function actionTone(action?: string): 'success' | 'warning' | 'danger' | 'info' {
-  if (!action) return 'info'
-  if (action === 'LOGIN') return 'success'
-  if (action.includes('DELETE') || action.includes('DISABLE')) return 'danger'
-  if (action.includes('ADMIN')) return 'warning'
+function actionTone(row: AuditRow): 'success' | 'warning' | 'danger' | 'info' {
+  const label = actionLabel(row)
+  if (label === '登录' || label === '通过注册' || label === '启用') return 'success'
+  if (label === '禁用' || label === '拒绝注册' || (row.action || '').includes('DELETE')) return 'danger'
+  if ((row.action || '').includes('ADMIN')) return 'warning'
   return 'info'
 }
 
-function openQuotaDialog(row: UserRow) {
-  quotaTarget.value = row
-  const currentGB = (row.storageQuota || 0) / 1024 / 1024 / 1024
-  quotaInput.value = String(currentGB)
-  quotaVisible.value = true
+function userDisplayName(user: UserStorageStat) {
+  return user.nickname || user.username
 }
 
-async function submitQuota() {
-  if (!quotaTarget.value) return
-  const raw = quotaInput.value.trim()
-  if (raw === '') {
-    ElMessage.warning('请输入存储配额')
-    return
+function userInitial(user: UserStorageStat) {
+  return userDisplayName(user).charAt(0).toUpperCase()
+}
+
+function userAvatarSrc(user: UserStorageStat) {
+  if (!user.userId || avatarBroken.value[user.userId]) return ''
+  if (user.username === auth.username && auth.avatarSrc) return auth.avatarSrc
+  if (!user.hasAvatar) return ''
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (!token) return ''
+  const base = import.meta.env.VITE_API_BASE || ''
+  return `${base}/api/admin/users/${user.userId}/avatar?access_token=${encodeURIComponent(token)}&v=${auth.avatarVersion}`
+}
+
+function onAvatarError(userId: number) {
+  avatarBroken.value[userId] = true
+}
+
+function storageUsagePercent(user: UserStorageStat) {
+  const used = user.storageUsed || 0
+  const quota = user.storageQuota || 0
+  if (quota > 0) {
+    return Math.min(100, Math.max(4, Math.round((used / quota) * 100)))
   }
-  const gb = Number(raw)
-  if (Number.isNaN(gb) || gb < 0) {
-    ElMessage.warning('请输入有效的配额数值')
-    return
-  }
-  if (quotaSaving.value) return
-  quotaSaving.value = true
-  const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
-  try {
-    await http.put(`/api/admin/users/${quotaTarget.value.id}/quota`, { storageQuota: quotaBytes })
-    quotaTarget.value.storageQuota = quotaBytes
-    quotaVisible.value = false
-    ElMessage.success('配额设置成功')
-  } catch {
-    /* global toast */
-  } finally {
-    quotaSaving.value = false
-  }
+  return Math.max(6, Math.round((used / maxStorageUsed.value) * 100))
 }
 
 onMounted(loadAll)
 </script>
 
 <template>
-  <div v-loading="loading" class="cd-page cd-page-scroll cd-admin-page">
-    <div class="cd-stat-grid">
-      <div v-for="card in statCards" :key="card.key" class="cd-stat-card">
-        <div class="cd-stat-icon-wrap" :class="`tone-${card.tone}`">
-          <el-icon :size="24"><component :is="card.icon" /></el-icon>
-        </div>
-        <div class="cd-stat-info">
-          <div class="cd-stat-label">{{ card.label }}</div>
-          <div class="cd-stat-value" :class="{ 'cd-stat-text': card.text || card.bool }">
-            {{ statValue(card) }}
+  <div v-loading="loading" class="cd-page cd-page-scroll admin-page">
+    <el-card shadow="never" class="admin-shell cd-page-card">
+      <template #header>
+        <PageHeader title="系统管理" :icon="Setting">
+          <template #actions>
+            <button type="button" class="admin-refresh" @click="loadAll">
+              <el-icon><Refresh /></el-icon>
+              刷新数据
+            </button>
+          </template>
+        </PageHeader>
+      </template>
+
+      <div class="stats-row">
+        <div
+          v-for="card in primaryStats"
+          :key="card.key"
+          class="stat-item"
+          :class="[
+            `tone-${card.tone}`,
+            { 'is-alert': card.key === 'pendingUserCount' && Number(dashboard.pendingUserCount || 0) > 0 }
+          ]"
+        >
+          <div class="stat-icon">
+            <el-icon :size="20"><component :is="card.icon" /></el-icon>
+          </div>
+          <div class="stat-meta">
+            <span class="stat-label">{{ card.label }}</span>
+            <strong class="stat-value">{{ statValue(card) }}</strong>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="cd-admin-grid">
-      <el-card shadow="never" class="cd-admin-card">
-        <template #header>
-          <div class="cd-card-header">
-            <div class="cd-card-title">
-              <el-icon :size="16" color="var(--cd-primary)"><UserFilled /></el-icon>
-              <span>用户管理</span>
-            </div>
-            <el-button
-              v-if="dashboard.elasticsearchEnabled"
-              type="primary"
-              :loading="rebuilding"
-              @click="rebuildIndex"
-            >
-              <el-icon><Refresh /></el-icon>
-              重建搜索索引
-            </el-button>
+      <section class="ops-section">
+        <div class="ops-line">
+          <span class="ops-label">基础设施</span>
+          <div class="infra-tags">
+            <span v-for="tag in infraTags" :key="tag.label" class="infra-tag" :class="{ on: tag.on }">
+              <i class="infra-dot" />
+              {{ tag.label }} · {{ tag.value }}
+            </span>
           </div>
-        </template>
-        <el-table :data="users" class="cd-admin-table">
-          <el-table-column label="用户" min-width="200" header-align="center">
-            <template #default="{ row }">
-              <div class="cd-user-cell">
-                <el-avatar
-                  :size="36"
-                  :src="userAvatarSrc(row) || undefined"
-                  class="cd-user-avatar-sm"
-                  @error="onAvatarError(row.id)"
-                >
-                  {{ (row.nickname || row.username || 'U').charAt(0).toUpperCase() }}
-                </el-avatar>
-                <div>
-                  <div class="cd-user-nickname">{{ row.nickname || row.username }}</div>
-                  <div class="cd-user-username">@{{ row.username }}</div>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="角色" width="100" align="center" header-align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.role === 'ADMIN' ? 'warning' : 'info'" size="small" round>{{ row.role }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="已用空间" width="110" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-cell-text">{{ fmtSize(row.storageUsed || 0) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="配额" width="110" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-cell-text">{{ row.storageQuota ? fmtSize(row.storageQuota) : '不限' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="100" align="center" header-align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small" round>
-                {{ row.status === 1 ? '正常' : '禁用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right" align="center" header-align="center">
-            <template #default="{ row }">
-              <div class="cd-admin-actions">
-                <button type="button" class="cd-admin-action quota" @click="openQuotaDialog(row)">
-                  <el-icon :size="14"><Coin /></el-icon>
-                  配额
-                </button>
-                <button
-                  v-if="row.username !== 'admin'"
-                  type="button"
-                  class="cd-admin-action"
-                  :class="row.status === 1 ? 'danger' : 'success'"
-                  @click="toggleUser(row)"
-                >
-                  {{ row.status === 1 ? '禁用' : '启用' }}
-                </button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+        </div>
+        <div class="ops-line ops-line--actions">
+          <span class="ops-label">管理入口</span>
+          <div class="action-grid">
+            <button
+              v-for="(link, idx) in quickLinks"
+              :key="idx"
+              type="button"
+              class="action-item"
+              :disabled="link.disabled || link.loading"
+              @click="link.onClick()"
+            >
+              <span class="action-icon">
+                <el-icon :size="16"><component :is="link.icon" /></el-icon>
+              </span>
+              <span class="action-title">{{ link.loading ? '处理中…' : link.title }}</span>
+              <span v-if="link.badge" class="action-badge">{{ link.badge }}</span>
+              <el-icon class="action-arrow"><ArrowRight /></el-icon>
+            </button>
+          </div>
+        </div>
+      </section>
 
-      <el-card shadow="never" class="cd-admin-card cd-audit-card">
-        <template #header>
-          <div class="cd-card-title">
+      <section class="panel rank-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <el-icon :size="16" color="var(--cd-primary)"><Box /></el-icon>
+            <span>存储用量 TOP 5</span>
+          </div>
+          <span class="panel-sub">全平台已用 {{ fmtSize(totalUsedBytes) }}</span>
+        </div>
+        <div v-if="!topStorageUsers.length" class="panel-empty">暂无用户存储数据</div>
+        <ul v-else class="rank-list">
+          <li
+            v-for="(user, i) in topStorageUsers"
+            :key="user.userId"
+            class="rank-row"
+            :class="`rank-${i + 1}`"
+          >
+            <span class="rank-no">{{ i + 1 }}</span>
+            <el-avatar
+              :key="user.userId"
+              :size="40"
+              :src="userAvatarSrc(user) || undefined"
+              class="rank-avatar"
+              @error="onAvatarError(user.userId)"
+            >
+              {{ userInitial(user) }}
+            </el-avatar>
+            <div class="rank-main">
+              <div class="rank-head">
+                <div class="rank-user">
+                  <span class="rank-name">{{ userDisplayName(user) }}</span>
+                  <span class="rank-username">@{{ user.username }}</span>
+                </div>
+                <strong class="rank-size">{{ fmtSize(user.storageUsed || 0) }}</strong>
+              </div>
+              <div class="rank-bar">
+                <i :style="{ width: `${storageUsagePercent(user)}%` }" />
+              </div>
+              <div class="rank-foot">
+                <span v-if="user.storageQuota">配额 {{ fmtSize(user.storageQuota) }}</span>
+                <span v-else>配额不限</span>
+                <span v-if="user.storageQuota">已用 {{ storageUsagePercent(user) }}%</span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="panel audit-panel">
+        <div class="panel-head">
+          <div class="panel-title">
             <el-icon :size="16" color="var(--cd-primary)"><List /></el-icon>
             <span>最近审计日志</span>
-            <span class="cd-audit-count">最近 {{ auditLogs.length }} 条</span>
           </div>
-        </template>
-
-        <div v-if="!auditLogs.length" class="cd-audit-empty">暂无审计记录</div>
-
-        <el-table
-          v-else
-          :data="auditLogs"
-          class="cd-audit-table"
-        >
-          <el-table-column label="用户" min-width="108" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-audit-user">{{ row.username || '—' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="动作" min-width="96" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-audit-action" :class="`tone-${actionTone(row.action)}`">
-                {{ actionLabel(row.action) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="详情" min-width="160" align="center" header-align="center" show-overflow-tooltip>
-            <template #default="{ row }">
-              <span class="cd-audit-detail">{{ row.detail || '—' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="IP" min-width="132" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-audit-ip">{{ row.ip || '—' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="时间" min-width="168" align="center" header-align="center">
-            <template #default="{ row }">
-              <span class="cd-audit-time">{{ fmtTime(row.createTime) }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-    </div>
-
-    <el-dialog
-      v-model="quotaVisible"
-      width="400px"
-      destroy-on-close
-      class="cd-quota-dialog"
-      @closed="quotaTarget = null"
-    >
-      <template #header>
-        <div class="cd-quota-dialog-header">
-          <div class="cd-quota-dialog-icon">
-            <el-icon :size="20"><Coin /></el-icon>
-          </div>
-          <div>
-            <div class="cd-quota-dialog-title">设置存储配额</div>
-            <div v-if="quotaTarget" class="cd-quota-dialog-sub">
-              用户 {{ quotaTarget.username }} · 已用 {{ fmtSize(quotaTarget.storageUsed || 0) }}
-            </div>
-          </div>
+          <span class="panel-sub">最近 {{ auditLogs.length }} 条</span>
         </div>
-      </template>
-
-      <p class="cd-quota-hint">输入配额大小，0 表示不限</p>
-      <div class="cd-quota-field">
-        <el-input
-          v-model="quotaInput"
-          placeholder="如 10"
-          inputmode="decimal"
-          @keyup.enter="submitQuota"
-        />
-        <span class="cd-quota-unit">GB</span>
-      </div>
-
-      <template #footer>
-        <div class="cd-dialog-footer-pills">
-          <el-button size="large" class="cd-quota-cancel" @click="quotaVisible = false">取消</el-button>
-          <el-button type="primary" size="large" :loading="quotaSaving" @click="submitQuota">确定</el-button>
+        <div v-if="!auditLogs.length" class="panel-empty">暂无审计记录</div>
+        <div v-else class="cd-page-table-wrap">
+          <el-table :data="auditLogs" class="audit-table">
+            <el-table-column label="用户" min-width="100" align="center">
+              <template #default="{ row }">
+                <span class="audit-user">{{ row.username || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="动作" min-width="96" align="center">
+              <template #default="{ row }">
+                <span class="audit-tag" :class="`tone-${actionTone(row)}`">
+                  {{ actionLabel(row) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="详情" min-width="160" show-overflow-tooltip align="center">
+              <template #default="{ row }">
+                <span class="audit-detail">{{ row.detail || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="IP" min-width="128" align="center">
+              <template #default="{ row }">
+                <span class="audit-mono">{{ row.ip || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" min-width="168" align="center">
+              <template #default="{ row }">
+                <span class="audit-time">{{ fmtTime(row.createTime) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-      </template>
-    </el-dialog>
+      </section>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
-.cd-admin-page {
+.admin-page {
   padding-top: 16px;
-  overflow: auto;
-  height: auto;
   min-height: 100%;
 }
 
-.cd-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.cd-stat-card {
-  background: var(--cd-bg-white);
-  border: 1px solid var(--cd-border-light);
-  border-radius: var(--cd-radius-lg);
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  transition: var(--cd-transition);
-}
-
-.cd-stat-card:hover {
-  box-shadow: var(--cd-shadow);
-  border-color: color-mix(in srgb, var(--cd-primary) 16%, var(--cd-border-light));
-}
-
-.cd-stat-icon-wrap {
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid transparent;
-}
-
-.cd-stat-icon-wrap.tone-indigo {
-  color: #4f46e5;
-  background: linear-gradient(145deg, rgba(79, 70, 229, 0.14), rgba(99, 102, 241, 0.05));
-  border-color: rgba(79, 70, 229, 0.12);
-}
-
-.cd-stat-icon-wrap.tone-emerald {
-  color: #059669;
-  background: linear-gradient(145deg, rgba(16, 185, 129, 0.14), rgba(5, 150, 105, 0.05));
-  border-color: rgba(16, 185, 129, 0.12);
-}
-
-.cd-stat-icon-wrap.tone-violet {
-  color: #7c3aed;
-  background: linear-gradient(145deg, rgba(124, 58, 237, 0.14), rgba(139, 92, 246, 0.05));
-  border-color: rgba(124, 58, 237, 0.12);
-}
-
-.cd-stat-icon-wrap.tone-slate {
-  color: #64748b;
-  background: linear-gradient(145deg, rgba(100, 116, 139, 0.12), rgba(148, 163, 184, 0.05));
-  border-color: rgba(100, 116, 139, 0.1);
-}
-
-.cd-stat-label {
-  font-size: 12px;
-  color: var(--cd-text-secondary);
-  margin-bottom: 2px;
-  font-weight: 500;
-}
-
-.cd-stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--cd-text-primary);
-  line-height: 1.2;
-}
-
-.cd-stat-text {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.cd-admin-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.cd-admin-card {
+.admin-shell {
   border-radius: var(--cd-radius-lg) !important;
   border: 1px solid var(--cd-border-light) !important;
+  overflow: hidden;
 }
 
-.cd-admin-card :deep(.el-card__header) {
-  padding: 14px 18px !important;
-  border-bottom: 1px solid var(--cd-border-light);
+.admin-shell :deep(.el-card__header) {
+  padding: 0 !important;
+  border-bottom: 1px solid var(--cd-border-light) !important;
 }
 
-.cd-admin-card :deep(.el-card__body) {
-  padding: 8px 12px 14px !important;
+.admin-shell :deep(.el-card__body) {
+  padding: 0 22px 22px !important;
 }
 
-.cd-card-header {
-  display: flex;
-  justify-content: space-between;
+.admin-refresh {
+  display: inline-flex;
   align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--cd-primary-gradient);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(1, 7, 16, 0.16);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.cd-card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  width: 100%;
+.admin-refresh:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 
-.cd-admin-table :deep(.el-table__header th) {
-  background: color-mix(in srgb, var(--theme-bg) 55%, #fff) !important;
-  font-weight: 600;
-  color: var(--cd-text-secondary);
-  font-size: 12px;
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 18px 0 14px;
 }
 
-.cd-admin-table :deep(.el-table__header .cell) {
-  text-align: center;
-  justify-content: center;
-}
-
-.cd-admin-table :deep(.el-table__body .cell) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cd-admin-table :deep(.el-table__body td:first-child .cell) {
-  justify-content: flex-start;
-}
-
-.cd-user-cell {
+.stat-item {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--cd-border-light);
+  background: #fff;
 }
 
-.cd-user-avatar-sm {
-  background: var(--cd-primary-gradient) !important;
-  color: #fff !important;
-  font-weight: 600 !important;
-  font-size: 13px !important;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--theme-primary-muted);
+.stat-item.is-alert {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.9), #fff);
 }
 
-.cd-user-nickname {
-  font-weight: 600;
-  color: var(--cd-text-primary);
-  font-size: 14px;
-}
-
-.cd-user-username {
-  font-size: 12px;
-  color: var(--cd-text-placeholder);
-  margin-top: 2px;
-}
-
-.cd-cell-text {
-  color: var(--cd-text-secondary);
-  font-size: 13px;
-}
-
-.cd-audit-count {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--cd-text-placeholder);
-}
-
-.cd-audit-card :deep(.el-card__body) {
-  padding: 0 !important;
-}
-
-.cd-audit-card :deep(.el-card__header) {
-  background: color-mix(in srgb, var(--theme-bg) 35%, #fff);
-}
-
-.cd-audit-empty {
-  padding: 40px 16px;
-  text-align: center;
-  color: var(--cd-text-placeholder);
-  font-size: 14px;
-}
-
-.cd-audit-table {
-  width: 100%;
-  --el-table-border-color: var(--cd-border-light);
-  --el-table-row-hover-bg-color: color-mix(in srgb, var(--cd-primary) 4%, #fff);
-}
-
-.cd-audit-table :deep(.el-table__header th) {
-  background: #fff !important;
-  font-weight: 600;
-  color: var(--cd-text-secondary);
-  font-size: 12px;
-  padding: 12px 0 !important;
-  border-bottom: 1px solid var(--cd-border-light) !important;
-}
-
-.cd-audit-table :deep(.el-table__header .cell) {
-  text-align: center;
-  justify-content: center;
-}
-
-.cd-audit-table :deep(.el-table__body td) {
-  padding: 12px 8px !important;
-  background: #fff !important;
-  border-bottom: 1px solid var(--cd-border-light) !important;
-}
-
-.cd-audit-table :deep(.el-table__body tr:last-child td) {
-  border-bottom: none !important;
-}
-
-.cd-audit-table :deep(.el-table__body .cell) {
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  line-height: 1.45;
+  flex-shrink: 0;
 }
 
-.cd-audit-table :deep(.el-table__row) {
-  font-size: 13px;
-}
+.stat-item.tone-indigo .stat-icon { color: #4f46e5; background: rgba(79, 70, 229, 0.1); }
+.stat-item.tone-amber .stat-icon { color: #d97706; background: rgba(245, 158, 11, 0.12); }
+.stat-item.tone-emerald .stat-icon { color: #059669; background: rgba(16, 185, 129, 0.1); }
+.stat-item.tone-sky .stat-icon { color: #0284c7; background: rgba(14, 165, 233, 0.1); }
 
-.cd-audit-table :deep(.el-table__row:hover > td) {
-  background: color-mix(in srgb, var(--cd-primary) 4%, #fff) !important;
-}
-
-.cd-audit-table :deep(.el-table__inner-wrapper::before) {
-  display: none;
-}
-
-.cd-audit-user {
-  font-weight: 600;
-  color: var(--cd-text-primary);
-}
-
-.cd-audit-action {
-  font-size: 13px;
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--cd-text-secondary);
   font-weight: 500;
 }
 
-.cd-audit-action.tone-success {
+.stat-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--cd-text-primary);
+  letter-spacing: -0.02em;
+}
+
+.ops-section {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--cd-border-light);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.ops-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.ops-line--actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cd-border-light);
+}
+
+.ops-label {
+  width: 56px;
+  flex-shrink: 0;
+  padding-top: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cd-text-secondary);
+  line-height: 1.4;
+}
+
+.infra-tags {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.infra-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cd-text-secondary);
+  background: rgba(100, 116, 139, 0.08);
+}
+
+.infra-tag.on {
   color: #059669;
+  background: rgba(16, 185, 129, 0.1);
 }
 
-.cd-audit-action.tone-warning {
-  color: #d97706;
+.infra-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.cd-audit-action.tone-danger {
-  color: #dc2626;
+.action-grid {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.cd-audit-action.tone-info {
-  color: var(--cd-text-secondary);
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cd-border-light);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--theme-bg) 16%, #fff);
+  color: var(--cd-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.cd-audit-detail {
-  color: var(--cd-text-secondary);
-  max-width: 100%;
+.action-item:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--cd-primary) 22%, var(--cd-border));
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.action-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--cd-primary);
+  background: var(--theme-primary-muted);
+}
+
+.action-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cd-audit-ip {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 12px;
-  color: var(--cd-text-secondary);
-}
-
-.cd-audit-time {
-  color: var(--cd-text-secondary);
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-  .cd-stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.cd-admin-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.cd-admin-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 7px 14px;
+.action-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.action-arrow {
+  flex-shrink: 0;
+  color: var(--cd-text-placeholder);
+  font-size: 12px;
+}
+
+.panel {
+  border: 1px solid var(--cd-border-light);
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.audit-panel {
+  margin-bottom: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cd-border-light);
+  background: color-mix(in srgb, var(--theme-bg) 25%, #fff);
+}
+
+.panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cd-text-primary);
+}
+
+.panel-sub {
+  font-size: 12px;
+  color: var(--cd-text-placeholder);
+  font-weight: 500;
+}
+
+.panel-empty {
+  padding: 32px 16px;
+  text-align: center;
   font-size: 13px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  background: transparent;
-  white-space: nowrap;
+  color: var(--cd-text-placeholder);
 }
 
-.cd-admin-action.quota {
-  color: var(--cd-primary);
-  background: var(--theme-primary-muted, rgba(79, 124, 255, 0.08));
-  border-color: color-mix(in srgb, var(--cd-primary) 18%, transparent);
+.rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
 }
 
-.cd-admin-action.quota:hover {
-  background: color-mix(in srgb, var(--cd-primary) 14%, #fff);
-}
-
-.cd-admin-action.danger {
-  color: #dc2626;
-  background: rgba(239, 68, 68, 0.06);
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.cd-admin-action.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.cd-admin-action.success {
-  color: #059669;
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.22);
-}
-
-.cd-admin-action.success:hover {
-  background: rgba(16, 185, 129, 0.12);
-}
-
-.cd-quota-dialog :deep(.el-dialog__header) {
-  padding: 18px 20px 14px !important;
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--cd-border-light);
 }
 
-.cd-quota-dialog :deep(.el-dialog__body) {
-  padding: 16px 20px 8px !important;
+.rank-row:last-child {
+  border-bottom: none;
 }
 
-.cd-quota-dialog :deep(.el-dialog__footer) {
-  padding: 12px 20px 18px !important;
-}
-
-.cd-quota-dialog-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.cd-quota-dialog-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--cd-radius);
-  background: var(--cd-primary-bg);
+.rank-no {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cd-primary) 10%, #fff);
   color: var(--cd-primary);
+  font-size: 12px;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.cd-quota-dialog-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--cd-text-primary);
-  line-height: 1.3;
+.rank-row.rank-1 .rank-no {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #b45309;
 }
 
-.cd-quota-dialog-sub {
-  margin-top: 3px;
+.rank-row.rank-2 .rank-no {
+  background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+  color: #475569;
+}
+
+.rank-row.rank-3 .rank-no {
+  background: linear-gradient(135deg, #ffedd5, #fed7aa);
+  color: #c2410c;
+}
+
+.rank-avatar {
+  flex-shrink: 0;
+  font-weight: 700 !important;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px color-mix(in srgb, var(--cd-primary) 12%, transparent);
+}
+
+.rank-avatar:not(:has(img)) {
+  background: var(--cd-primary-gradient) !important;
+  color: #fff !important;
+}
+
+.rank-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rank-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.rank-user {
+  min-width: 0;
+}
+
+.rank-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cd-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-username {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--cd-text-placeholder);
+}
+
+.rank-size {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--cd-text-primary);
+  white-space: nowrap;
+}
+
+.rank-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.rank-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cd-primary-gradient);
+}
+
+.rank-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cd-text-placeholder);
+}
+
+.audit-table {
+  width: 100%;
+}
+
+.audit-user {
+  font-weight: 600;
+  color: var(--cd-text-primary);
+}
+
+.audit-detail {
+  color: var(--cd-text-secondary);
+}
+
+.audit-tag {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.audit-tag.tone-success { color: #059669; background: rgba(16, 185, 129, 0.1); }
+.audit-tag.tone-warning { color: #d97706; background: rgba(245, 158, 11, 0.12); }
+.audit-tag.tone-danger { color: #dc2626; background: rgba(239, 68, 68, 0.1); }
+.audit-tag.tone-info { color: var(--cd-text-secondary); background: rgba(100, 116, 139, 0.08); }
+
+.audit-mono {
+  font-family: Consolas, monospace;
   font-size: 12px;
   color: var(--cd-text-secondary);
 }
 
-.cd-quota-hint {
-  margin: 0 0 12px;
+.audit-time {
   font-size: 13px;
   color: var(--cd-text-secondary);
-  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
-.cd-quota-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+@media (max-width: 1100px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.cd-quota-field :deep(.el-input) {
-  flex: 1;
-}
+@media (max-width: 640px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
 
-.cd-quota-field :deep(.el-input__wrapper) {
-  border-radius: 10px;
-}
+  .ops-line {
+    flex-direction: column;
+    gap: 8px;
+  }
 
-.cd-quota-unit {
-  flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--cd-text-secondary);
-}
+  .ops-label {
+    width: auto;
+    padding-top: 0;
+  }
 
-.cd-quota-cancel {
-  min-width: 72px;
+  .admin-shell :deep(.el-card__body) {
+    padding: 0 14px 14px !important;
+  }
+
+  .rank-head {
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 </style>

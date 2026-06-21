@@ -1,5 +1,7 @@
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     show: boolean
     title: string
@@ -8,12 +10,18 @@ withDefaults(
     cancelText?: string
     /** 危险操作（如退出登录）使用红色确认按钮 */
     danger?: boolean
+    /** 仅确认按钮（提示框模式） */
+    alertOnly?: boolean
+    /** 图标风格 */
+    tone?: 'info' | 'warning' | 'success' | 'danger'
   }>(),
   {
     message: '',
     confirmText: '确定',
     cancelText: '取消',
-    danger: false
+    danger: false,
+    alertOnly: false,
+    tone: 'info'
   }
 )
 
@@ -32,18 +40,42 @@ function onCancel() {
   close()
 }
 
+function onMaskClick() {
+  if (props.alertOnly) {
+    onConfirm()
+  } else {
+    onCancel()
+  }
+}
+
 function onConfirm() {
   emit('confirm')
   close()
 }
+
+const iconColor = computed(() => {
+  if (props.danger || props.tone === 'danger') return '#ef4444'
+  if (props.tone === 'warning') return '#f59e0b'
+  if (props.tone === 'success') return '#10b981'
+  return '#3b82f6'
+})
 </script>
 
 <template>
   <view v-if="show" class="dialog-root" @touchmove.stop.prevent>
-    <view class="dialog-mask" @click="onCancel" />
+    <view class="dialog-mask" @click="onMaskClick" />
     <view class="dialog-panel cd-scale-in" @click.stop>
-      <view v-if="danger" class="dialog-icon dialog-icon--danger">
-        <u-icon name="info-circle-fill" size="28" color="#ef4444" />
+      <view
+        v-if="alertOnly || danger"
+        class="dialog-icon"
+        :class="[
+          danger || tone === 'danger' ? 'dialog-icon--danger' : '',
+          tone === 'info' ? 'dialog-icon--info' : '',
+          tone === 'warning' ? 'dialog-icon--warning' : '',
+          tone === 'success' ? 'dialog-icon--success' : ''
+        ]"
+      >
+        <u-icon name="info-circle-fill" size="28" :color="iconColor" />
       </view>
       <text class="dialog-title">{{ title }}</text>
       <text v-if="message" class="dialog-message">{{ message }}</text>
@@ -51,8 +83,8 @@ function onConfirm() {
         <slot />
       </view>
 
-      <view class="dialog-actions">
-        <view class="dialog-btn dialog-btn--ghost cd-pressable" @click="onCancel">
+      <view class="dialog-actions" :class="{ 'is-alert-only': alertOnly }">
+        <view v-if="!alertOnly" class="dialog-btn dialog-btn--ghost cd-pressable" @click="onCancel">
           <text>{{ cancelText }}</text>
         </view>
         <view
@@ -113,6 +145,18 @@ function onConfirm() {
   background: rgba(239, 68, 68, 0.1);
 }
 
+.dialog-icon--info {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.dialog-icon--warning {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.dialog-icon--success {
+  background: rgba(16, 185, 129, 0.12);
+}
+
 .dialog-title {
   display: block;
   text-align: center;
@@ -135,6 +179,10 @@ function onConfirm() {
   margin-top: 36rpx;
   display: flex;
   gap: 16rpx;
+}
+
+.dialog-actions.is-alert-only .dialog-btn {
+  flex: 1;
 }
 
 .dialog-btn {

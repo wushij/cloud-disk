@@ -21,7 +21,12 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
   }
 
   let allowLeave = false
-  let lastSyncedDepth = options.depth()
+
+  function getNormalizedDepth() {
+    return Math.max(0, options.depth())
+  }
+
+  let lastSyncedDepth = getNormalizedDepth()
 
   function pushTrap(depth: number) {
     const currentState = history.state || {}
@@ -37,7 +42,7 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
     const state = event.state
     if (state && typeof state.depth === 'number') {
       const targetDepth = state.depth
-      const currentDepth = options.depth()
+      const currentDepth = getNormalizedDepth()
 
       if (currentDepth !== targetDepth && targetDepth < currentDepth) {
         lastSyncedDepth = targetDepth
@@ -63,11 +68,11 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
 
     // 兜底保护：历史 state 不是我们的格式（uni-app 路由推入等），但应用仍处于子目录（depth>0）
     // 注意：depth 语义已改为"可返回层数"，根目录 = 0，所以 depth>0 时 onAppBack 一定会执行
-    const currentDepth = options.depth()
+    const currentDepth = getNormalizedDepth()
     if (currentDepth > 0) {
       const prevDepth = currentDepth
       options.onAppBack()
-      const newDepth = options.depth()
+      const newDepth = getNormalizedDepth()
       lastSyncedDepth = newDepth
       // 只有当 onAppBack 真正减少了层级，且仍在子目录中，才重新推入 trap 维持拦截
       if (newDepth < prevDepth && newDepth > 0) {
@@ -81,12 +86,9 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
       options.onRootBack()
       return
     }
-
-    allowLeave = true
-    history.back()
   }
 
-  watch(options.depth, (newDepth) => {
+  watch(getNormalizedDepth, (newDepth) => {
     if (newDepth === lastSyncedDepth) return
 
     const oldDepth = lastSyncedDepth
@@ -106,7 +108,7 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
   onMounted(() => {
     // 强制同步当前历史项状态，确保刷新后如果深度重构/重置，历史记录中的 depth 与 UI 的深度完全一致
     const currentState = history.state || {}
-    history.replaceState({ ...currentState, cdBackGuard: true, depth: options.depth() }, '', location.href)
+    history.replaceState({ ...currentState, cdBackGuard: true, depth: getNormalizedDepth() }, '', location.href)
     window.addEventListener('popstate', onPopState)
   })
 

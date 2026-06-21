@@ -152,6 +152,29 @@ public class MinioStorageService implements StorageService {
     }
 
     @Override
+    public void move(String sourcePath, String targetPath) {
+        if (!StringUtils.hasText(sourcePath) || !StringUtils.hasText(targetPath)) {
+            return;
+        }
+        if (sourcePath.equals(targetPath)) {
+            return;
+        }
+        if (!exists(sourcePath)) {
+            return;
+        }
+        try {
+            client.copyObject(CopyObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(targetPath)
+                    .source(CopySource.builder().bucket(bucket).object(sourcePath).build())
+                    .build());
+            delete(sourcePath);
+        } catch (Exception e) {
+            throw new RuntimeException("MinIO 移动对象失败: " + sourcePath + " -> " + targetPath, e);
+        }
+    }
+
+    @Override
     public String bucketName() {
         return bucket;
     }

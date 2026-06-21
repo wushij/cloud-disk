@@ -103,6 +103,27 @@ public class LocalStorageService implements StorageService {
     }
 
     @Override
+    public void move(String sourcePath, String targetPath) {
+        if (sourcePath == null || targetPath == null || sourcePath.isBlank() || targetPath.isBlank()) {
+            return;
+        }
+        if (sourcePath.equals(targetPath)) {
+            return;
+        }
+        try {
+            Path source = resolvePath(sourcePath);
+            if (!Files.exists(source)) {
+                return;
+            }
+            Path target = resolvePath(targetPath);
+            Files.createDirectories(target.getParent());
+            Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            throw new RuntimeException("本地存储移动失败: " + sourcePath + " -> " + targetPath, e);
+        }
+    }
+
+    @Override
     public String bucketName() {
         return "local";
     }

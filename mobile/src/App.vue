@@ -24,7 +24,9 @@ function setupNotifications() {
         type: data.notifyType,
         title: data.title,
         content: data.content,
-        refId: data.refId
+        refId: data.refId,
+        inviteStatus: data.inviteStatus,
+        registrationStatus: data.registrationStatus
       })
     }
   })

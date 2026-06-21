@@ -5,6 +5,10 @@
   gap: 12px;
 }
 
+.cd-dialog-footer-pills.is-center {
+  justify-content: center;
+}
+
 .cd-dialog-footer-pills .el-button {
   min-width: 96px;
   height: 42px;

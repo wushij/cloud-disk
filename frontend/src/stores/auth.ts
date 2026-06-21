@@ -78,12 +78,16 @@ export const useAuthStore = defineStore('auth', () => {
       { username: u, password: p, nickname: nick, ...captcha },
       { skipErrorHandler: true }
     )
+    if (data.pending) {
+      return data as { pending: true; title?: string; message?: string }
+    }
     token.value = data.token
     username.value = data.username
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
     persist()
     await fetchProfile()
+    return data
   }
 
   async function fetchProfile() {

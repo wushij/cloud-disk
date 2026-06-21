@@ -682,12 +682,16 @@ onUnmounted(disconnectUploadWs)
       </PageHeader>
 
       <div class="cd-team-body">
-        <el-empty v-if="!spaces.length && !loading" description="还没有团队" class="cd-page-empty">
-          <el-button type="primary" @click="openCreateDialog">
-            <el-icon><Plus /></el-icon>
-            创建团队
-          </el-button>
-        </el-empty>
+        <div v-if="!spaces.length && !loading" class="cd-team-empty cd-team-empty--page">
+          <div class="cd-team-empty-icon-wrapper">
+            <div class="cd-team-empty-icon-bg" />
+            <div class="cd-team-empty-icon is-clickable" @click="openCreateDialog">
+              <el-icon :size="32"><Plus /></el-icon>
+            </div>
+          </div>
+          <h3>还没有团队空间</h3>
+          <p>创建或加入团队，与成员共享文件与目录</p>
+        </div>
 
         <div v-else class="cd-team-list">
           <div
@@ -866,8 +870,11 @@ onUnmounted(disconnectUploadWs)
           >
             <template #empty>
               <div class="cd-team-empty">
-                <div class="cd-team-empty-icon">
-                  <el-icon :size="36"><FolderOpened /></el-icon>
+                <div class="cd-team-empty-icon-wrapper">
+                  <div class="cd-team-empty-icon-bg" />
+                  <div class="cd-team-empty-icon">
+                    <el-icon :size="32"><FolderOpened /></el-icon>
+                  </div>
                 </div>
                 <h3>团队空间为空</h3>
                 <p>还没有文件，上传后即可与成员共享查看</p>
@@ -1097,11 +1104,17 @@ onUnmounted(disconnectUploadWs)
   min-height: 0;
 }
 
+.cd-team-body:has(.cd-team-empty--page) {
+  min-height: 360px;
+}
+
 .cd-team-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cd-team-row {
@@ -1299,6 +1312,12 @@ onUnmounted(disconnectUploadWs)
   min-height: 360px;
 }
 
+.cd-page :deep(.cd-page-header-icon) {
+  background: var(--cd-primary-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cd-primary) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
 .cd-team-files-wrap.is-dragover .cd-team-files {
   filter: blur(1px);
   opacity: 0.72;
@@ -1343,6 +1362,11 @@ onUnmounted(disconnectUploadWs)
   padding: 18px 20px 24px;
 }
 
+.cd-team-empty--page {
+  padding: 80px 24px !important;
+  width: 100%;
+}
+
 .cd-team-empty {
   display: flex;
   flex-direction: column;
@@ -1351,30 +1375,77 @@ onUnmounted(disconnectUploadWs)
   min-height: 320px;
   text-align: center;
   padding: 40px 20px;
+  position: relative;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--cd-primary) 4%, transparent) 0%, transparent 70%);
+}
+
+.cd-team-empty-icon-wrapper {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cd-team-empty-icon-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cd-primary) 15%, transparent) 0%, transparent 75%);
+  animation: teamPulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes teamPulseGlow {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
 }
 
 .cd-team-empty-icon {
-  width: 76px;
-  height: 76px;
-  border-radius: 22px;
-  background: var(--theme-primary-muted);
+  position: relative;
+  z-index: 1;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 8%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 12%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 18%, transparent);
   color: var(--cd-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  box-shadow: 
+    0 10px 24px color-mix(in srgb, var(--cd-primary) 6%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s;
+}
+
+.cd-team-empty-icon.is-clickable {
+  cursor: pointer;
+}
+
+.cd-team-empty-icon:hover {
+  transform: translateY(-4px) scale(1.05);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 12%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 18%, transparent) 100%);
+  box-shadow: 
+    0 12px 30px color-mix(in srgb, var(--cd-primary) 12%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .cd-team-empty h3 {
   margin: 0 0 8px;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: 0.5px;
 }
 
 .cd-team-empty p {
   margin: 0 0 20px;
-  font-size: 14px;
-  color: var(--cd-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.2px;
 }
 
 .cd-team-empty-btn {

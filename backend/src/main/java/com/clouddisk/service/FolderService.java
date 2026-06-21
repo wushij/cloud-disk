@@ -476,23 +476,18 @@ public class FolderService {
 
 
     private void checkDuplicateName(long userId, Long parentId, String name, Long excludeId) {
-
         LambdaQueryWrapper<Folder> q = new LambdaQueryWrapper<Folder>()
-
                 .eq(Folder::getParentId, parentId)
-
                 .eq(Folder::getFolderName, name)
-
                 .eq(Folder::getDeleted, 0);
-
-        if (excludeId != null) q.ne(Folder::getId, excludeId);
-
-        if (folderMapper.selectCount(q) > 0) {
-
-            throw new BusinessException("同名文件夹已存在");
-
+        // 个人云盘按用户隔离；团队目录同一父级下全局唯一
+        if (!isSharedTeamFolder(parentId, userId)) {
+            q.eq(Folder::getUserId, userId);
         }
-
+        if (excludeId != null) q.ne(Folder::getId, excludeId);
+        if (folderMapper.selectCount(q) > 0) {
+            throw new BusinessException("同名文件夹已存在");
+        }
     }
 
 

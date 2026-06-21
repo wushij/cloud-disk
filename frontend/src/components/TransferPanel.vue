@@ -99,7 +99,7 @@ function formatPercent(progress: number): string {
 function progressGradient(status: string): string {
   if (status === 'error') return '#EF4444'
   if (status === 'paused') return '#F59E0B'
-  return 'linear-gradient(90deg, var(--theme-primary, #010710) 0%, #1e293b 55%, #4f46e5 100%)'
+  return 'var(--cd-primary-gradient)'
 }
 
 function handleCollapseToggle() {
@@ -388,16 +388,16 @@ async function handleClearCompleted() {
   gap: 10px;
   padding: 10px 16px 10px 10px;
   border-radius: 99px;
-  background: linear-gradient(135deg, #010710 0%, #1e293b 100%);
+  background: var(--cd-primary-gradient);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(1, 7, 16, 0.28);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--cd-primary) 28%, transparent);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .cd-transfer-mini:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(1, 7, 16, 0.32);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--cd-primary) 32%, transparent);
 }
 
 .mini-inner {
@@ -442,7 +442,7 @@ async function handleClearCompleted() {
   height: 16px;
   padding: 0 4px;
   border-radius: 99px;
-  background: #4f46e5;
+  background: var(--cd-primary);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -576,9 +576,9 @@ async function handleClearCompleted() {
 }
 
 .tab-btn.active {
-  background: linear-gradient(135deg, #010710 0%, #1e293b 100%);
+  background: var(--cd-primary-gradient);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(1, 7, 16, 0.18);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cd-primary) 18%, transparent);
 }
 
 .tab-count {
@@ -738,7 +738,7 @@ async function handleClearCompleted() {
 }
 
 .task-type-badge.upload {
-  background: rgba(79, 70, 229, 0.92);
+  background: color-mix(in srgb, var(--cd-primary) 92%, #000);
 }
 
 .task-type-badge.download {
@@ -896,8 +896,8 @@ async function handleClearCompleted() {
 }
 
 .status-chip.instant {
-  background: rgba(99, 102, 241, 0.1);
-  color: #4f46e5;
+  background: color-mix(in srgb, var(--cd-primary) 10%, transparent);
+  color: var(--cd-primary);
 }
 
 .status-chip.fail {
@@ -941,9 +941,9 @@ async function handleClearCompleted() {
 }
 
 .action-circle.resume {
-  background: rgba(79, 70, 229, 0.08);
-  border-color: rgba(79, 70, 229, 0.2);
-  color: #4f46e5;
+  background: color-mix(in srgb, var(--cd-primary) 8%, #ffffff);
+  border-color: color-mix(in srgb, var(--cd-primary) 20%, transparent);
+  color: var(--cd-primary);
 }
 
 .action-circle.cancel,

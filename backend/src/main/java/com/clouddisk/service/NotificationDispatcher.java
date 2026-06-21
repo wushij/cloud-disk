@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 /**
  * 统一通知：MQ 开启时走队列；否则落库 + WebSocket 实时推送。
  */
@@ -28,6 +30,8 @@ public class NotificationDispatcher {
             return;
         }
         Notification saved = notificationService.save(userId, type, title, content, refId);
-        progressHandler.sendNotification(userId, type, title, content, refId, saved.getId());
+        Map<String, String> statuses = notificationService.resolveActionStatuses(type, refId);
+        progressHandler.sendNotificationWithStatuses(
+                userId, type, title, content, refId, saved.getId(), statuses);
     }
 }

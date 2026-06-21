@@ -3,6 +3,7 @@ package com.clouddisk.auth;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.clouddisk.common.BusinessException;
+import com.clouddisk.common.UserStatus;
 import com.clouddisk.config.CloudDiskProperties;
 import com.clouddisk.entity.User;
 import com.clouddisk.mapper.UserMapper;
@@ -87,11 +88,14 @@ public class FederatedAuthService {
             user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
             user.setNickname(StringUtils.hasText(nickname) ? nickname : username);
             user.setEmail(email);
-            user.setStatus(1);
+            user.setStatus(UserStatus.ACTIVE);
             user.setRole("USER");
+            user.setStorageQuota(UserStatus.DEFAULT_QUOTA_BYTES);
             userMapper.insert(user);
-        } else if (user.getStatus() != null && user.getStatus() == 0) {
+        } else if (user.getStatus() != null && user.getStatus() == UserStatus.DISABLED) {
             throw new BusinessException("账号已被禁用");
+        } else if (user.getStatus() != null && user.getStatus() == UserStatus.PENDING) {
+            throw new BusinessException("您的账号尚未通过审核，请等待管理员批准后再登录");
         }
         return user;
     }

@@ -11,6 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const avatarVersion = ref(0)
 
   const isLoggedIn = computed(() => !!token.value)
+  const isAdmin = computed(() => role.value === 'ADMIN')
   const displayName = computed(() => nickname.value || username.value || '用户')
 
   const avatarSrc = computed(() => {
@@ -80,19 +81,23 @@ export const useAuthStore = defineStore('auth', () => {
     nick?: string,
     captcha?: { captchaId?: string; captchaAnswer?: string }
   ) {
-    const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
+    const data = await request<{ token?: string; username?: string; nickname?: string; role?: string; pending?: boolean; title?: string; message?: string }>({
       url: '/api/auth/register',
       method: 'POST',
       data: { username: u, password: p, nickname: nick, ...captcha },
       skipAuth: true,
       skipErrorHandler: true
     })
-    token.value = data.token
-    username.value = data.username
-    nickname.value = data.nickname || data.username
+    if (data.pending) {
+      return data
+    }
+    token.value = data.token!
+    username.value = data.username!
+    nickname.value = data.nickname || data.username!
     role.value = data.role || 'USER'
     persist()
     await fetchProfile()
+    return data
   }
 
   async function fetchProfile() {
@@ -143,6 +148,7 @@ export const useAuthStore = defineStore('auth', () => {
     avatarVersion,
     avatarSrc,
     isLoggedIn,
+    isAdmin,
     displayName,
     restore,
     login,

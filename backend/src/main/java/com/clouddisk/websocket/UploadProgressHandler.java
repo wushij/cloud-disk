@@ -97,6 +97,11 @@ public class UploadProgressHandler extends TextWebSocketHandler {
     }
 
     public void sendNotification(long userId, String notifyType, String title, String content, String refId, Long notifyId) {
+        sendNotificationWithStatuses(userId, notifyType, title, content, refId, notifyId, null);
+    }
+
+    public void sendNotificationWithStatuses(long userId, String notifyType, String title, String content,
+                                           String refId, Long notifyId, Map<String, String> actionStatuses) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("type", "notification");
         payload.put("notifyType", notifyType);
@@ -105,6 +110,14 @@ public class UploadProgressHandler extends TextWebSocketHandler {
         payload.put("refId", refId);
         if (notifyId != null) {
             payload.put("notifyId", notifyId);
+        }
+        if (actionStatuses != null) {
+            if (actionStatuses.containsKey("inviteStatus")) {
+                payload.put("inviteStatus", actionStatuses.get("inviteStatus"));
+            }
+            if (actionStatuses.containsKey("registrationStatus")) {
+                payload.put("registrationStatus", actionStatuses.get("registrationStatus"));
+            }
         }
         send(userId, payload);
     }

@@ -61,9 +61,41 @@ public class AdminController {
         return Map.of("message", "ok");
     }
 
+    /** 通过新用户注册申请 */
+    @PostMapping("/registrations/{userId}/approve")
+    public Map<String, String> approveRegistration(@PathVariable Long userId) {
+        adminService.approveRegistration(userId);
+        return Map.of("message", "已通过注册申请");
+    }
+
+    /** 拒绝新用户注册申请 */
+    @PostMapping("/registrations/{userId}/reject")
+    public Map<String, String> rejectRegistration(@PathVariable Long userId) {
+        adminService.rejectRegistration(userId);
+        return Map.of("message", "已拒绝注册申请");
+    }
+
     /** 全局存储用量统计 */
     @GetMapping("/storage/stats")
     public Map<String, Object> storageStats() {
         return adminService.storageStats();
+    }
+
+    /** 修改用户角色 */
+    @PutMapping("/users/{id}/role")
+    public Map<String, String> setUserRole(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String role = body.get("role");
+        if (role == null) throw new com.clouddisk.common.BusinessException("缺少 role 参数");
+        adminService.setUserRole(id, role);
+        return Map.of("message", "ok");
+    }
+
+    /** 重置用户密码 */
+    @PutMapping("/users/{id}/password")
+    public Map<String, String> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String password = body.get("password");
+        if (password == null) throw new com.clouddisk.common.BusinessException("缺少 password 参数");
+        adminService.resetUserPassword(id, password);
+        return Map.of("message", "ok");
     }
 }

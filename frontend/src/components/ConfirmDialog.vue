@@ -3,23 +3,44 @@ import { storeToRefs } from 'pinia'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 const store = useConfirmDialogStore()
-const { visible, title, message, confirmText, cancelText, danger } = storeToRefs(store)
+const { visible, title, message, confirmText, cancelText, danger, alertOnly, tone } = storeToRefs(store)
+
+function onMaskClick() {
+  if (alertOnly.value) {
+    store.confirm()
+  } else {
+    store.cancel()
+  }
+}
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="cd-confirm-fade">
-      <div v-if="visible" class="cd-confirm-root" @keydown.esc="store.cancel()">
-        <div class="cd-confirm-mask" @click="store.cancel()" />
+      <div v-if="visible" class="cd-confirm-root" @keydown.esc="alertOnly ? store.confirm() : store.cancel()">
+        <div class="cd-confirm-mask" @click="onMaskClick" />
         <div class="cd-confirm-panel" role="dialog" aria-modal="true">
-          <div v-if="danger" class="cd-confirm-icon cd-confirm-icon--danger">
-            <el-icon :size="28"><WarningFilled /></el-icon>
+          <div
+            v-if="alertOnly || danger"
+            class="cd-confirm-icon"
+            :class="tone ? `cd-confirm-icon--${tone}` : (danger ? 'cd-confirm-icon--danger' : 'cd-confirm-icon--info')"
+          >
+            <el-icon :size="28">
+              <CircleCheckFilled v-if="tone === 'success'" />
+              <InfoFilled v-else-if="tone === 'info'" />
+              <WarningFilled v-else />
+            </el-icon>
           </div>
           <h3 class="cd-confirm-title">{{ title }}</h3>
           <p v-if="message" class="cd-confirm-message">{{ message }}</p>
 
-          <div class="cd-confirm-actions">
-            <button type="button" class="cd-confirm-btn cd-confirm-btn--ghost" @click="store.cancel()">
+          <div class="cd-confirm-actions" :class="{ 'is-alert-only': alertOnly }">
+            <button
+              v-if="!alertOnly"
+              type="button"
+              class="cd-confirm-btn cd-confirm-btn--ghost"
+              @click="store.cancel()"
+            >
               {{ cancelText }}
             </button>
             <button
@@ -82,6 +103,21 @@ const { visible, title, message, confirmText, cancelText, danger } = storeToRefs
   color: #ef4444;
 }
 
+.cd-confirm-icon--info {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.cd-confirm-icon--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.cd-confirm-icon--success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
 .cd-confirm-title {
   margin: 0;
   text-align: center;
@@ -103,6 +139,10 @@ const { visible, title, message, confirmText, cancelText, danger } = storeToRefs
   margin-top: 24px;
   display: flex;
   gap: 12px;
+}
+
+.cd-confirm-actions.is-alert-only .cd-confirm-btn {
+  flex: 1;
 }
 
 .cd-confirm-btn {

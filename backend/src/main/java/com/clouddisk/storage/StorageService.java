@@ -26,6 +26,9 @@ public interface StorageService {
 
     void mergeParts(String targetRelativePath, List<String> partRelativePaths) throws Exception;
 
+    /** 移动对象（用于团队重命名等场景同步更新存储路径） */
+    void move(String sourcePath, String targetPath);
+
     String bucketName();
 
     String storageType();

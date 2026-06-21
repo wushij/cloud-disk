@@ -143,11 +143,14 @@ onMounted(load)
 
       <div v-loading="loading" class="recycle-body">
         <div v-if="!loading && !items.length" class="recycle-empty">
-          <div class="recycle-empty-icon">
-            <el-icon :size="40"><Delete /></el-icon>
+          <div class="recycle-empty-icon-wrapper">
+            <div class="recycle-empty-icon-bg" />
+            <div class="recycle-empty-icon">
+              <el-icon :size="32"><Delete /></el-icon>
+            </div>
           </div>
-          <p class="recycle-empty-title">回收站是空的</p>
-          <p class="recycle-empty-desc">删除的文件会暂存在这里，可随时恢复</p>
+          <h3 class="recycle-empty-title">回收站是空的</h3>
+          <p class="recycle-empty-desc">已删除的文件可暂存在这里，可随时找回</p>
         </div>
 
         <el-table v-else :data="items" class="recycle-table" stripe>
@@ -224,9 +227,9 @@ onMounted(load)
 
 <style scoped>
 .recycle-page :deep(.cd-page-header-icon) {
-  background: linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(251, 191, 36, 0.08));
-  color: #d97706;
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.18);
+  background: var(--cd-primary-gradient) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cd-primary) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
 }
 
 .recycle-card {
@@ -236,51 +239,108 @@ onMounted(load)
 }
 
 .recycle-body {
-  min-height: 280px;
+  min-height: 320px;
 }
 
 .recycle-clear-btn {
-  --el-button-text-color: #dc2626;
-  --el-button-border-color: rgba(239, 68, 68, 0.35);
-  --el-button-hover-text-color: #b91c1c;
-  --el-button-hover-border-color: rgba(239, 68, 68, 0.55);
-  --el-button-hover-bg-color: rgba(239, 68, 68, 0.06);
+  border-radius: var(--cd-radius-full) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444 !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 600 !important;
 }
 
+.recycle-clear-btn:hover {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+.recycle-clear-btn:active {
+  transform: translateY(0) !important;
+}
+
+/* ---- 空状态美化 ---- */
 .recycle-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 72px 24px;
+  padding: 80px 24px;
   text-align: center;
+  position: relative;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--cd-primary) 4%, transparent) 0%, transparent 70%);
 }
 
-.recycle-empty-icon {
-  width: 88px;
-  height: 88px;
-  border-radius: 24px;
-  background: linear-gradient(145deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.05));
-  color: #d97706;
+.recycle-empty-icon-wrapper {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
+}
+
+.recycle-empty-icon-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cd-primary) 15%, transparent) 0%, transparent 75%);
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+.recycle-empty-icon {
+  position: relative;
+  z-index: 1;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 8%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 12%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 18%, transparent);
+  color: var(--cd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 10px 24px color-mix(in srgb, var(--cd-primary) 6%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s;
+}
+
+.recycle-empty-icon:hover {
+  transform: translateY(-4px) scale(1.05);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cd-primary) 12%, transparent) 0%, color-mix(in srgb, var(--cd-primary) 18%, transparent) 100%);
+  box-shadow: 
+    0 12px 30px color-mix(in srgb, var(--cd-primary) 12%, transparent), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .recycle-empty-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--cd-text-primary);
+  color: #1e293b;
+  letter-spacing: 0.5px;
 }
 
 .recycle-empty-desc {
   margin: 8px 0 0;
   font-size: 13px;
-  color: var(--cd-text-secondary);
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.2px;
 }
 
+/* ---- 表格及行样式 ---- */
 .recycle-table :deep(.el-table__header th) {
   background: color-mix(in srgb, var(--theme-bg) 55%, #fff) !important;
   font-weight: 600;
@@ -293,7 +353,11 @@ onMounted(load)
 }
 
 .recycle-table :deep(.el-table__row) {
-  transition: background-color 0.15s ease;
+  transition: all 0.25s ease !important;
+}
+
+.recycle-table :deep(.el-table__row:hover > td) {
+  background-color: color-mix(in srgb, var(--cd-primary) 3.5%, #ffffff) !important;
 }
 
 .recycle-name-cell {
@@ -313,11 +377,14 @@ onMounted(load)
   flex-shrink: 0;
   background: rgba(79, 70, 229, 0.08);
   color: var(--cd-primary);
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.05);
+  transition: all 0.2s ease;
 }
 
 .recycle-thumb.folder {
   background: rgba(245, 158, 11, 0.12);
   color: #d97706;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.05);
 }
 
 .recycle-name-meta {
@@ -338,22 +405,28 @@ onMounted(load)
 
 .recycle-sub {
   font-size: 12px;
-  color: var(--cd-text-muted);
+  color: var(--cd-text-secondary);
+  opacity: 0.75;
 }
 
 .recycle-type-tag {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: var(--cd-radius-full);
+  font-size: 11px;
   font-weight: 600;
-  background: rgba(79, 70, 229, 0.08);
+  line-height: 1;
+  background: rgba(79, 70, 229, 0.06);
   color: var(--cd-primary);
+  border: 1px solid rgba(79, 70, 229, 0.1);
 }
 
 .recycle-type-tag.folder {
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
+  background: rgba(245, 158, 11, 0.08);
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.15);
 }
 
 .recycle-time {
@@ -362,45 +435,65 @@ onMounted(load)
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- 操作动作 ---- */
 .recycle-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 .recycle-action {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 13px;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--cd-radius-full);
+  font-size: 12px;
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   background: transparent;
+  line-height: 1.2;
 }
 
 .recycle-action.restore {
   color: var(--cd-primary);
-  background: var(--theme-primary-muted);
-  border-color: color-mix(in srgb, var(--cd-primary) 18%, transparent);
+  background: color-mix(in srgb, var(--cd-primary) 8%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--cd-primary) 15%, transparent);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.04);
 }
 
 .recycle-action.restore:hover {
-  background: color-mix(in srgb, var(--cd-primary) 14%, #fff);
+  background: var(--cd-primary);
+  color: #ffffff;
+  border-color: var(--cd-primary);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
+}
+
+.recycle-action.restore:active {
+  transform: translateY(0);
 }
 
 .recycle-action.purge {
-  color: #dc2626;
-  background: rgba(239, 68, 68, 0.06);
-  border-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.12);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.02);
 }
 
 .recycle-action.purge:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+  transform: translateY(-1px);
+}
+
+.recycle-action.purge:active {
+  transform: translateY(0);
 }
 
 .recycle-thumb.cover {
