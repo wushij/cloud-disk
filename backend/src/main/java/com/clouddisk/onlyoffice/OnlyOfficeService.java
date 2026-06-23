@@ -39,6 +39,10 @@ public class OnlyOfficeService {
     private final ObjectMapper objectMapper;
 
     public Map<String, Object> buildEditorConfig(Long fileId, long userId, String username) {
+        return buildEditorConfig(fileId, userId, username, properties.getOnlyoffice().getEditMode());
+    }
+
+    public Map<String, Object> buildEditorConfig(Long fileId, long userId, String username, String mode) {
         ensureEnabled();
         FileRecord file = fileService.getOwnedOrShared(fileId, userId);
         if (!fileService.isOfficeFile(file.getFileType(), file.getFileName())) {
@@ -64,8 +68,19 @@ public class OnlyOfficeService {
         Map<String, Object> editorConfig = new LinkedHashMap<>();
         editorConfig.put("callbackUrl", callbackUrl);
         editorConfig.put("lang", "zh-CN");
-        editorConfig.put("mode", properties.getOnlyoffice().getEditMode());
+        String finalMode = mode != null ? mode : properties.getOnlyoffice().getEditMode();
+        editorConfig.put("mode", finalMode);
         editorConfig.put("user", user);
+
+        Map<String, Object> permissions = new LinkedHashMap<>();
+        boolean canEdit = "edit".equalsIgnoreCase(finalMode);
+        permissions.put("edit", canEdit);
+        permissions.put("comment", canEdit);
+        permissions.put("review", canEdit);
+        permissions.put("fillForms", canEdit);
+        permissions.put("modifyFilter", canEdit);
+        permissions.put("modifyContentControl", canEdit);
+        editorConfig.put("permissions", permissions);
 
         Map<String, Object> customization = new LinkedHashMap<>();
         customization.put("forcesave", true);
@@ -73,7 +88,13 @@ public class OnlyOfficeService {
         customization.put("help", false);
         customization.put("goback", false);
         customization.put("plugins", false);
+        customization.put("statusBar", false);
         customization.put("features", Map.of("spellcheck", Map.of("mode", false)));
+
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("statusBar", false);
+        customization.put("layout", layout);
+
         editorConfig.put("customization", customization);
 
         Map<String, Object> config = new LinkedHashMap<>();

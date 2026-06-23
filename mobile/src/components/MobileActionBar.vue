@@ -13,12 +13,16 @@ defineEmits<{
 <template>
   <view class="action-bar">
     <view class="action-btn primary cd-pressable" @click="$emit('upload')">
-      <u-icon name="arrow-upward" color="#fff" size="22" />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: block;">
+        <path d="M12 20V4M12 4L6 10M12 4L18 10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
       <text class="action-label">{{ uploadText || '上传文件' }}</text>
     </view>
     <view class="action-divider" />
     <view class="action-btn secondary cd-pressable" @click="$emit('folder')">
-      <u-icon name="plus" color="var(--cd-primary)" size="22" />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: block;">
+        <path d="M12 5V19M5 12H19" stroke="var(--cd-primary)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
       <text class="action-label secondary">{{ folderText || '新建文件夹' }}</text>
     </view>
   </view>

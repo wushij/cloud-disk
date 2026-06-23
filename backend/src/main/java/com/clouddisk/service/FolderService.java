@@ -509,6 +509,10 @@ public class FolderService {
     }
 
     public List<Map<String, Object>> getBreadcrumbs(Long folderId, long userId) {
+        return getBreadcrumbs(folderId, userId, false);
+    }
+
+    public List<Map<String, Object>> getBreadcrumbs(Long folderId, long userId, boolean full) {
         List<Map<String, Object>> crumbs = new ArrayList<>();
         if (folderId == null || folderId <= 0) {
             Map<String, Object> rootCrumb = new LinkedHashMap<>();
@@ -533,6 +537,14 @@ public class FolderService {
             }
             current = folderMapper.selectById(parentId);
             depth++;
+        }
+
+        if (full) {
+            Map<String, Object> rootCrumb = new LinkedHashMap<>();
+            rootCrumb.put("id", 0L);
+            rootCrumb.put("name", "全部文件");
+            crumbs.add(0, rootCrumb);
+            return crumbs;
         }
 
         TeamSpace space = resolveTeamSpaceForFolder(folderId);

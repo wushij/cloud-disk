@@ -152,8 +152,9 @@ async function handleClearCompleted() {
     <div v-if="isCollapsed" class="cd-transfer-mini" @click="handleCollapseToggle">
       <div class="mini-inner" :class="{ pulse: runningCount > 0 }">
         <svg class="mini-icon" viewBox="0 0 24 24" fill="none">
-          <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
       <span class="mini-text">

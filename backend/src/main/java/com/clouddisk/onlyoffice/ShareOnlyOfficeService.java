@@ -67,13 +67,28 @@ public class ShareOnlyOfficeService {
         editorConfig.put("mode", "view");
         editorConfig.put("user", user);
 
+        Map<String, Object> permissions = new LinkedHashMap<>();
+        permissions.put("edit", false);
+        permissions.put("comment", false);
+        permissions.put("review", false);
+        permissions.put("fillForms", false);
+        permissions.put("modifyFilter", false);
+        permissions.put("modifyContentControl", false);
+        editorConfig.put("permissions", permissions);
+
         Map<String, Object> customization = new LinkedHashMap<>();
         customization.put("forcesave", false);
         customization.put("chat", false);
         customization.put("help", false);
         customization.put("goback", false);
         customization.put("plugins", false);
+        customization.put("statusBar", false);
         customization.put("features", Map.of("spellcheck", Map.of("mode", false)));
+
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("statusBar", false);
+        customization.put("layout", layout);
+
         editorConfig.put("customization", customization);
 
         Map<String, Object> config = new LinkedHashMap<>();

@@ -139,6 +139,7 @@ const actionList = computed(() => {
     if (row.previewable && isTextFile(row.mimeType, row.name)) list.push({ name: '预览文本' })
     const isPdf = (row.name || '').toLowerCase().endsWith('.pdf') || (row.mimeType || '').toLowerCase() === 'application/pdf'
     if (row.previewable && isPdf) list.push({ name: '预览 PDF' })
+    if (row.previewable && row.officeFile) list.push({ name: '预览文档' })
     list.push({ name: '下载' })
   }
   list.push({ name: '分享' })
@@ -217,6 +218,10 @@ function openItem(row: FileItem) {
     previewPdf(row)
     return
   }
+  if (row.officeFile) {
+    previewOffice(row)
+    return
+  }
   showActions(row)
 }
 
@@ -248,6 +253,9 @@ function onActionSelect(name: string) {
       break
     case '预览 PDF':
       previewPdf(row)
+      break
+    case '预览文档':
+      previewOffice(row)
       break
     case '下载':
     case '打包下载':
@@ -313,6 +321,10 @@ function previewPdf(row: FileItem) {
     complete: () => uni.hideLoading()
   })
   // #endif
+}
+
+function previewOffice(row: FileItem) {
+  uni.navigateTo({ url: `/pages/preview/office?id=${row.id}&name=${encodeURIComponent(row.name)}` })
 }
 
 function downloadFile(row: FileItem) {
@@ -434,10 +446,14 @@ async function chooseAndUpload() {
         <view class="header-action-group">
           <!-- 多选切换按钮 -->
           <view class="header-action-btn cd-pressable" @click="toggleSelectMode">
-            <u-icon :name="selectMode ? 'checkmark-circle-fill' : 'list-dot'" size="22" :color="selectMode ? 'var(--cd-primary)' : '#000000'" bold />
+            <u-icon :name="selectMode ? 'checkmark-circle-fill' : 'list-dot'" size="22" :color="selectMode ? 'var(--cd-primary)' : '#111827'" bold />
           </view>
           <view class="header-action-btn cd-pressable" @click="goTransfer">
-            <u-icon name="download" size="22" color="#000000" bold />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="display: block;">
+              <circle cx="12" cy="12" r="10" stroke="#111827" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
             <view
               v-if="activeTaskCount > 0"
               class="action-badge"
@@ -447,7 +463,7 @@ async function chooseAndUpload() {
             </view>
           </view>
           <view class="header-action-btn cd-pressable" @click="toggleView">
-            <u-icon :name="viewMode === 'grid' ? 'list' : 'grid'" size="22" color="#000000" bold />
+            <u-icon :name="viewMode === 'grid' ? 'list' : 'grid'" size="22" color="#111827" bold />
           </view>
         </view>
       </template>
@@ -752,10 +768,15 @@ async function chooseAndUpload() {
   position: relative;
   background: transparent;
   transition: opacity var(--cd-transition-fast);
+  color: #111827 !important;
 
   &:active {
     opacity: 0.55;
   }
+}
+
+.header-action-btn :deep(.u-icon__icon:not(.u-icon__icon--checkmark-circle-fill)) {
+  color: #111827 !important;
 }
 
 .action-badge {

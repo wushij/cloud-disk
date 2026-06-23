@@ -19,11 +19,13 @@ public class OnlyOfficeController {
     private final AuthService authService;
 
     @GetMapping("/api/files/{id}/onlyoffice")
-    public Map<String, Object> editorConfig(@PathVariable Long id) {
+    public Map<String, Object> editorConfig(
+            @PathVariable Long id,
+            @RequestParam(required = false) String mode) {
         long userId = AuthService.currentUserId();
         var me = authService.me();
         String username = String.valueOf(me.getOrDefault("nickname", me.get("username")));
-        return onlyOfficeService.buildEditorConfig(id, userId, username);
+        return onlyOfficeService.buildEditorConfig(id, userId, username, mode);
     }
 
     @GetMapping("/api/onlyoffice/files/{id}/download")

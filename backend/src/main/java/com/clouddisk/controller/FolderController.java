@@ -45,7 +45,9 @@ public class FolderController {
     }
 
     @GetMapping("/{id}/breadcrumbs")
-    public List<Map<String, Object>> getBreadcrumbs(@PathVariable Long id) {
-        return folderService.getBreadcrumbs(id, com.clouddisk.service.AuthService.currentUserId());
+    public List<Map<String, Object>> getBreadcrumbs(
+            @PathVariable Long id,
+            @RequestParam(value = "full", required = false, defaultValue = "false") boolean full) {
+        return folderService.getBreadcrumbs(id, com.clouddisk.service.AuthService.currentUserId(), full);
     }
 }

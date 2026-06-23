@@ -12,7 +12,12 @@ withDefaults(
 <template>
   <view class="cd-empty">
     <view class="cd-empty-icon">
-      <u-icon :name="icon" size="52" color="var(--cd-primary)" />
+      <svg v-if="icon === 'download'" width="52" height="52" viewBox="0 0 24 24" fill="none" style="display: block;">
+        <circle cx="12" cy="12" r="10" stroke="#111827" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <u-icon v-else :name="icon" size="52" color="var(--cd-primary)" />
     </view>
     <text class="cd-empty-title">{{ title }}</text>
     <text v-if="description" class="cd-empty-desc">{{ description }}</text>

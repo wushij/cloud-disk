@@ -26,7 +26,9 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
     return Math.max(0, options.depth())
   }
 
-  let lastSyncedDepth = getNormalizedDepth()
+  let lastSyncedDepth = (typeof history !== 'undefined' && history.state && history.state.cdBackGuard && typeof history.state.depth === 'number')
+    ? history.state.depth
+    : getNormalizedDepth()
 
   function pushTrap(depth: number) {
     const currentState = history.state || {}
@@ -95,7 +97,9 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
     lastSyncedDepth = newDepth
 
     if (newDepth > oldDepth) {
-      pushTrap(newDepth)
+      for (let d = oldDepth + 1; d <= newDepth; d++) {
+        pushTrap(d)
+      }
     } else if (newDepth < oldDepth) {
       const diff = oldDepth - newDepth
       if (diff > 0) {
@@ -106,9 +110,11 @@ export function useH5BackGuard(options: H5BackGuardOptions) {
   })
 
   onMounted(() => {
-    // 强制同步当前历史项状态，确保刷新后如果深度重构/重置，历史记录中的 depth 与 UI 的深度完全一致
     const currentState = history.state || {}
-    history.replaceState({ ...currentState, cdBackGuard: true, depth: getNormalizedDepth() }, '', location.href)
+    const hasValidState = currentState.cdBackGuard && typeof currentState.depth === 'number'
+    if (!hasValidState) {
+      history.replaceState({ ...currentState, cdBackGuard: true, depth: getNormalizedDepth() }, '', location.href)
+    }
     window.addEventListener('popstate', onPopState)
   })
 

@@ -236,6 +236,7 @@ const actionList = computed(() => {
     if (row.previewable && isTextFile(row.mimeType, row.name)) list.push({ name: '预览文本' })
     const isPdf = (row.name || '').toLowerCase().endsWith('.pdf') || (row.mimeType || '').toLowerCase() === 'application/pdf'
     if (row.previewable && isPdf) list.push({ name: '预览 PDF' })
+    if (row.previewable && row.officeFile) list.push({ name: '预览文档' })
     list.push({ name: '下载' })
   }
   if (myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
@@ -462,6 +463,10 @@ function openItem(row: FileItem) {
     previewPdf(row)
     return
   }
+  if (row.officeFile) {
+    previewOffice(row)
+    return
+  }
   showActions(row)
 }
 
@@ -521,6 +526,10 @@ function onActionSelect(item: { name: string }) {
       previewPdf(row)
       break
     }
+    case '预览文档': {
+      previewOffice(row)
+      break
+    }
     case '下载':
     case '打包下载': {
       downloadFile(row)
@@ -572,6 +581,10 @@ function previewPdf(row: FileItem) {
     complete: () => uni.hideLoading()
   })
   // #endif
+}
+
+function previewOffice(row: FileItem) {
+  uni.navigateTo({ url: `/pages/preview/office?id=${row.id}&name=${encodeURIComponent(row.name)}` })
 }
 </script>
 

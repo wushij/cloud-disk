@@ -103,13 +103,13 @@ function onHexInput(val: string) {
   width: 36px !important;
   height: 36px !important;
   border: none !important;
-  color: var(--cd-text-secondary) !important;
+  color: #111827 !important;
   transition: var(--cd-transition-fast);
 }
 
 .theme-picker-trigger:hover {
   background: var(--cd-primary-bg) !important;
-  color: var(--cd-primary) !important;
+  color: #111827 !important;
 }
 
 .theme-picker-panel {

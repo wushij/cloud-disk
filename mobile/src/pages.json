@@ -71,6 +71,13 @@
       }
     },
     {
+      "path": "pages/preview/office",
+      "style": {
+        "navigationBarTitleText": "文档预览",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/teams/index",
       "style": {
         "navigationBarTitleText": "团队空间",

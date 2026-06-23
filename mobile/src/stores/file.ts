@@ -13,6 +13,7 @@ export interface FileItem {
   hasThumbnail?: boolean
   transcodeStatus?: string
   createdAt?: string
+  officeFile?: boolean
 }
 
 export const useFileStore = defineStore('file', () => {
@@ -47,7 +48,7 @@ export const useFileStore = defineStore('file', () => {
     }
     try {
       const data = await request<{ id: number; name: string }[]>({
-        url: `/api/folders/${folderId}/breadcrumbs`
+        url: `/api/folders/${folderId}/breadcrumbs?full=true`
       })
       if (Array.isArray(data)) {
         breadcrumb.value = data
