@@ -89,6 +89,10 @@ async function loadItems() {
 }
 
 async function submitExtract() {
+  if (!extractInput.value.trim()) {
+    uni.showToast({ title: '请输入提取码', icon: 'none' })
+    return
+  }
   loading.value = true
   try {
     await request({
@@ -100,7 +104,7 @@ async function submitExtract() {
     verified.value = true
     await loadItems()
   } catch {
-    uni.showToast({ title: '提取码错误', icon: 'none' })
+    uni.showToast({ title: '提取码错误，请重新输入', icon: 'none' })
   } finally {
     loading.value = false
   }

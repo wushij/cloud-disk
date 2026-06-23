@@ -366,7 +366,18 @@ public class ShareService {
     }
 
     public void verifyExtractCode(ShareRecord share, String extractCode) {
-        if (share.getExtractCode() != null && !share.getExtractCode().equals(extractCode)) {
+        if (share.getExtractCode() == null) return;
+        // 先检查该 IP 是否已达到频率上限（即使这次输入了正确的码也不允许通过）
+        String ip = clientIp();
+        String failKey = "share:fail:" + share.getShareCode() + ":" + ip;
+        String failVal = cacheService.get(failKey);
+        if (failVal != null) {
+            long failCount = Long.parseLong(failVal);
+            if (failCount > properties.getRateLimit().getShareExtractMaxAttempts()) {
+                throw new BusinessException("提取码错误次数过多，请稍后再试");
+            }
+        }
+        if (!share.getExtractCode().equals(extractCode)) {
             recordExtractFailure(share.getShareCode());
             throw new BusinessException("提取码错误");
         }

@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 import http from '@/api/http'
+import { getApiErrorMessage } from '@/utils/error'
 
 import PdfPreview from '@/components/PdfPreview.vue'
 import TextPreview from '@/components/TextPreview.vue'
@@ -168,9 +169,17 @@ async function loadFolderItems(folderId?: number) {
 
 async function verify() {
 
+  if (!extractCode.value.trim()) {
+
+    ElMessage.warning('请输入提取码')
+
+    return
+
+  }
+
   try {
 
-    await http.post(`/share/${code}/access`, { extractCode: extractCode.value })
+    await http.post(`/share/${code}/access`, { extractCode: extractCode.value.trim() }, { skipErrorHandler: true })
 
     verified.value = true
 
@@ -184,9 +193,9 @@ async function verify() {
 
     }
 
-  } catch {
+  } catch (e) {
 
-    /* global toast */
+    ElMessage.error(getApiErrorMessage(e, '提取码错误，请重新输入'))
 
   }
 
