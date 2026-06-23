@@ -29,6 +29,8 @@ const actionList = computed(() => {
   const list: { name: string }[] = []
   if (isImageFile(row)) list.push({ name: '预览图片' })
   if (isVideoFile(row)) list.push({ name: '播放视频' })
+  const isPdf = (row.name || '').toLowerCase().endsWith('.pdf') || (row.mimeType || '').toLowerCase() === 'application/pdf'
+  if (row.previewable && isPdf) list.push({ name: '预览 PDF' })
   list.push({ name: '下载' })
   return list
 })
@@ -121,6 +123,11 @@ function openItem(item: FileItem) {
     previewVideo(item)
     return
   }
+  const isPdf = (item.name || '').toLowerCase().endsWith('.pdf') || (item.mimeType || '').toLowerCase() === 'application/pdf'
+  if (isPdf) {
+    previewPdf(item)
+    return
+  }
   showActions(item)
 }
 
@@ -132,6 +139,29 @@ function previewImage(item: FileItem) {
 function previewVideo(item: FileItem) {
   const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
   uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(item.name)}` })
+}
+
+function previewPdf(item: FileItem) {
+  const url = apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`)
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.showLoading({ title: '加载中...' })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode === 200) {
+        uni.openDocument({
+          filePath: res.tempFilePath,
+          fail: () => uni.showToast({ title: '打开 PDF 失败', icon: 'none' })
+        })
+      }
+    },
+    fail: () => uni.showToast({ title: '加载 PDF 失败', icon: 'none' }),
+    complete: () => uni.hideLoading()
+  })
+  // #endif
 }
 
 function downloadFile(item: FileItem) {
@@ -172,6 +202,9 @@ function onSheetSelect(item: { name: string }) {
       break
     case '播放视频':
       previewVideo(row)
+      break
+    case '预览 PDF':
+      previewPdf(row)
       break
     case '下载':
       downloadFile(row)

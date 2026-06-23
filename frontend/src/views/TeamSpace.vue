@@ -182,6 +182,31 @@ const previewUrl = ref('')
 const previewType = ref('')
 const previewName = ref('')
 
+const isDialogFullscreen = ref(false)
+
+function toggleDialogFullscreen() {
+  const el = document.querySelector('.cd-preview-dialog')
+  if (!el) return
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch((err) => {
+      console.error('全屏失败:', err)
+    })
+  } else {
+    document.exitFullscreen()
+  }
+}
+
+function handleDialogFullscreenChange() {
+  const el = document.querySelector('.cd-preview-dialog')
+  isDialogFullscreen.value = document.fullscreenElement === el
+}
+
+watch(previewVisible, (visible) => {
+  if (!visible && document.fullscreenElement) {
+    document.exitFullscreen()
+  }
+})
+
 const teamGradients = [
   'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
   'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
@@ -657,9 +682,13 @@ function onTeamCommand(command: string, team: TeamSpace) {
 onMounted(() => {
   connectUploadWs(onWsProgress)
   void loadSpaces()
+  document.addEventListener('fullscreenchange', handleDialogFullscreenChange)
 })
 
-onUnmounted(disconnectUploadWs)
+onUnmounted(() => {
+  disconnectUploadWs()
+  document.removeEventListener('fullscreenchange', handleDialogFullscreenChange)
+})
 </script>
 
 <template>
@@ -944,7 +973,23 @@ onUnmounted(disconnectUploadWs)
       top="4vh"
       class="cd-preview-dialog"
     >
-      <img v-if="isImage" :src="previewUrl" class="cd-preview-media" alt="preview" />
+      <!-- 弹窗全屏按钮 -->
+      <button
+        v-if="previewVisible"
+        class="cd-dialog-fullscreen-btn"
+        :title="isDialogFullscreen ? '退出全屏 (Esc)' : '全屏'"
+        @click="toggleDialogFullscreen"
+      >
+        <svg v-if="!isDialogFullscreen" viewBox="0 0 24 24" class="cd-fullscreen-icon">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+        </svg>
+        <svg v-else viewBox="0 0 24 24" class="cd-fullscreen-icon">
+          <path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4" />
+        </svg>
+      </button>
+      <div v-if="isImage" class="cd-preview-image-wrap">
+        <img :src="previewUrl" class="cd-preview-media" alt="preview" />
+      </div>
       <VideoPreview v-else-if="isVideo" :src="previewUrl" />
       <PdfPreview v-else-if="isPdf" :src="previewUrl" />
       <TextPreview v-else-if="isText" :src="previewUrl" />

@@ -1,7 +1,7 @@
 package com.clouddisk.auth;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.common.UserStatus;
 import com.clouddisk.config.CloudDiskProperties;
@@ -78,7 +78,7 @@ public class FederatedAuthService {
     }
 
     private User provisionUser(String username, String nickname, String email, String source) {
-        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", username));
         if (user == null) {
             if ("LDAP".equals(source) && !properties.getLdap().isAutoProvision()) {
                 throw new BusinessException("用户不存在，请联系管理员开通");

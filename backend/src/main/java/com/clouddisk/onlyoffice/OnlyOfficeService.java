@@ -67,6 +67,15 @@ public class OnlyOfficeService {
         editorConfig.put("mode", properties.getOnlyoffice().getEditMode());
         editorConfig.put("user", user);
 
+        Map<String, Object> customization = new LinkedHashMap<>();
+        customization.put("forcesave", true);
+        customization.put("chat", false);
+        customization.put("help", false);
+        customization.put("goback", false);
+        customization.put("plugins", false);
+        customization.put("features", Map.of("spellcheck", Map.of("mode", false)));
+        editorConfig.put("customization", customization);
+
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("documentType", docType);
         config.put("document", document);
@@ -107,7 +116,7 @@ public class OnlyOfficeService {
                         file.getFileType());
                 log.info("OnlyOffice 文档已保存 fileId={}", fileId);
             } catch (Exception e) {
-                log.error("OnlyOffice 回调保存失败: {}", e.getMessage());
+                log.error("OnlyOffice 回调保存失败, body=" + body, e);
                 return Map.of("error", 1);
             }
         }
@@ -115,8 +124,61 @@ public class OnlyOfficeService {
     }
 
     private byte[] downloadRemote(String url) throws Exception {
+        String downloadUrl = url;
+        String internalUrl = properties.getOnlyoffice().getInternalDocumentServerUrl();
+        if (StringUtils.hasText(internalUrl)) {
+            String docServerUrl = properties.getOnlyoffice().getDocumentServerUrl();
+            if (url.startsWith(docServerUrl)) {
+                downloadUrl = url.replace(docServerUrl, internalUrl);
+            } else {
+                try {
+                    URI originalUri = URI.create(url);
+                    URI docServerUri = URI.create(docServerUrl);
+                    URI internalUri = URI.create(internalUrl);
+                    boolean hostMatch = originalUri.getHost().equalsIgnoreCase(docServerUri.getHost())
+                            && originalUri.getPort() == docServerUri.getPort();
+                    boolean localMatch = (originalUri.getHost().equalsIgnoreCase("localhost") || originalUri.getHost().equals("127.0.0.1"))
+                            && (docServerUri.getHost().equalsIgnoreCase("localhost") || docServerUri.getHost().equals("127.0.0.1"))
+                            && originalUri.getPort() == docServerUri.getPort();
+                    if (hostMatch || localMatch) {
+                        downloadUrl = new URI(
+                                internalUri.getScheme(),
+                                internalUri.getAuthority(),
+                                originalUri.getPath(),
+                                originalUri.getQuery(),
+                                originalUri.getFragment()
+                        ).toString();
+                    }
+                } catch (Exception e) {
+                    log.warn("OnlyOffice 下载 URL 重写失败，使用原始 URL: {}, error: {}", url, e.getMessage());
+                }
+            }
+        } else {
+            try {
+                URI originalUri = URI.create(url);
+                String host = originalUri.getHost();
+                if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) {
+                    try {
+                        java.net.InetAddress.getByName("onlyoffice");
+                        downloadUrl = new URI(
+                                originalUri.getScheme(),
+                                "onlyoffice",
+                                originalUri.getPath(),
+                                originalUri.getQuery(),
+                                originalUri.getFragment()
+                        ).toString();
+                        log.info("检测到 Docker 环境，自动将 OnlyOffice 下载 URL 替换为 internal onlyoffice: {}", downloadUrl);
+                    } catch (java.net.UnknownHostException ignored) {
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("OnlyOffice 自动 URL 重写检查失败: {}", e.getMessage());
+            }
+        }
+
+        log.info("OnlyOffice 下载远程文件, 实际请求URL={}", downloadUrl);
         HttpClient client = HttpClient.newHttpClient();
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(downloadUrl)).GET().build();
         HttpResponse<byte[]> resp = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
         if (resp.statusCode() >= 400) {
             throw new RuntimeException("下载编辑结果失败 HTTP " + resp.statusCode());

@@ -67,6 +67,15 @@ public class ShareOnlyOfficeService {
         editorConfig.put("mode", "view");
         editorConfig.put("user", user);
 
+        Map<String, Object> customization = new LinkedHashMap<>();
+        customization.put("forcesave", false);
+        customization.put("chat", false);
+        customization.put("help", false);
+        customization.put("goback", false);
+        customization.put("plugins", false);
+        customization.put("features", Map.of("spellcheck", Map.of("mode", false)));
+        editorConfig.put("customization", customization);
+
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("documentType", documentType(ext));
         config.put("document", document);

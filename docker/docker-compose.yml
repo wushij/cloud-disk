@@ -142,12 +142,14 @@ services:
     container_name: clouddisk-backend
     environment:
       TZ: Asia/Shanghai
-      SPRING_PROFILES_ACTIVE: docker
+      SPRING_PROFILES_ACTIVE: docker,onlyoffice
       CLOUDDISK_DB_HOST: mysql
       CLOUDDISK_DB_PORT: "3306"
       CLOUDDISK_REDIS_HOST: redis
       CLOUDDISK_REDIS_PORT: "6379"
       CLOUDDISK_MINIO_ENDPOINT: http://minio:9000
+      CLOUDDISK_ONLYOFFICE_CALLBACK_BASE_URL: http://backend:8088
+      CLOUDDISK_ONLYOFFICE_INTERNAL_DOCUMENT_SERVER_URL: http://onlyoffice
       CLOUDDISK_RABBITMQ_HOST: rabbitmq
       CLOUDDISK_ES_URIS: http://elasticsearch:9200
       CLOUDDISK_MONITORING_ADMIN_SERVER_URL: http://admin-server:8090
@@ -168,6 +170,19 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      onlyoffice:
+        condition: service_started
+    restart: unless-stopped
+
+  onlyoffice:
+    profiles: [app]
+    image: onlyoffice/documentserver
+    container_name: clouddisk-onlyoffice
+    ports:
+      - "8082:80"
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=clouddisk-onlyoffice-jwt-secret-change-me
     restart: unless-stopped
 
   nginx:

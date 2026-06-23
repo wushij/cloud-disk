@@ -7,7 +7,7 @@ const TEXT_EXTENSIONS = new Set([
 export function isTextFile(mime?: string | null, name?: string): boolean {
   const m = (mime || '').toLowerCase()
   if (m.startsWith('text/')) return true
-  if (m.includes('json') || m.includes('xml') || m.includes('javascript')) return true
+  if (m.includes('json') || m === 'application/xml' || m.endsWith('+xml') || m.includes('javascript')) return true
   const ext = (name || '').split('.').pop()?.toLowerCase() || ''
   return TEXT_EXTENSIONS.has(ext)
 }

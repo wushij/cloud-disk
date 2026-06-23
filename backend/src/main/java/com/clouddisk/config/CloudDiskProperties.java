@@ -73,6 +73,8 @@ public class CloudDiskProperties {
         private String callbackBaseUrl = "http://127.0.0.1:8088";
         /** edit 或 view */
         private String editMode = "edit";
+        /** OnlyOffice 内部服务地址，若在 Docker 环境下，供后端直接访问 OnlyOffice 容器 */
+        private String internalDocumentServerUrl = "";
     }
 
     @Data

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 import { useRoute } from 'vue-router'
 
@@ -69,6 +69,35 @@ const shareRootFolderId = ref<number | null>(null)
 
 const previewVisible = ref(false)
 
+const isDialogFullscreen = ref(false)
+
+function toggleDialogFullscreen() {
+  const el = document.querySelector('.cd-preview-dialog')
+  if (!el) return
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch((err) => {
+      console.error('全屏失败:', err)
+    })
+  } else {
+    document.exitFullscreen()
+  }
+}
+
+function handleDialogFullscreenChange() {
+  const el = document.querySelector('.cd-preview-dialog')
+  isDialogFullscreen.value = document.fullscreenElement === el
+}
+
+watch(previewVisible, (visible) => {
+  if (!visible && document.fullscreenElement) {
+    document.exitFullscreen()
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleDialogFullscreenChange)
+})
+
 const previewName = ref('')
 
 const previewUrl = ref('')
@@ -80,6 +109,8 @@ const onlyOfficeConfig = ref<{ documentServerUrl: string; config: Record<string,
 
 
 onMounted(async () => {
+
+  document.addEventListener('fullscreenchange', handleDialogFullscreenChange)
 
   try {
 
@@ -531,11 +562,28 @@ function getSingleShareImageUrl() {
 
     <!-- 预览弹窗 -->
 
-    <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh">
+    <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh" class="cd-preview-dialog">
+
+      <!-- 弹窗全屏按钮 -->
+      <button
+        v-if="previewVisible"
+        class="cd-dialog-fullscreen-btn"
+        :title="isDialogFullscreen ? '退出全屏 (Esc)' : '全屏'"
+        @click="toggleDialogFullscreen"
+      >
+        <svg v-if="!isDialogFullscreen" viewBox="0 0 24 24" class="cd-fullscreen-icon">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+        </svg>
+        <svg v-else viewBox="0 0 24 24" class="cd-fullscreen-icon">
+          <path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4" />
+        </svg>
+      </button>
 
       <OnlyOfficeEditor v-if="onlyOfficeConfig" :document-server-url="onlyOfficeConfig.documentServerUrl" :config="onlyOfficeConfig.config" />
 
-      <img v-else-if="previewMime.startsWith('image/')" :src="previewUrl" class="cd-share-media" alt="" />
+      <div v-else-if="previewMime.startsWith('image/')" class="cd-preview-image-wrap">
+        <img :src="previewUrl" class="cd-share-media" alt="" />
+      </div>
 
       <VideoPreview v-else-if="previewMime.startsWith('video/')" :src="previewUrl" />
 

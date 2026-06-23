@@ -46,7 +46,12 @@ async function mountEditor() {
     if (!DocsAPI) {
       throw new Error('文档编辑器未就绪')
     }
-    docEditor = new DocsAPI.DocEditor(editorId, props.config)
+    const editorConfig = {
+      width: '100%',
+      height: '100%',
+      ...props.config
+    }
+    docEditor = new DocsAPI.DocEditor(editorId, editorConfig)
   } catch (e: unknown) {
     error.value = toUserMessage(e instanceof Error ? e.message : '', '文档编辑器初始化失败')
   } finally {
@@ -54,9 +59,13 @@ async function mountEditor() {
   }
 }
 
-onMounted(mountEditor)
+onMounted(() => {
+  mountEditor()
+})
 watch(() => [props.documentServerUrl, props.config], mountEditor, { deep: true })
-onBeforeUnmount(() => docEditor?.destroyEditor?.())
+onBeforeUnmount(() => {
+  docEditor?.destroyEditor?.()
+})
 </script>
 
 <template>
@@ -70,12 +79,16 @@ onBeforeUnmount(() => docEditor?.destroyEditor?.())
 <style scoped>
 .oo-wrap {
   width: 100%;
-  min-height: 70vh;
+  height: 100%;
+  min-height: 500px;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 .oo-editor {
   width: 100%;
-  height: 70vh;
+  flex: 1;
+  min-height: 500px;
 }
 .oo-status {
   position: absolute;

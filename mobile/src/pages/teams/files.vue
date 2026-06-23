@@ -234,6 +234,8 @@ const actionList = computed(() => {
     if (row.previewable && isImageFile(row)) list.push({ name: '预览图片' })
     if (row.previewable && isVideoFile(row)) list.push({ name: '播放视频' })
     if (row.previewable && isTextFile(row.mimeType, row.name)) list.push({ name: '预览文本' })
+    const isPdf = (row.name || '').toLowerCase().endsWith('.pdf') || (row.mimeType || '').toLowerCase() === 'application/pdf'
+    if (row.previewable && isPdf) list.push({ name: '预览 PDF' })
     list.push({ name: '下载' })
   }
   if (myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
@@ -455,6 +457,11 @@ function openItem(row: FileItem) {
     uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
     return
   }
+  const isPdf = (row.name || '').toLowerCase().endsWith('.pdf') || (row.mimeType || '').toLowerCase() === 'application/pdf'
+  if (isPdf) {
+    previewPdf(row)
+    return
+  }
   showActions(row)
 }
 
@@ -510,6 +517,10 @@ function onActionSelect(item: { name: string }) {
       uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
       break
     }
+    case '预览 PDF': {
+      previewPdf(row)
+      break
+    }
     case '下载':
     case '打包下载': {
       downloadFile(row)
@@ -533,6 +544,34 @@ function openShare(row: FileItem) {
   shareFolderId.value = row.type === 'folder' ? row.id : null
   shareItemName.value = row.name
   shareVisible.value = true
+}
+
+function previewPdf(row: FileItem) {
+  const token = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  const url = fileApiUrl(`/api/files/${row.id}/preview?access_token=${token}`)
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.showLoading({ title: '加载中...' })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode === 200) {
+        uni.openDocument({
+          filePath: res.tempFilePath,
+          fail: () => {
+            uni.showToast({ title: '打开 PDF 失败', icon: 'none' })
+          }
+        })
+      }
+    },
+    fail: () => {
+      uni.showToast({ title: '加载 PDF 失败', icon: 'none' })
+    },
+    complete: () => uni.hideLoading()
+  })
+  // #endif
 }
 </script>
 

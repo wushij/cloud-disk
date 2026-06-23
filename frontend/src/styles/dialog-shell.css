@@ -132,3 +132,189 @@
 .cd-action-pill.success:active {
   transform: translateY(0);
 }
+
+/* 预览对话框全局样式，使在线文档、PDF、视频等预览更宽敞美观 */
+.el-dialog.cd-preview-dialog {
+  display: flex;
+  flex-direction: column;
+  height: 88vh !important;
+  margin-top: 4vh !important;
+  margin-bottom: 0 !important;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.el-dialog.cd-preview-dialog .el-dialog__header {
+  padding: 20px 24px 10px !important;
+  margin-right: 0;
+  border-bottom: 1px solid var(--cd-border-light, #f1f5f9);
+}
+
+.el-dialog.cd-preview-dialog .el-dialog__title {
+  font-weight: 700;
+  color: var(--cd-text-primary, #0f172a);
+}
+
+.el-dialog.cd-preview-dialog .el-dialog__body {
+  flex: 1;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: #fff;
+  overflow: hidden;
+}
+
+/* 全局预览对话框内置全屏按钮悬浮样式：统一移动到右下角作为悬浮圆形按钮 */
+.cd-dialog-fullscreen-btn {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2001; /* 确保悬浮在所有预览组件上方 */
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--cd-text-primary, #0f172a);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  padding: 0;
+  outline: none;
+}
+
+/* 当弹窗内包含 OnlyOffice 在线文档编辑器时，升高全屏按钮高度避开底栏 */
+.el-dialog.cd-preview-dialog:has(.oo-editor) .cd-dialog-fullscreen-btn,
+.el-dialog.cd-preview-dialog:has(.oo-wrap) .cd-dialog-fullscreen-btn {
+  bottom: 80px;
+}
+
+.cd-dialog-fullscreen-btn:hover {
+  background: #ffffff;
+  transform: scale(1.1);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  color: var(--cd-primary, #6366f1);
+}
+
+.cd-dialog-fullscreen-btn:active {
+  transform: scale(0.95);
+}
+
+.cd-dialog-fullscreen-btn .cd-fullscreen-icon {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+/* ==========================================
+   预览弹窗全屏模式及通用图片/视频美化样式
+   ========================================== */
+
+/* 全屏状态下的弹窗本体样式 */
+.el-dialog.cd-preview-dialog:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  top: 0 !important;
+  border-radius: 0 !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  background-color: #f1f5f9 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 全屏状态下的弹窗头部 */
+.el-dialog.cd-preview-dialog:fullscreen .el-dialog__header {
+  background: #ffffff !important;
+  padding: 16px 24px !important;
+  border-bottom: 1px solid var(--cd-border-light, #e2e8f0) !important;
+  margin: 0 !important;
+}
+
+/* 全屏状态下的全屏按钮位置调整 */
+.el-dialog.cd-preview-dialog:fullscreen .cd-dialog-fullscreen-btn {
+  right: 24px !important;
+  bottom: 24px !important;
+  top: auto !important;
+}
+
+/* 当全屏弹窗内包含 OnlyOffice 编辑器时，全屏按钮依然高出底部，避开文档编辑状态栏 */
+.el-dialog.cd-preview-dialog:fullscreen:has(.oo-editor) .cd-dialog-fullscreen-btn,
+.el-dialog.cd-preview-dialog:fullscreen:has(.oo-wrap) .cd-dialog-fullscreen-btn {
+  bottom: 80px !important;
+  top: auto !important;
+}
+
+/* 全屏状态下的弹窗主体内容区 */
+.el-dialog.cd-preview-dialog:fullscreen .el-dialog__body {
+  flex: 1 !important;
+  height: calc(100vh - 58px) !important;
+  max-height: calc(100vh - 58px) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background-color: #f1f5f9 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 通用弹窗内容区：为了配合 PDF / Text 预览，默认背景为浅灰蓝背景 */
+.el-dialog.cd-preview-dialog .el-dialog__body {
+  background-color: #f1f5f9 !important;
+}
+
+/* 图片预览包装器：使图片居中且有好看的卡片背景 */
+.cd-preview-image-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  padding: 24px;
+}
+
+/* 通用图片预览美化（包括普通视图和全屏视图） */
+.cd-preview-media,
+.cd-share-media {
+  max-width: 100% !important;
+  max-height: 70vh !important;
+  display: block;
+  margin: auto !important;
+  border-radius: 12px !important;
+  background-color: #ffffff;
+  padding: 8px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.1) !important;
+  border: 1px solid #e2e8f0;
+  transition: max-height 0.2s ease-in-out;
+}
+
+/* 全屏状态下的图片最大高度适配 */
+.el-dialog.cd-preview-dialog:fullscreen .cd-preview-media,
+.el-dialog.cd-preview-dialog:fullscreen .cd-share-media {
+  max-height: calc(100vh - 100px) !important;
+}
+
+/* 视频预览在全屏模式下的适配 */
+.el-dialog.cd-preview-dialog:fullscreen .video-wrap {
+  height: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  background-color: #090d16 !important;
+}
+
+.el-dialog.cd-preview-dialog:fullscreen .video-js {
+  max-height: calc(100vh - 58px) !important;
+  max-width: 100% !important;
+}
