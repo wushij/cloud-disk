@@ -50,7 +50,7 @@ async function createShare() {
     fullShareUrl.value = `${window.location.origin}${data.shareUrl}`
     ElMessage.success('分享创建成功')
   } catch (e: unknown) {
-    ElMessage.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error || '分享失败')
+    // 错误已由全局拦截器提示
   } finally {
     loading.value = false
   }

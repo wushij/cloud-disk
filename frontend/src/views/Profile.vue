@@ -146,8 +146,8 @@ async function save() {
           <div class="profile-hero-info">
             <div class="profile-name-row">
               <h2 class="profile-display-name">{{ auth.nickname || auth.username }}</h2>
-              <span class="profile-role-badge" :class="{ admin: auth.isAdmin }">
-                {{ auth.isAdmin ? '管理员' : '普通用户' }}
+              <span class="profile-role-badge" :class="{ admin: auth.isAdmin, super: auth.isSuperAdmin }">
+                {{ auth.isSuperAdmin ? '超级管理员' : auth.isAdmin ? '管理员' : '普通用户' }}
               </span>
             </div>
             <p class="profile-username">@{{ auth.username }}</p>

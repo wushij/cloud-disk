@@ -450,9 +450,9 @@ async function chooseAndUpload() {
           </view>
           <view class="header-action-btn cd-pressable" @click="goTransfer">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="display: block;">
-              <circle cx="12" cy="12" r="10" stroke="#111827" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="12" cy="12" r="10" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <view
               v-if="activeTaskCount > 0"

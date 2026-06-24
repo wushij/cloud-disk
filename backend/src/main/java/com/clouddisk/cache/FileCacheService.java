@@ -58,10 +58,15 @@ public class FileCacheService {
         return record;
     }
 
-    public FileRecord getByMd5(String md5) {
-        if (!StringUtils.hasText(md5)) return null;
+    /**
+     * 按用户 + MD5 查找可秒传的文件（仅当前用户已上传且状态正常的记录）。
+     */
+    public FileRecord getByMd5(long userId, String md5) {
+        if (!StringUtils.hasText(md5)) {
+            return null;
+        }
 
-        String idKey = "md5:id:" + md5;
+        String idKey = md5CacheKey(userId, md5);
         String cachedId = cacheService.get(idKey);
         if (cachedId != null) {
             if (NULL_MARKER.equals(cachedId)) {
@@ -69,7 +74,10 @@ public class FileCacheService {
             }
             try {
                 FileRecord cached = getById(Long.parseLong(cachedId));
-                if (cached != null && md5.equals(cached.getFileMd5()) && cached.getStatus() == 1) {
+                if (cached != null
+                        && cached.getUserId() != null && cached.getUserId().equals(userId)
+                        && md5.equals(cached.getFileMd5())
+                        && cached.getStatus() == 1) {
                     return cached;
                 }
                 cacheService.delete(idKey);
@@ -79,8 +87,10 @@ public class FileCacheService {
         }
 
         FileRecord record = fileMapper.selectOne(new LambdaQueryWrapper<FileRecord>()
+                .eq(FileRecord::getUserId, userId)
                 .eq(FileRecord::getFileMd5, md5)
                 .eq(FileRecord::getStatus, 1)
+                .orderByDesc(FileRecord::getId)
                 .last("LIMIT 1"));
 
         if (record != null) {
@@ -90,6 +100,14 @@ public class FileCacheService {
             cacheService.set(idKey, NULL_MARKER, NULL_TTL);
         }
         return record;
+    }
+
+    public static String md5CacheKey(long userId, String md5) {
+        return "md5:id:" + userId + ":" + md5;
+    }
+
+    public static String md5PathCacheKey(long userId, String md5) {
+        return "md5:" + userId + ":" + md5;
     }
 
     public void cacheFile(FileRecord record) {
@@ -108,11 +126,11 @@ public class FileCacheService {
         }
     }
 
-    public void evictWithMd5(Long fileId, String md5) {
+    public void evictWithMd5(Long fileId, long userId, String md5) {
         evict(fileId);
         if (StringUtils.hasText(md5)) {
-            cacheService.delete("md5:id:" + md5);
-            cacheService.delete("md5:" + md5);
+            cacheService.delete(md5CacheKey(userId, md5));
+            cacheService.delete(md5PathCacheKey(userId, md5));
         }
     }
 

@@ -12,7 +12,7 @@ public class TeamMember {
     private Long id;
     private Long spaceId;
     private Long userId;
-    /** OWNER / ADMIN / MEMBER */
+  /** OWNER / ADMIN / MEMBER / VIEWER */
     private String role;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime joinTime;

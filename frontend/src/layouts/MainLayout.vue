@@ -22,7 +22,7 @@ import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 
 import http from '@/api/http'
 
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 import { subscribeWs } from '@/utils/ws'
@@ -166,28 +166,22 @@ onMounted(async () => {
 
 
   unsubscribeWs = subscribeWs((data) => {
-
     if (data.type === 'notification') {
-
       notifyStore.push({
-
         id: data.notifyId,
-
         type: data.notifyType,
-
         title: data.title,
-
         content: data.content,
-
         refId: data.refId,
-
         inviteStatus: data.inviteStatus as any,
-        registrationStatus: data.registrationStatus as any
-
+        registrationStatus: data.registrationStatus as any,
+        quotaStatus: data.quotaStatus as any
       })
-
+      if (data.notifyType === 'ROLE_CHANGED' || data.notifyType === 'QUOTA_RESULT') {
+        auth.fetchProfile().catch(() => {})
+        refreshStorageUsage()
+      }
     }
-
   })
 
 })
@@ -234,6 +228,7 @@ async function openNotify(item: any) {
 function getNotifyIcon(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'User'
   if (type === 'USER_REGISTER') return 'UserFilled'
+  if (type === 'QUOTA_APPLY' || type === 'QUOTA_RESULT' || type === 'ROLE_CHANGED') return 'UploadFilled'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'Share'
   return 'Bell'
 }
@@ -241,6 +236,8 @@ function getNotifyIcon(type: string, title: string) {
 function getNotifyColorClass(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'teal'
   if (type === 'USER_REGISTER') return 'blue'
+  if (type === 'QUOTA_APPLY') return 'orange'
+  if (type === 'QUOTA_RESULT' || type === 'ROLE_CHANGED') return 'teal'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'orange'
   return 'indigo'
 }
@@ -435,6 +432,133 @@ async function handleClearAll() {
   ElMessage.success('已清空所有通知')
 }
 
+const applyQuotaVisible = ref(false)
+const applyQuotaGB = ref('')
+const applyReason = ref('')
+const applySaving = ref(false)
+const USER_APPLY_QUOTA_GB = 500
+
+const canApplyQuota = computed(
+  () => !auth.isSuperAdmin && storageUsage.value != null && storageUsage.value.quotaBytes > 0
+)
+
+function openApplyQuotaDialog() {
+  applyQuotaVisible.value = true
+  applyQuotaGB.value = auth.isAdmin ? '' : String(USER_APPLY_QUOTA_GB)
+  applyReason.value = ''
+}
+
+async function submitApplyQuota() {
+  let quotaBytes: number
+  if (auth.isAdmin) {
+    if (!applyQuotaGB.value) {
+      ElMessage.warning('请输入目标容量')
+      return
+    }
+    const gb = Number(applyQuotaGB.value)
+    if (isNaN(gb) || gb <= 0) {
+      ElMessage.warning('容量大小必须大于 0')
+      return
+    }
+    quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
+  } else {
+    quotaBytes = USER_APPLY_QUOTA_GB * 1024 * 1024 * 1024
+  }
+  if (storageUsage.value && quotaBytes <= storageUsage.value.quotaBytes) {
+    ElMessage.warning('申请配额必须大于当前配额')
+    return
+  }
+
+  applySaving.value = true
+  try {
+    await http.post('/api/quota-applications', {
+      applyQuota: quotaBytes,
+      reason: applyReason.value
+    })
+    ElMessage.success('扩容申请已提交，请等待管理员审批')
+    applyQuotaVisible.value = false
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.message || err.message || '申请提交失败')
+  } finally {
+    applySaving.value = false
+  }
+}
+
+function isQuotaPending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+async function refreshStorageUsage() {
+  try {
+    const { data } = await http.get('/api/storage/usage')
+    storageUsage.value = data
+  } catch {
+    /* ignore */
+  }
+}
+
+async function approveQuota(item: { id: string; refId?: string; content?: string }) {
+  if (!item.refId) return
+  let opinion = ''
+  try {
+    const res = await ElMessageBox.prompt('请输入审批意见（选填）', '通过扩容申请', {
+      confirmButtonText: '确定通过',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入意见或理由...',
+      inputValue: '通过'
+    })
+    opinion = res.value || ''
+  } catch {
+    return
+  }
+
+  try {
+    await notifyStore.approveQuota(item as any, opinion)
+    syncNotifyItem(item, {
+      title: '已通过扩容',
+      content: `扩容申请已被你通过。审批意见：${opinion || '无'}`,
+      quotaStatus: 'APPROVED',
+      read: true
+    })
+    ElMessage.success('扩容申请已通过')
+    await refreshStorageUsage()
+  } catch {
+    /* error handled */
+  }
+}
+
+async function rejectQuota(item: { id: string; refId?: string; content?: string }) {
+  if (!item.refId) return
+  let opinion = ''
+  try {
+    const res = await ElMessageBox.prompt('请输入拒绝原因（必填）', '拒绝扩容申请', {
+      confirmButtonText: '确定拒绝',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入拒绝原因...',
+      inputValidator: (val) => {
+        if (!val || !val.trim()) return '请输入拒绝原因'
+        return true
+      }
+    })
+    opinion = res.value || ''
+  } catch {
+    return
+  }
+
+  try {
+    await notifyStore.rejectQuota(item as any, opinion)
+    syncNotifyItem(item, {
+      title: '已拒绝扩容',
+      content: `扩容申请已被你拒绝。拒绝原因：${opinion}`,
+      quotaStatus: 'REJECTED',
+      read: true
+    })
+    ElMessage.success('扩容申请已拒绝')
+  } catch {
+    /* error handled */
+  }
+}
+
 </script>
 
 
@@ -518,9 +642,14 @@ async function handleClearAll() {
             class="cd-storage-progress"
           />
 
-          <div v-if="storageLabel" class="cd-storage-type">
-            <el-icon :size="12"><Monitor /></el-icon>
-            <span>{{ storageLabel }}</span>
+          <div class="cd-storage-footer">
+            <div v-if="storageLabel" class="cd-storage-type">
+              <el-icon :size="12"><Monitor /></el-icon>
+              <span>{{ storageLabel }}</span>
+            </div>
+            <div v-if="canApplyQuota" class="cd-storage-apply-btn" @click="openApplyQuotaDialog">
+              <span>申请扩容</span>
+            </div>
           </div>
         </div>
       </div>
@@ -546,9 +675,9 @@ async function handleClearAll() {
           <div class="cd-header-transfer-wrap" @click="toggleTransferList">
             <button class="cd-header-btn cd-transfer-btn" :class="{ active: runningTransfersCount > 0 }">
               <svg viewBox="0 0 24 24" fill="none" class="cd-transfer-btn-icon">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
             <span v-if="runningTransfersCount > 0" class="cd-transfer-btn-badge">
@@ -731,6 +860,27 @@ async function handleClearAll() {
             >
               <span class="invite-status-badge rejected">已拒绝注册</span>
             </div>
+            <!-- QUOTA APPLY WORKFLOW -->
+            <div
+              v-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && isQuotaPending(item.quotaStatus)"
+              class="cd-notify-actions"
+              @click.stop
+            >
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost" @click="rejectQuota(item)">拒绝</button>
+              <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary" @click="approveQuota(item)">通过</button>
+            </div>
+            <div
+              v-else-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && item.quotaStatus === 'APPROVED'"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge accepted">已通过扩容</span>
+            </div>
+            <div
+              v-else-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && item.quotaStatus === 'REJECTED'"
+              class="cd-notify-status-row"
+            >
+              <span class="invite-status-badge rejected">已拒绝扩容</span>
+            </div>
           </div>
         </div>
 
@@ -779,10 +929,21 @@ async function handleClearAll() {
         <div v-else-if="auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && selectedNotify.registrationStatus === 'REJECTED'" class="cd-notify-detail-actions detail-actions-col">
           <div class="invite-status-badge large rejected">已拒绝注册</div>
         </div>
+        <!-- QUOTA APPLY WORKFLOW IN DETAIL DIALOG -->
+        <div v-if="auth.isSuperAdmin && selectedNotify.type === 'QUOTA_APPLY' && selectedNotify.refId && isQuotaPending(selectedNotify.quotaStatus)" class="cd-notify-detail-actions">
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--ghost cd-notify-action-pill--lg" @click="rejectQuota(selectedNotify)">拒绝申请</button>
+          <button type="button" class="cd-notify-action-pill cd-notify-action-pill--primary cd-notify-action-pill--lg" @click="approveQuota(selectedNotify)">通过扩容</button>
+        </div>
+        <div v-else-if="auth.isSuperAdmin && selectedNotify.type === 'QUOTA_APPLY' && selectedNotify.refId && selectedNotify.quotaStatus === 'APPROVED'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large accepted">已通过扩容</div>
+        </div>
+        <div v-else-if="auth.isSuperAdmin && selectedNotify.type === 'QUOTA_APPLY' && selectedNotify.refId && selectedNotify.quotaStatus === 'REJECTED'" class="cd-notify-detail-actions detail-actions-col">
+          <div class="invite-status-badge large rejected">已拒绝扩容</div>
+        </div>
       </div>
       <template #footer>
         <div
-          v-if="selectedNotify && !(selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && isInvitePending(selectedNotify.inviteStatus)) && !(auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && isRegistrationPending(selectedNotify.registrationStatus))"
+          v-if="selectedNotify && !(selectedNotify.type === 'TEAM_INVITED' && selectedNotify.refId && isInvitePending(selectedNotify.inviteStatus)) && !(auth.isAdmin && selectedNotify.type === 'USER_REGISTER' && selectedNotify.refId && isRegistrationPending(selectedNotify.registrationStatus)) && !(auth.isSuperAdmin && selectedNotify.type === 'QUOTA_APPLY' && selectedNotify.refId && isQuotaPending(selectedNotify.quotaStatus))"
           class="cd-dialog-footer-pills is-center"
         >
           <el-button size="large" @click="detailVisible = false">关闭</el-button>
@@ -794,6 +955,71 @@ async function handleClearAll() {
     <TransferPanel />
     <PromptDialog />
     <ConfirmDialog />
+
+    <!-- 用户自主扩容申请对话框 -->
+    <el-dialog
+      v-model="applyQuotaVisible"
+      width="440px"
+      class="cd-apply-quota-dialog"
+      align-center
+      destroy-on-close
+    >
+      <template #header>
+        <div class="cd-quota-dialog-header-clean">
+          <div class="cd-quota-dialog-icon-clean">
+            <el-icon :size="18" color="var(--theme-primary)"><UploadFilled /></el-icon>
+          </div>
+          <span class="cd-quota-dialog-title-clean">申请容量扩容</span>
+        </div>
+      </template>
+
+      <div class="cd-quota-hint-banner">
+        <span class="hint-text">请填写申请的目标容量（GB）及扩容原因</span>
+      </div>
+
+      <div v-if="auth.isAdmin" class="cd-form-group">
+        <label class="cd-form-label">
+          目标容量 (GB)
+          <span class="cd-form-label-tip" v-if="storageUsage">
+            (当前容量: {{ storageUsage.quotaFormatted }})
+          </span>
+        </label>
+        <el-input
+          v-model="applyQuotaGB"
+          placeholder="例如 500"
+          type="number"
+          :min="1"
+        >
+          <template #suffix>
+            <span class="cd-input-suffix-text">GB</span>
+          </template>
+        </el-input>
+      </div>
+
+      <div v-else class="cd-form-group">
+        <label class="cd-form-label">目标容量</label>
+        <div class="cd-quota-fixed-value">500 GB</div>
+      </div>
+
+      <div class="cd-form-group" style="margin-top: 16px;">
+        <label class="cd-form-label">申请原因</label>
+        <el-input
+          v-model="applyReason"
+          type="textarea"
+          :rows="3"
+          placeholder="请输入申请扩容的理由..."
+          maxlength="200"
+          show-word-limit
+        />
+      </div>
+
+      <template #footer>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" class="cd-quota-cancel-btn" @click="applyQuotaVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="applySaving" class="cd-quota-submit-btn" @click="submitApplyQuota">提交申请</el-button>
+        </div>
+      </template>
+    </el-dialog>
 
   </el-container>
 
@@ -1526,6 +1752,158 @@ async function handleClearAll() {
   flex-direction: column;
   align-items: center;
   gap: 0;
+}
+
+.cd-storage-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px dashed var(--cd-border-light, #e2e8f0);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.cd-storage-type {
+  border-top: none !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.cd-storage-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--theme-primary, #4f46e5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.cd-storage-apply-btn:hover {
+  color: color-mix(in srgb, var(--theme-primary, #4f46e5) 80%, black);
+  text-decoration: underline;
+}
+
+.cd-storage-apply-btn:active {
+  opacity: 0.8;
+}
+
+.cd-form-label-tip {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--cd-text-placeholder, #94a3b8);
+  margin-left: 6px;
+}
+
+/* Quota Apply Dialog styling */
+.cd-apply-quota-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.cd-apply-quota-dialog :deep(.el-dialog__header) {
+  padding: 24px 24px 12px;
+  border-bottom: none;
+}
+
+.cd-apply-quota-dialog :deep(.el-dialog__body) {
+  padding: 8px 24px 24px;
+}
+
+.cd-apply-quota-dialog :deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--cd-border-light, #f1f5f9);
+  background: var(--cd-bg-aside, #f8fafc);
+}
+
+.cd-quota-dialog-header-clean {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cd-quota-dialog-icon-clean {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--theme-primary-muted, rgba(79, 70, 229, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cd-quota-dialog-title-clean {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cd-text-primary, #0f172a);
+}
+
+.cd-quota-hint-banner {
+  display: flex;
+  align-items: center;
+  background: rgba(79, 70, 229, 0.04);
+  border-left: 4px solid var(--theme-primary, #4f46e5);
+  border-radius: 2px 8px 8px 2px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+
+.cd-quota-hint-banner .hint-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cd-text-secondary, #475569);
+  font-weight: 500;
+}
+
+.cd-quota-fixed-value {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--cd-border-light);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cd-text);
+}
+
+.cd-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.cd-form-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cd-text-primary, #0f172a);
+}
+
+.cd-input-suffix-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cd-text-placeholder, #94a3b8);
+  padding-right: 4px;
+}
+
+.cd-quota-cancel-btn {
+  border-radius: 99px !important;
+  font-weight: 600;
+  border-color: var(--cd-border, #cbd5e1) !important;
+}
+
+.cd-quota-submit-btn {
+  border-radius: 99px !important;
+  font-weight: 700;
+  background: var(--cd-primary-gradient, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2) !important;
+}
+
+.cd-quota-submit-btn:hover {
+  opacity: 0.95;
 }
 
 </style>

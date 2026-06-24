@@ -38,14 +38,14 @@ public class UploadService {
     private final VirusScanService virusScanService;
 
     public Map<String, Object> checkMd5(Md5CheckRequest req) {
-        AuthService.currentUserId();
+        long userId = AuthService.currentUserId();
         Map<String, Object> result = new HashMap<>();
         if (req.getFileMd5() == null || req.getFileMd5().isBlank()) {
             result.put("exists", false);
             return result;
         }
         fileValidator.validate(req.getFileName(), req.getFileSize());
-        FileRecord existing = fileService.findByMd5(req.getFileMd5());
+        FileRecord existing = fileService.findByMd5(userId, req.getFileMd5());
         if (existing != null) {
             FileRecord created = fileService.instantUpload(
                     req.getFileMd5(), req.getFileName(), req.getFileSize(),

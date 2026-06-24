@@ -249,6 +249,72 @@ async function handleRejectRegistration(item: AppNotification) {
   requestRejectRegistration(item)
 }
 
+function isQuotaPending(status?: string) {
+  return !status || status === 'PENDING'
+}
+
+function handleApproveQuota(item: AppNotification) {
+  if (!item.refId || actingId.value) return
+  uni.showModal({
+    title: '通过扩容申请',
+    placeholderText: '请输入审批意见（选填）',
+    editable: true,
+    success: async (res) => {
+      if (res.confirm) {
+        const opinion = res.content || ''
+        actingId.value = item.id
+        try {
+          await notifyStore.approveQuota(item, opinion)
+          syncNotifyItem(item, {
+            title: '已通过扩容',
+            content: `扩容申请已被你通过。审批意见：${opinion || '无'}`,
+            quotaStatus: 'APPROVED',
+            read: true
+          })
+          showResultAlert('已通过扩容', '该用户的空间容量已实时更新', 'success')
+        } catch (err: any) {
+          uni.showToast({ title: err.message || '操作失败', icon: 'none' })
+        } finally {
+          actingId.value = null
+        }
+      }
+    }
+  })
+}
+
+function handleRejectQuota(item: AppNotification) {
+  if (!item.refId || actingId.value) return
+  uni.showModal({
+    title: '拒绝扩容申请',
+    placeholderText: '请输入拒绝原因（必填）',
+    editable: true,
+    success: async (res) => {
+      if (res.confirm) {
+        const opinion = res.content || ''
+        if (!opinion.trim()) {
+          uni.showToast({ title: '请输入拒绝原因', icon: 'none' })
+          return
+        }
+        actingId.value = item.id
+        try {
+          await notifyStore.rejectQuota(item, opinion)
+          syncNotifyItem(item, {
+            title: '已拒绝扩容',
+            content: `扩容申请已被你拒绝。拒绝原因：${opinion}`,
+            quotaStatus: 'REJECTED',
+            read: true
+          })
+          showResultAlert('已拒绝扩容', '已拒绝该用户的扩容申请', 'info')
+        } catch (err: any) {
+          uni.showToast({ title: err.message || '操作失败', icon: 'none' })
+        } finally {
+          actingId.value = null
+        }
+      }
+    }
+  })
+}
+
 function triggerDeleteNotification(item: AppNotification) {
   itemToDelete.value = item
   deleteDialogVisible.value = true
@@ -297,6 +363,7 @@ async function markAllRead() {
 function getNotificationIcon(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'team'
   if (type === 'USER_REGISTER') return 'register'
+  if (type === 'QUOTA_APPLY' || type === 'QUOTA_RESULT') return 'share'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'share'
   return 'bell'
 }
@@ -304,6 +371,8 @@ function getNotificationIcon(type: string, title: string) {
 function getNotificationColorClass(type: string, title: string) {
   if (type === 'TEAM_INVITED') return 'teal'
   if (type === 'USER_REGISTER') return 'blue'
+  if (type === 'QUOTA_APPLY') return 'orange'
+  if (type === 'QUOTA_RESULT') return 'teal'
   if (type === 'SHARE_EXPIRED' || title.includes('分享') || title.includes('外链')) return 'orange'
   return 'indigo'
 }
@@ -322,7 +391,8 @@ onShow(() => {
         content: data.content,
         refId: data.refId,
         inviteStatus: data.inviteStatus,
-        registrationStatus: data.registrationStatus
+        registrationStatus: data.registrationStatus,
+        quotaStatus: data.quotaStatus
       })
     }
   })
@@ -485,6 +555,43 @@ onUnload(() => {
                 <text>✕ 已拒绝注册</text>
               </view>
             </view>
+            <!-- QUOTA APPLY WORKFLOW -->
+            <view
+              v-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && isQuotaPending(item.quotaStatus)"
+              class="notify-card-actions"
+              @click.stop
+            >
+              <view
+                class="action-pill danger cd-pressable"
+                :class="{ disabled: actingId === item.id }"
+                @click="handleRejectQuota(item)"
+              >
+                <text>拒绝</text>
+              </view>
+              <view
+                class="action-pill primary cd-pressable"
+                :class="{ disabled: actingId === item.id }"
+                @click="handleApproveQuota(item)"
+              >
+                <text>通过</text>
+              </view>
+            </view>
+            <view
+              v-else-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && item.quotaStatus === 'APPROVED'"
+              class="notify-card-status-row"
+            >
+              <view class="invite-status-badge accepted">
+                <text>✓ 已通过扩容</text>
+              </view>
+            </view>
+            <view
+              v-else-if="auth.isSuperAdmin && item.type === 'QUOTA_APPLY' && item.refId && item.quotaStatus === 'REJECTED'"
+              class="notify-card-status-row"
+            >
+              <view class="invite-status-badge rejected">
+                <text>✕ 已拒绝扩容</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -557,6 +664,31 @@ onUnload(() => {
         <view v-else-if="auth.isAdmin && selectedItem.type === 'USER_REGISTER' && selectedItem.refId && selectedItem.registrationStatus === 'REJECTED'" class="detail-actions detail-actions-col">
           <view class="invite-status-badge large rejected">
             <text>✕ 已拒绝注册</text>
+          </view>
+          <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
+            <text>关闭</text>
+          </view>
+        </view>
+        <!-- QUOTA APPLY WORKFLOW IN DETAIL DIALOG -->
+        <view v-else-if="auth.isSuperAdmin && selectedItem.type === 'QUOTA_APPLY' && selectedItem.refId && isQuotaPending(selectedItem.quotaStatus)" class="detail-actions">
+          <view class="detail-action-btn danger cd-pressable" @click="handleRejectQuota(selectedItem)">
+            <text>拒绝</text>
+          </view>
+          <view class="detail-action-btn primary cd-pressable" @click="handleApproveQuota(selectedItem)">
+            <text>通过扩容</text>
+          </view>
+        </view>
+        <view v-else-if="auth.isSuperAdmin && selectedItem.type === 'QUOTA_APPLY' && selectedItem.refId && selectedItem.quotaStatus === 'APPROVED'" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large accepted">
+            <text>✓ 已通过扩容</text>
+          </view>
+          <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
+            <text>关闭</text>
+          </view>
+        </view>
+        <view v-else-if="auth.isSuperAdmin && selectedItem.type === 'QUOTA_APPLY' && selectedItem.refId && selectedItem.quotaStatus === 'REJECTED'" class="detail-actions detail-actions-col">
+          <view class="invite-status-badge large rejected">
+            <text>✕ 已拒绝扩容</text>
           </view>
           <view class="detail-action-btn neutral cd-pressable" @click="detailVisible = false">
             <text>关闭</text>

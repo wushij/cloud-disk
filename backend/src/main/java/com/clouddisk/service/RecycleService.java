@@ -16,8 +16,6 @@ import com.clouddisk.mapper.FileMapper;
 
 import com.clouddisk.mapper.FolderMapper;
 
-import com.clouddisk.storage.StorageService;
-
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,13 +41,15 @@ public class RecycleService {
 
     private final FolderMapper folderMapper;
 
-    private final StorageService storageService;
-
     private final FolderTreeHelper folderTreeHelper;
 
     private final StorageQuotaService quotaService;
 
     private final FolderService folderService;
+
+    private final TeamAccessService teamAccessService;
+
+    private final StorageReferenceService storageReferenceService;
 
 
 
@@ -236,6 +236,9 @@ public class RecycleService {
                 throw new BusinessException("请先恢复所在文件夹");
 
             }
+            if (folderService.isSharedTeamFolder(file.getFolderId(), userId)) {
+                teamAccessService.requireWrite(file.getFolderId(), userId);
+            }
 
         }
 
@@ -268,6 +271,7 @@ public class RecycleService {
             throw new BusinessException("文件夹不在回收站");
 
         }
+        teamAccessService.requireDeleteFolder(folder, userId);
 
         if (folder.getParentId() != null && folder.getParentId() > 0) {
 
@@ -330,28 +334,9 @@ public class RecycleService {
             throw new BusinessException("文件不存在");
 
         }
+        teamAccessService.requireDeleteFile(file, userId);
 
-        long refs = fileMapper.selectCount(new LambdaQueryWrapper<FileRecord>()
-
-                .eq(FileRecord::getStoragePath, file.getStoragePath())
-
-                .ne(FileRecord::getId, id));
-
-        if (refs == 0) {
-
-            storageService.delete(file.getStoragePath());
-
-            if (file.getThumbnailPath() != null) storageService.delete(file.getThumbnailPath());
-
-            if (file.getPosterPath() != null && !file.getPosterPath().equals(file.getThumbnailPath())) {
-
-                storageService.delete(file.getPosterPath());
-
-            }
-
-            if (file.getTranscodePath() != null) storageService.delete(file.getTranscodePath());
-
-        }
+        storageReferenceService.deletePhysicalArtifacts(file, id);
 
         fileMapper.deleteById(id);
 
@@ -419,7 +404,7 @@ public class RecycleService {
 
         for (FileRecord f : files) {
 
-            silentDeleteFile(f.getId());
+            silentDeleteFile(f.getId(), userId);
 
         }
 
@@ -437,7 +422,7 @@ public class RecycleService {
 
                 if (!Objects.equals(f.getUserId(), userId)) {
 
-                    silentDeleteFile(f.getId());
+                    silentDeleteFile(f.getId(), userId);
 
                 }
 
@@ -455,7 +440,7 @@ public class RecycleService {
 
         for (Folder folder : folders) {
 
-            silentDeleteFolder(folder.getId());
+            silentDeleteFolder(folder.getId(), userId);
 
         }
 
@@ -473,7 +458,7 @@ public class RecycleService {
 
                 if (!Objects.equals(folder.getUserId(), userId)) {
 
-                    silentDeleteFolder(folder.getId());
+                    silentDeleteFolder(folder.getId(), userId);
 
                 }
 
@@ -486,22 +471,17 @@ public class RecycleService {
     /**
      * 幂等删除文件：已被级联删除的文件直接跳过，不抛异常。
      */
-    private void silentDeleteFile(Long id) {
+    private void silentDeleteFile(Long id, long userId) {
         FileRecord file = fileMapper.selectById(id);
         if (file == null || file.getStatus() == null || file.getStatus() != 0) {
             return;
         }
-        long refs = fileMapper.selectCount(new LambdaQueryWrapper<FileRecord>()
-                .eq(FileRecord::getStoragePath, file.getStoragePath())
-                .ne(FileRecord::getId, id));
-        if (refs == 0) {
-            storageService.delete(file.getStoragePath());
-            if (file.getThumbnailPath() != null) storageService.delete(file.getThumbnailPath());
-            if (file.getPosterPath() != null && !file.getPosterPath().equals(file.getThumbnailPath())) {
-                storageService.delete(file.getPosterPath());
-            }
-            if (file.getTranscodePath() != null) storageService.delete(file.getTranscodePath());
+        try {
+            teamAccessService.requireDeleteFile(file, userId);
+        } catch (BusinessException e) {
+            return;
         }
+        storageReferenceService.deletePhysicalArtifacts(file, id);
         fileMapper.deleteById(id);
         if (file.getStatus() != null && file.getStatus() == 1) {
             quotaService.subtractUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
@@ -511,9 +491,14 @@ public class RecycleService {
     /**
      * 幂等删除文件夹：已被级联删除的文件夹直接跳过，不抛异常。
      */
-    private void silentDeleteFolder(Long id) {
+    private void silentDeleteFolder(Long id, long userId) {
         Folder folder = folderMapper.selectById(id);
         if (folder == null || folder.getDeleted() == 0) {
+            return;
+        }
+        try {
+            teamAccessService.requireDeleteFolder(folder, userId);
+        } catch (BusinessException e) {
             return;
         }
         List<Long> folderIds = folderTreeHelper.collectRecycledSubtreeIds(id);
@@ -521,7 +506,7 @@ public class RecycleService {
                 .in(FileRecord::getFolderId, folderIds)
                 .eq(FileRecord::getStatus, 0));
         for (FileRecord f : files) {
-            silentDeleteFile(f.getId());
+            silentDeleteFile(f.getId(), userId);
         }
         folderIds.sort(Comparator.reverseOrder());
         for (Long fid : folderIds) {

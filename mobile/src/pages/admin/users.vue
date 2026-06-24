@@ -19,6 +19,9 @@ interface UserRow {
   storageUsed?: number
   createTime?: string
   hasAvatar?: boolean
+  canManage?: boolean
+  canApprove?: boolean
+  canAssignRole?: boolean
 }
 
 const auth = useAuthStore()
@@ -59,6 +62,29 @@ async function loadUsers() {
   }
 }
 
+function roleLabel(role: string) {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return '超级管理员'
+    case 'ADMIN':
+      return '管理员'
+    default:
+      return '普通用户'
+  }
+}
+
+function roleBadgeClass(role: string) {
+  if (role === 'SUPER_ADMIN') return 'super-admin'
+  if (role === 'ADMIN') return 'admin'
+  return 'user'
+}
+
+function roleOrder(role: string) {
+  if (role === 'SUPER_ADMIN') return 0
+  if (role === 'ADMIN') return 1
+  return 2
+}
+
 onShow(async () => {
   if (!auth.requireLogin()) return
   if (!auth.isAdmin) {
@@ -81,13 +107,12 @@ const filteredUsers = computed(() => {
     // Tab过滤
     if (filterTab.value === 'pending' && u.status !== 2) return false
     if (filterTab.value === 'disabled' && u.status !== 0) return false
-    if (filterTab.value === 'admin' && u.role !== 'ADMIN') return false
+    if (filterTab.value === 'admin' && u.role !== 'ADMIN' && u.role !== 'SUPER_ADMIN') return false
     return true
   })
   return list.sort((a, b) => {
-    const aAdmin = a.role === 'ADMIN' ? 0 : 1
-    const bAdmin = b.role === 'ADMIN' ? 0 : 1
-    if (aAdmin !== bAdmin) return aAdmin - bAdmin
+    const diff = roleOrder(a.role) - roleOrder(b.role)
+    if (diff !== 0) return diff
     return (b.createTime || '').localeCompare(a.createTime || '')
   })
 })
@@ -214,14 +239,14 @@ function resetPassword() {
   })
 }
 
-// 切换角色
+// 切换角色（仅超级管理员）
 function toggleRole() {
   const user = selectedUser.value
-  if (!user) return
+  if (!user || !user.canAssignRole) return
   closeActions()
   const isCurrentlyAdmin = user.role === 'ADMIN'
   const targetRole = isCurrentlyAdmin ? 'USER' : 'ADMIN'
-  const actionText = isCurrentlyAdmin ? '取消管理员权限' : '设为管理员'
+  const actionText = isCurrentlyAdmin ? '降为普通用户' : '设为管理员'
   openConfirm('修改角色', `确定将用户「${user.nickname || user.username}」${actionText}吗？`, isCurrentlyAdmin, async () => {
     try {
       await request({
@@ -378,8 +403,8 @@ function statusClass(status: number) {
 
             <!-- 用户角色与状态 -->
             <view class="user-status-column">
-              <text class="role-badge" :class="user.role.toLowerCase()">
-                {{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}
+              <text class="role-badge" :class="roleBadgeClass(user.role)">
+                {{ roleLabel(user.role) }}
               </text>
               <text class="status-badge" :class="statusClass(user.status)">
                 {{ user.status === 1 ? '正常' : user.status === 2 ? '待审核' : '已禁用' }}
@@ -416,7 +441,7 @@ function statusClass(status: number) {
 
         <view v-if="selectedUser" class="drawer-actions">
           <!-- 待审核用户操作 -->
-          <block v-if="selectedUser.status === 2">
+          <block v-if="selectedUser.status === 2 && selectedUser.canApprove">
             <view class="action-item cd-pressable" @click="approveUser">
               <view class="action-icon-box green">
                 <u-icon name="checkmark" size="18" color="#10b981" bold />
@@ -432,7 +457,7 @@ function statusClass(status: number) {
           </block>
 
           <!-- 正常/禁用用户操作 -->
-          <block v-else>
+          <block v-else-if="selectedUser.canManage">
             <view class="action-item cd-pressable" @click="editQuota">
               <view class="action-icon-box blue">
                 <u-icon name="coupon" size="18" color="var(--cd-primary)" bold />
@@ -448,15 +473,15 @@ function statusClass(status: number) {
               <text class="action-text">重置登录密码</text>
             </view>
 
-            <view v-if="selectedUser.username !== 'admin'" class="action-item cd-pressable" @click="toggleRole">
+            <view v-if="selectedUser.canAssignRole" class="action-item cd-pressable" @click="toggleRole">
               <view class="action-icon-box sky">
                 <u-icon name="account" size="18" color="#0ea5e9" bold />
               </view>
-              <text class="action-text">修改角色权限</text>
-              <text class="action-val">{{ selectedUser.role === 'ADMIN' ? '管理员' : '普通用户' }}</text>
+              <text class="action-text">修改角色</text>
+              <text class="action-val">{{ roleLabel(selectedUser.role) }}</text>
             </view>
 
-            <view v-if="selectedUser.username !== 'admin'" class="action-item cd-pressable" @click="toggleStatus">
+            <view class="action-item cd-pressable" @click="toggleStatus">
               <block v-if="selectedUser.status === 1">
                 <view class="action-icon-box red">
                   <u-icon name="minus-circle" size="18" color="#ef4444" bold />
@@ -496,6 +521,7 @@ function statusClass(status: number) {
       :maxlength="promptMaxlength"
       @confirm="handlePromptConfirm"
     />
+
   </view>
 </template>
 
@@ -726,6 +752,12 @@ function statusClass(status: number) {
     background: rgba(245, 158, 11, 0.08);
     color: #d97706;
     border-color: rgba(245, 158, 11, 0.2);
+  }
+
+  &.super-admin {
+    background: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+    border-color: rgba(239, 68, 68, 0.2);
   }
 
   &.user {

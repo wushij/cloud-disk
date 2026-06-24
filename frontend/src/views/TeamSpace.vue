@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 import http, { TOKEN_KEY } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -30,6 +30,24 @@ interface TeamSpace {
   memberCount: number
   createdAt: string
   avatar?: string
+  maxSize?: number
+  usedBytes?: number
+  usedPercent?: number
+  usedFormatted?: string
+  maxSizeFormatted?: string
+}
+
+interface TeamAccessInfo {
+  role: string
+  canWrite: boolean
+  canManageTeam: boolean
+  canShare: boolean
+  canDeleteAny: boolean
+  usedBytes?: number
+  maxSize?: number
+  usedPercent?: number
+  usedFormatted?: string
+  maxSizeFormatted?: string
 }
 
 interface TeamMember {
@@ -82,15 +100,20 @@ function handleBatchDownload() {
 }
 
 async function handleBatchDelete() {
+  const deletable = selectedItems.value.filter((i) => i.canDelete !== false)
+  if (deletable.length === 0) {
+    ElMessage.warning('所选项目无权删除')
+    return
+  }
   const ok = await confirmDialog.open({
     title: '批量删除',
-    message: `确定要批量删除选中的 ${selectedItems.value.length} 个项目吗？此操作将移入回收站！`,
+    message: `确定要批量删除选中的 ${deletable.length} 个项目吗？此操作将移入回收站！`,
     confirmText: '删除',
     danger: true
   })
   if (!ok) return
   try {
-    for (const item of selectedItems.value) {
+    for (const item of deletable) {
       const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
       await http.delete(url)
     }
@@ -108,6 +131,14 @@ const memberContextSpace = ref<TeamSpace | null>(null)
 
 const membersContext = computed(() => memberContextSpace.value ?? currentSpace.value)
 
+const teamAccess = ref<TeamAccessInfo | null>(null)
+
+const canWriteTeam = computed(() => {
+  if (teamAccess.value) return teamAccess.value.canWrite
+  const role = currentSpace.value?.myRole
+  return !!role && role !== 'VIEWER'
+})
+
 const canManageMembers = computed(
   () => membersContext.value && (membersContext.value.myRole === 'OWNER' || membersContext.value.myRole === 'ADMIN')
 )
@@ -115,6 +146,7 @@ const createName = ref('')
 const creating = ref(false)
 const inviteVisible = ref(false)
 const inviteUsername = ref('')
+const inviteRole = ref('MEMBER')
 const inviting = ref(false)
 const renameVisible = ref(false)
 const renameName = ref('')
@@ -239,6 +271,8 @@ function roleLabel(role: string) {
       return '创建者'
     case 'ADMIN':
       return '管理员'
+    case 'VIEWER':
+      return '只读成员'
     default:
       return '成员'
   }
@@ -250,6 +284,8 @@ function roleColor(role: string) {
       return '#f59e0b'
     case 'ADMIN':
       return '#22c55e'
+    case 'VIEWER':
+      return '#6366f1'
     default:
       return '#94a3b8'
   }
@@ -400,6 +436,10 @@ async function loadFiles() {
       }
     })
     files.value = data.items || []
+    teamAccess.value = data.teamAccess || null
+    if (teamAccess.value && currentSpace.value) {
+      currentSpace.value = { ...currentSpace.value, myRole: teamAccess.value.role }
+    }
   } catch {
     files.value = []
   } finally {
@@ -534,12 +574,14 @@ function onFolderChange(e: Event) {
 }
 
 function onDrop(e: DragEvent) {
+  if (!canWriteTeam.value) return
   e.preventDefault()
   dragOver.value = false
   if (e.dataTransfer?.files?.length) void processFiles(Array.from(e.dataTransfer.files))
 }
 
 function onDragEnter() {
+  if (!canWriteTeam.value) return
   dragOver.value = true
 }
 
@@ -567,6 +609,7 @@ function onWsProgress(data: {
 
 function openInviteDialog() {
   inviteUsername.value = ''
+  inviteRole.value = 'MEMBER'
   inviteVisible.value = true
 }
 
@@ -578,20 +621,95 @@ async function submitInvite() {
     ElMessage.warning('请输入用户名')
     return
   }
+
+  try {
+    await ElMessageBox.confirm(
+      `确认向用户 "${username}" 发送团队加入邀请吗？`,
+      '发送团队邀请',
+      {
+        confirmButtonText: '确认发送',
+        cancelButtonText: '取消',
+        type: 'info',
+        roundButton: true
+      }
+    )
+  } catch {
+    return
+  }
+
   if (inviting.value) return
   inviting.value = true
   try {
     await http.post(`/api/teams/${ctx.id}/members`, {
       username,
-      role: 'MEMBER'
+      role: inviteRole.value
     })
     inviteVisible.value = false
-    ElMessage.success('邀请已发送，等待对方确认')
+    ElNotification({
+      title: '邀请已发送',
+      message: `已成功向 "${username}" 发出邀请，等待对方在其消息中心确认加入。`,
+      type: 'success',
+      duration: 4500,
+      position: 'top-right'
+    })
     await loadMembers()
   } catch {
     /* global toast */
   } finally {
     inviting.value = false
+  }
+}
+
+async function updateMemberRole(member: TeamMember, role: string) {
+  const ctx = membersContext.value
+  if (!ctx) return
+  try {
+    await http.put(`/api/teams/${ctx.id}/members/${member.userId}/role`, { role })
+    ElMessage.success('成员角色已更新')
+    await loadMembers()
+    if (currentSpace.value?.id === ctx.id) {
+      await loadFiles()
+    }
+  } catch {
+    /* global toast */
+  }
+}
+
+const quotaVisible = ref(false)
+const quotaGb = ref(0)
+const quotaUnlimited = ref(true)
+const quotaSaving = ref(false)
+
+function openQuotaDialog() {
+  const max = currentSpace.value?.maxSize ?? 0
+  quotaUnlimited.value = !max || max <= 0
+  quotaGb.value = max > 0 ? Math.round((max / (1024 ** 3)) * 10) / 10 : 0
+  quotaVisible.value = true
+}
+
+async function submitQuota() {
+  if (!currentSpace.value) return
+  const gb = Number(quotaGb.value)
+  if (!quotaUnlimited.value && (isNaN(gb) || gb <= 0)) {
+    ElMessage.warning('请输入有效的配额大小')
+    return
+  }
+  const maxSize = quotaUnlimited.value ? 0 : Math.round(gb * 1024 ** 3)
+  quotaSaving.value = true
+  try {
+    await http.put(`/api/teams/${currentSpace.value.id}/quota`, { maxSize })
+    ElMessage.success('团队配额已更新')
+    quotaVisible.value = false
+    await loadSpaces()
+    if (currentSpace.value) {
+      const updated = spaces.value.find((s) => s.id === currentSpace.value?.id)
+      if (updated) currentSpace.value = { ...currentSpace.value, ...updated }
+      await loadFiles()
+    }
+  } catch {
+    /* global toast */
+  } finally {
+    quotaSaving.value = false
   }
 }
 
@@ -816,6 +934,12 @@ onUnmounted(() => {
               <h2>{{ currentSpace.name }}</h2>
             </div>
             <span class="cd-team-detail-count">共 {{ files.length }} 项</span>
+            <span v-if="teamAccess?.maxSize" class="cd-team-detail-count">
+              · 已用 {{ teamAccess.usedFormatted }} / {{ teamAccess.maxSizeFormatted }}
+            </span>
+            <span v-else-if="teamAccess?.usedBytes" class="cd-team-detail-count">
+              · 已用 {{ teamAccess.usedFormatted }}
+            </span>
           </div>
         </div>
         <div class="cd-team-detail-actions">
@@ -826,6 +950,10 @@ onUnmounted(() => {
           <el-button v-if="canManageMembers" @click="openTeamAvatarPicker">
             <el-icon><Picture /></el-icon>
             更换头像
+          </el-button>
+          <el-button v-if="canManageMembers" @click="openQuotaDialog">
+            <el-icon><Coin /></el-icon>
+            存储配额
           </el-button>
           <el-button v-if="canManageMembers" @click="openRenameDialog()">
             <el-icon><EditPen /></el-icon>
@@ -856,7 +984,7 @@ onUnmounted(() => {
         </el-button>
       </div>
 
-      <div class="cd-team-toolbar">
+      <div v-if="canWriteTeam" class="cd-team-toolbar">
         <el-button type="primary" @click="fileInput?.click()">
           <el-icon><Upload /></el-icon>
           上传文件
@@ -879,7 +1007,7 @@ onUnmounted(() => {
         @dragleave="onDragLeave"
         @drop="onDrop"
       >
-        <div v-if="dragOver" class="cd-drop-overlay">
+        <div v-if="dragOver && canWriteTeam" class="cd-drop-overlay">
           <div class="cd-drop-overlay-inner">
             <el-icon :size="40"><UploadFilled /></el-icon>
             <p>释放文件以上传到当前目录</p>
@@ -1004,10 +1132,42 @@ onUnmounted(() => {
         placeholder="请输入被邀请人的用户名"
         @keyup.enter="submitInvite"
       />
+      <div style="margin-top: 12px">
+        <div class="cd-dialog-desc" style="margin-bottom: 8px">成员角色</div>
+        <el-select v-model="inviteRole" style="width: 100%">
+          <el-option label="成员（可上传/管理自己的文件）" value="MEMBER" />
+          <el-option label="只读成员（仅浏览下载）" value="VIEWER" />
+          <el-option label="管理员（可管理成员与全部文件）" value="ADMIN" />
+        </el-select>
+      </div>
       <template #footer>
         <div class="cd-dialog-footer-pills">
           <el-button size="large" @click="inviteVisible = false">取消</el-button>
           <el-button type="primary" size="large" :loading="inviting" @click="submitInvite">邀请</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="quotaVisible" title="团队存储配额" width="420px" destroy-on-close>
+      <p class="cd-dialog-desc">设置团队空间最大可用容量，0 表示不限制。当前已用：{{ teamAccess?.usedFormatted || '0 B' }}</p>
+      <el-checkbox v-model="quotaUnlimited">不限制容量</el-checkbox>
+      <el-input
+        v-if="!quotaUnlimited"
+        v-model="quotaGb"
+        type="number"
+        :min="0.1"
+        :step="0.1"
+        style="width: 100%; margin-top: 12px"
+        placeholder="请输入配额大小，例如 10"
+      >
+        <template #suffix>
+          <span class="cd-input-suffix-text">GB</span>
+        </template>
+      </el-input>
+      <template #footer>
+        <div class="cd-dialog-footer-pills">
+          <el-button size="large" @click="quotaVisible = false">取消</el-button>
+          <el-button type="primary" size="large" :loading="quotaSaving" @click="submitQuota">保存</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1078,7 +1238,19 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="cd-member-actions">
+              <el-select
+                v-if="canManageMembers && member.role !== 'OWNER' && member.username !== auth.username"
+                :model-value="member.role"
+                size="small"
+                style="width: 112px"
+                @change="(val: string) => updateMemberRole(member, val)"
+              >
+                <el-option label="只读" value="VIEWER" />
+                <el-option label="成员" value="MEMBER" />
+                <el-option label="管理员" value="ADMIN" />
+              </el-select>
               <span
+                v-else
                 class="cd-member-role"
                 :style="{
                   color: roleColor(member.role),

@@ -119,6 +119,7 @@ function roleLabel(role: string) {
   switch (role) {
     case 'OWNER': return '创建者'
     case 'ADMIN': return '管理员'
+    case 'VIEWER': return '只读成员'
     default: return '成员'
   }
 }
@@ -127,6 +128,7 @@ function roleColor(role: string) {
   switch (role) {
     case 'OWNER': return '#f59e0b'
     case 'ADMIN': return '#22c55e'
+    case 'VIEWER': return '#6366f1'
     default: return '#94a3b8'
   }
 }

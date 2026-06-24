@@ -77,6 +77,31 @@ public class TeamSpaceController {
         return Map.of("message", "已移除成员");
     }
 
+    /** 调整成员角色（MEMBER / ADMIN / VIEWER） */
+    @PutMapping("/{id}/members/{userId}/role")
+    public Map<String, String> updateMemberRole(
+            @PathVariable Long id,
+            @PathVariable Long userId,
+            @RequestBody Map<String, String> body) {
+        String role = body.get("role");
+        if (role == null || role.isBlank()) {
+            throw new com.clouddisk.common.BusinessException("缺少 role 参数");
+        }
+        teamSpaceService.updateMemberRole(id, userId, role);
+        return Map.of("message", "角色已更新");
+    }
+
+    /** 设置团队存储配额（字节，0=不限） */
+    @PutMapping("/{id}/quota")
+    public TeamSpace updateQuota(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Object raw = body.get("maxSize");
+        if (raw == null) {
+            throw new com.clouddisk.common.BusinessException("缺少 maxSize 参数");
+        }
+        long maxSize = Long.parseLong(raw.toString());
+        return teamSpaceService.updateQuota(id, maxSize);
+    }
+
     /** 列出团队文件 */
     @GetMapping("/{id}/files")
     public Map<String, Object> listFiles(

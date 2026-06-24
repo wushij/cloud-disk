@@ -15,6 +15,10 @@ export interface FileItem {
   highlightName?: string
   parentId?: number
   createdAt?: string
+  ownerId?: number
+  canDelete?: boolean
+  canModify?: boolean
+  canEdit?: boolean
 }
 
 const DEFAULT_PAGE_SIZE = 50

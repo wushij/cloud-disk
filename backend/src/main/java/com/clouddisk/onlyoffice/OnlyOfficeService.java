@@ -10,6 +10,7 @@ import com.clouddisk.storage.StorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import com.clouddisk.service.TeamAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -37,6 +38,7 @@ public class OnlyOfficeService {
     private final StorageService storageService;
     private final CacheService cacheService;
     private final ObjectMapper objectMapper;
+    private final TeamAccessService teamAccessService;
 
     public Map<String, Object> buildEditorConfig(Long fileId, long userId, String username) {
         return buildEditorConfig(fileId, userId, username, properties.getOnlyoffice().getEditMode());
@@ -69,6 +71,9 @@ public class OnlyOfficeService {
         editorConfig.put("callbackUrl", callbackUrl);
         editorConfig.put("lang", "zh-CN");
         String finalMode = mode != null ? mode : properties.getOnlyoffice().getEditMode();
+        if ("edit".equalsIgnoreCase(finalMode)) {
+            teamAccessService.requireModifyFile(file, userId);
+        }
         editorConfig.put("mode", finalMode);
         editorConfig.put("user", user);
 

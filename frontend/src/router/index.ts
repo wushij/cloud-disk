@@ -30,7 +30,7 @@ router.beforeEach((to) => {
   if (!to.meta.public && !auth.token) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
-  if (to.meta.admin && auth.role !== 'ADMIN') {
+  if (to.meta.admin && auth.role !== 'ADMIN' && auth.role !== 'SUPER_ADMIN') {
     return { path: '/disk' }
   }
   if (to.path === '/login' && auth.token) {

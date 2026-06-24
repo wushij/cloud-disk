@@ -6,7 +6,7 @@ import cn.dev33.satoken.stp.StpUtil;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
-import com.clouddisk.common.BusinessException;
+import com.clouddisk.auth.SystemRole;
 import com.clouddisk.common.UserStatus;
 
 import com.clouddisk.config.CloudDiskProperties;
@@ -15,6 +15,7 @@ import com.clouddisk.dto.ProfileUpdateRequest;
 import com.clouddisk.dto.RegisterRequest;
 import com.clouddisk.util.UsernameValidator;
 import com.clouddisk.entity.User;
+import com.clouddisk.common.BusinessException;
 import com.clouddisk.security.CaptchaService;
 import com.clouddisk.security.LoginProtectionService;
 import com.clouddisk.util.ClientIpUtil;
@@ -28,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.DependsOn;
 
 import org.springframework.util.StringUtils;
 
@@ -42,6 +44,7 @@ import java.util.Map;
 
 
 @Service
+@DependsOn("databaseInitializer")
 
 @RequiredArgsConstructor
 
@@ -89,7 +92,7 @@ public class AuthService {
 
             admin.setStatus(UserStatus.ACTIVE);
 
-            admin.setRole("ADMIN");
+            admin.setRole(SystemRole.SUPER_ADMIN);
 
             admin.setStorageQuota(0L);
 
@@ -101,12 +104,15 @@ public class AuthService {
 
         User admin = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, "admin"));
 
-        if (admin != null && (admin.getRole() == null || admin.getRole().isBlank())) {
-
-            admin.setRole("ADMIN");
-
-            userMapper.updateById(admin);
-
+        if (admin != null) {
+            boolean changed = false;
+            if (admin.getRole() == null || admin.getRole().isBlank() || SystemRole.ADMIN.equals(admin.getRole())) {
+                admin.setRole(SystemRole.SUPER_ADMIN);
+                changed = true;
+            }
+            if (changed) {
+                userMapper.updateById(admin);
+            }
         }
 
     }
@@ -175,7 +181,7 @@ public class AuthService {
 
         user.setRole("USER");
 
-        user.setStorageQuota(UserStatus.DEFAULT_QUOTA_BYTES);
+        user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
 
         userMapper.insert(user);
 
@@ -195,7 +201,7 @@ public class AuthService {
 
     private void notifyAdminsPendingRegistration(User user) {
         List<User> admins = userMapper.selectList(new LambdaQueryWrapper<User>()
-                .eq(User::getRole, "ADMIN")
+                .in(User::getRole, SystemRole.SUPER_ADMIN, SystemRole.ADMIN)
                 .eq(User::getStatus, UserStatus.ACTIVE));
         String displayName = user.getNickname() != null ? user.getNickname() : user.getUsername();
         String content = displayName + "（" + user.getUsername() + "）申请注册账号，请审核是否通过";

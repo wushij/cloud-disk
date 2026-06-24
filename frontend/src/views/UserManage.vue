@@ -21,6 +21,9 @@ interface UserRow {
   storageUsed?: number
   createTime?: string
   hasAvatar?: boolean
+  canManage?: boolean
+  canApprove?: boolean
+  canAssignRole?: boolean
 }
 
 const loading = ref(false)
@@ -56,6 +59,27 @@ async function loadUsers() {
   }
 }
 
+function roleLabel(role: string) {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return '超级管理员'
+    case 'ADMIN':
+      return '管理员'
+    default:
+      return '普通用户'
+  }
+}
+
+function roleTagType(role: string) {
+  if (role === 'SUPER_ADMIN') return 'danger'
+  if (role === 'ADMIN') return 'warning'
+  return 'info'
+}
+
+function isAdminRole(role: string) {
+  return role === 'ADMIN' || role === 'SUPER_ADMIN'
+}
+
 const filteredUsers = computed(() => {
   const list = users.value.filter((u) => {
     const keyword = searchKeyword.value.trim().toLowerCase()
@@ -64,15 +88,21 @@ const filteredUsers = computed(() => {
       u.username.toLowerCase().includes(keyword) ||
       (u.nickname && u.nickname.toLowerCase().includes(keyword))
 
-    const matchesRole = !filterRole.value || u.role === filterRole.value
+    let matchesRole = true
+    if (filterRole.value === 'ADMIN') {
+      matchesRole = isAdminRole(u.role)
+    } else if (filterRole.value === 'USER') {
+      matchesRole = u.role === 'USER'
+    }
     const matchesStatus = filterStatus.value === '' || u.status === filterStatus.value
 
     return matchesKeyword && matchesRole && matchesStatus
   })
   return list.sort((a, b) => {
-    const aAdmin = a.role === 'ADMIN' ? 0 : 1
-    const bAdmin = b.role === 'ADMIN' ? 0 : 1
-    if (aAdmin !== bAdmin) return aAdmin - bAdmin
+    const roleOrder = (r: string) => (r === 'SUPER_ADMIN' ? 0 : r === 'ADMIN' ? 1 : 2)
+    const aOrder = roleOrder(a.role)
+    const bOrder = roleOrder(b.role)
+    if (aOrder !== bOrder) return aOrder - bOrder
     return (b.createTime || '').localeCompare(a.createTime || '')
   })
 })
@@ -124,21 +154,28 @@ async function toggleUserStatus(row: UserRow) {
   }
 }
 
-// 修改角色权限
+// 修改角色（仅超级管理员，以后端 canAssignRole 为准）
 async function toggleUserRole(row: UserRow) {
+  if (!row.canAssignRole) return
   const isCurrentlyAdmin = row.role === 'ADMIN'
   const targetRole = isCurrentlyAdmin ? 'USER' : 'ADMIN'
-  const action = isCurrentlyAdmin ? '取消管理员权限' : '设为管理员'
+  const action = isCurrentlyAdmin ? '降为普通用户' : '设为管理员'
   const ok = await confirmDialog.open({
-    title: '修改权限',
+    title: '修改角色',
     message: `确定将用户「${row.nickname || row.username}」${action}吗？`,
     confirmText: '确定',
     danger: isCurrentlyAdmin
   })
   if (!ok) return
   try {
-    await http.put(`/api/admin/users/${row.id}/role`, { role: targetRole })
-    row.role = targetRole
+    const { data } = await http.put<{ role?: string; storageQuota?: number }>(
+      `/api/admin/users/${row.id}/role`,
+      { role: targetRole }
+    )
+    row.role = data?.role || targetRole
+    if (data?.storageQuota != null) {
+      row.storageQuota = data.storageQuota
+    }
     ElMessage.success('角色修改成功')
   } catch {
     /* global toast */
@@ -252,7 +289,10 @@ function fmtTime(iso?: string) {
   return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour12: false })
 }
 
-onMounted(loadUsers)
+onMounted(async () => {
+  await auth.fetchProfile().catch(() => {})
+  loadUsers()
+})
 </script>
 
 <template>
@@ -277,9 +317,10 @@ onMounted(loadUsers)
           :prefix-icon="Search"
           class="filter-search"
         />
-        <el-select v-model="filterRole" placeholder="全部角色" clearable class="filter-select">
-          <el-option label="管理员 (ADMIN)" value="ADMIN" />
-          <el-option label="普通用户 (USER)" value="USER" />
+        <el-select v-model="filterRole" placeholder="全部用户" clearable class="filter-select">
+          <el-option label="全部用户" value="" />
+          <el-option label="管理员" value="ADMIN" />
+          <el-option label="普通用户" value="USER" />
         </el-select>
         <el-select v-model="filterStatus" placeholder="全部状态" clearable class="filter-select">
           <el-option label="正常" :value="1" />
@@ -313,13 +354,13 @@ onMounted(loadUsers)
         <el-table-column label="角色" width="120" align="center">
           <template #default="{ row }">
             <el-tag
-              :type="row.role === 'ADMIN' ? 'warning' : 'info'"
+              :type="roleTagType(row.role)"
               size="small"
               round
               effect="plain"
               class="role-tag"
             >
-              {{ row.role === 'ADMIN' ? '管理员' : '普通用户' }}
+              {{ roleLabel(row.role) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -366,7 +407,7 @@ onMounted(loadUsers)
           <template #default="{ row }">
             <div class="cd-admin-actions">
               <!-- 正常状态下的管理行为 -->
-              <template v-if="row.status !== 2">
+              <template v-if="row.status !== 2 && row.canManage">
                 <button type="button" class="cd-admin-action quota" title="设置空间配额" @click="openQuotaDialog(row)">
                   <el-icon :size="13"><Coin /></el-icon>
                   配额
@@ -376,16 +417,15 @@ onMounted(loadUsers)
                   密码
                 </button>
                 <button
-                  v-if="row.username !== 'admin'"
+                  v-if="row.canAssignRole"
                   type="button"
                   class="cd-admin-action role-toggle"
-                  title="切换管理员权限"
+                  title="切换管理员角色"
                   @click="toggleUserRole(row)"
                 >
-                  权限
+                  角色
                 </button>
                 <button
-                  v-if="row.username !== 'admin'"
                   type="button"
                   class="cd-admin-action"
                   :class="row.status === 1 ? 'danger' : 'success'"
@@ -397,7 +437,7 @@ onMounted(loadUsers)
               </template>
 
               <!-- 待审批状态下的管理行为 -->
-              <template v-else>
+              <template v-else-if="row.status === 2 && row.canApprove">
                 <button type="button" class="cd-admin-action success approve" title="同意注册申请" @click="handleApprove(row)">
                   <el-icon :size="13"><Check /></el-icon>
                   通过

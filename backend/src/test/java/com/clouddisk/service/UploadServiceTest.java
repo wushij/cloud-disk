@@ -3,6 +3,7 @@ package com.clouddisk.service;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.config.CloudDiskProperties;
 import com.clouddisk.dto.UploadInitRequest;
+import com.clouddisk.entity.FileRecord;
 import com.clouddisk.entity.UploadSession;
 import com.clouddisk.mapper.FileChunkMapper;
 import com.clouddisk.mapper.UploadSessionMapper;
@@ -22,6 +23,8 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,6 +61,28 @@ class UploadServiceTest {
             req.setFileMd5("  ");
             var result = uploadService.checkMd5(req);
             assertEquals(false, result.get("exists"));
+            verify(fileService, never()).findByMd5(anyLong(), anyString());
+        }
+    }
+
+    @Test
+    void checkMd5_usesCurrentUserScope() {
+        try (MockedStatic<AuthService> auth = mockStatic(AuthService.class)) {
+            auth.when(AuthService::currentUserId).thenReturn(7L);
+            var req = new com.clouddisk.dto.Md5CheckRequest();
+            req.setFileMd5("md5-1");
+            req.setFileName("doc.pdf");
+            req.setFileSize(1024L);
+            FileRecord existing = new FileRecord();
+            existing.setId(100L);
+            when(fileService.findByMd5(7L, "md5-1")).thenReturn(existing);
+            when(fileService.instantUpload("md5-1", "doc.pdf", 1024L, 0L)).thenReturn(existing);
+
+            var result = uploadService.checkMd5(req);
+
+            assertEquals(true, result.get("exists"));
+            assertEquals(true, result.get("instant"));
+            verify(fileService).findByMd5(7L, "md5-1");
         }
     }
 

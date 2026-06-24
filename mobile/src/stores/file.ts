@@ -14,6 +14,10 @@ export interface FileItem {
   transcodeStatus?: string
   createdAt?: string
   officeFile?: boolean
+  ownerId?: number
+  canDelete?: boolean
+  canModify?: boolean
+  canEdit?: boolean
 }
 
 export const useFileStore = defineStore('file', () => {

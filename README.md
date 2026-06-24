@@ -863,6 +863,7 @@ cd frontend && npm run build
 
 | 文档 | 说明 |
 |------|------|
+| [docs/功能缺口分析.md](docs/功能缺口分析.md) | 已实现能力与缺失模块分析、迭代路线图 |
 | [docs/部署指南.md](docs/部署指南.md) | Docker、MinIO、CDN、ES、FFmpeg、XXL-JOB、Sentinel、OnlyOffice、监控、SSO、Nginx |
 | [docs/nginx.conf](docs/nginx.conf) | 生产 Nginx 配置（限流、UA 分流、安全 header、gzip） |
 | [sql/init.sql](sql/init.sql) | 数据库建表与初始数据 |

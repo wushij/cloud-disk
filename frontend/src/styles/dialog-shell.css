@@ -280,15 +280,16 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  overflow: auto;
+  overflow: hidden;
   padding: 24px;
+  box-sizing: border-box;
 }
 
 /* 通用图片预览美化（包括普通视图和全屏视图） */
 .cd-preview-media,
 .cd-share-media {
   max-width: 100% !important;
-  max-height: 70vh !important;
+  max-height: 100% !important;
   display: block;
   margin: auto !important;
   border-radius: 12px !important;
@@ -297,6 +298,7 @@
   box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.1) !important;
   border: 1px solid #e2e8f0;
   transition: max-height 0.2s ease-in-out;
+  box-sizing: border-box;
 }
 
 /* 全屏状态下的图片最大高度适配 */

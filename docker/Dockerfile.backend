@@ -2,7 +2,7 @@
 # cd backend && mvn package -DskipTests
 # docker compose --env-file docker/.env -f docker/docker-compose.yml --profile app build backend
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-alpine
 
 ENV TZ=Asia/Shanghai
 WORKDIR /app

@@ -12,6 +12,7 @@ export interface AppNotification {
   createdAt: number
   inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
   registrationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
+  quotaStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
 
 interface NotificationDto {
@@ -24,6 +25,7 @@ interface NotificationDto {
   createdAt: string
   inviteStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
   registrationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
+  quotaStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
 
 function toAppNotification(dto: NotificationDto): AppNotification {
@@ -36,7 +38,8 @@ function toAppNotification(dto: NotificationDto): AppNotification {
     read: dto.isRead === 1,
     createdAt: dto.createdAt ? new Date(dto.createdAt).getTime() : Date.now(),
     inviteStatus: dto.inviteStatus,
-    registrationStatus: dto.registrationStatus
+    registrationStatus: dto.registrationStatus,
+    quotaStatus: dto.quotaStatus
   }
 }
 
@@ -71,6 +74,7 @@ export const useNotificationStore = defineStore('notification', () => {
     refId?: string
     inviteStatus?: AppNotification['inviteStatus']
     registrationStatus?: AppNotification['registrationStatus']
+    quotaStatus?: AppNotification['quotaStatus']
   }) {
     const id = payload.id != null ? String(payload.id) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     if (items.value.find((x) => x.id === id)) return
@@ -85,7 +89,8 @@ export const useNotificationStore = defineStore('notification', () => {
       read: false,
       createdAt: Date.now(),
       inviteStatus: payload.inviteStatus ?? (type === 'TEAM_INVITED' ? 'PENDING' : undefined),
-      registrationStatus: payload.registrationStatus ?? (type === 'USER_REGISTER' ? 'PENDING' : undefined)
+      registrationStatus: payload.registrationStatus ?? (type === 'USER_REGISTER' ? 'PENDING' : undefined),
+      quotaStatus: payload.quotaStatus ?? (type === 'QUOTA_APPLY' ? 'PENDING' : undefined)
     })
     if (items.value.length > 50) {
       items.value.length = 50
@@ -146,6 +151,34 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  async function approveQuota(notification: AppNotification, opinion?: string) {
+    if (!notification.refId) throw new Error('申请无效')
+    await request({
+      url: `/api/quota-applications/admin/${notification.refId}/approve`,
+      method: 'POST',
+      data: { opinion: opinion || '' }
+    })
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.quotaStatus = 'APPROVED'
+    }
+  }
+
+  async function rejectQuota(notification: AppNotification, opinion?: string) {
+    if (!notification.refId) throw new Error('申请无效')
+    await request({
+      url: `/api/quota-applications/admin/${notification.refId}/reject`,
+      method: 'POST',
+      data: { opinion: opinion || '' }
+    })
+    await markRead(notification.id)
+    const n = items.value.find((x) => x.id === notification.id)
+    if (n) {
+      n.quotaStatus = 'REJECTED'
+    }
+  }
+
   async function deleteNotification(id: string) {
     await request({ url: `/api/notifications/${id}`, method: 'DELETE' })
     items.value = items.value.filter((x) => x.id !== id)
@@ -176,6 +209,8 @@ export const useNotificationStore = defineStore('notification', () => {
     rejectTeamInvite,
     approveRegistration,
     rejectRegistration,
+    approveQuota,
+    rejectQuota,
     deleteNotification,
     clearAllNotifications,
     unreadCount

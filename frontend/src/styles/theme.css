@@ -171,6 +171,10 @@
   box-shadow: 0 0 0 1px var(--cd-border) inset !important;
 }
 
+.el-input-number .el-input__wrapper {
+  border-radius: 8px !important;
+}
+
 .el-input__wrapper:hover {
   box-shadow: 0 0 0 1px var(--cd-primary-light) inset !important;
 }

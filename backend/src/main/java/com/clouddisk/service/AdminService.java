@@ -2,6 +2,8 @@ package com.clouddisk.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.clouddisk.auth.AdminPermission;
+import com.clouddisk.auth.SystemRole;
 import com.clouddisk.cache.CacheService;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.common.UserStatus;
@@ -39,20 +41,24 @@ public class AdminService {
     private final AuditLogService auditLogService;
     private final StorageQuotaService quotaService;
     private final PasswordEncoder passwordEncoder;
+    private final AdminAccessService adminAccessService;
+    private final UserCacheService userCacheService;
+    private final NotificationDispatcher notificationDispatcher;
 
     @Autowired(required = false)
     private FileSearchService fileSearchService;
 
     public void requireAdmin() {
-        long userId = AuthService.currentUserId();
-        User user = userMapper.selectById(userId);
-        if (user == null || !"ADMIN".equalsIgnoreCase(user.getRole())) {
-            throw new BusinessException("需要管理员权限");
-        }
+        adminAccessService.requireActor();
+    }
+
+    private User actor() {
+        return adminAccessService.requireActor();
     }
 
     public Map<String, Object> dashboard() {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.DASHBOARD);
         Map<String, Object> m = new LinkedHashMap<>();
         long userCount = userMapper.selectCount(null);
         long fileCount = fileMapper.selectCount(new LambdaQueryWrapper<FileRecord>().eq(FileRecord::getStatus, 1));
@@ -90,16 +96,17 @@ public class AdminService {
     }
 
     public List<Map<String, Object>> listUsers(int page, int size) {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.USERS);
         Page<User> p = userMapper.selectPage(
                 new Page<>(page + 1, size),
                 new LambdaQueryWrapper<User>().orderByDesc(User::getCreateTime));
         List<User> records = new ArrayList<>(p.getRecords());
         records.sort((a, b) -> {
-            boolean aAdmin = "ADMIN".equalsIgnoreCase(a.getRole());
-            boolean bAdmin = "ADMIN".equalsIgnoreCase(b.getRole());
-            if (aAdmin != bAdmin) {
-                return aAdmin ? -1 : 1;
+            int aLevel = SystemRole.level(a.getRole());
+            int bLevel = SystemRole.level(b.getRole());
+            if (aLevel != bLevel) {
+                return Integer.compare(bLevel, aLevel);
             }
             if (a.getCreateTime() != null && b.getCreateTime() != null) {
                 return b.getCreateTime().compareTo(a.getCreateTime());
@@ -113,7 +120,13 @@ public class AdminService {
             row.put("username", u.getUsername());
             row.put("nickname", u.getNickname());
             row.put("email", u.getEmail());
-            row.put("role", u.getRole() != null ? u.getRole() : "USER");
+            row.put("role", u.getRole() != null ? u.getRole() : SystemRole.USER);
+            row.put("canManage", adminAccessService.canManageUser(actor, u)
+                    && adminAccessService.hasPermission(actor, AdminPermission.USERS));
+            row.put("canApprove", adminAccessService.canManageUser(actor, u)
+                    && adminAccessService.hasPermission(actor, AdminPermission.REGISTER));
+            row.put("canAssignRole", adminAccessService.isSuperAdmin(actor)
+                    && !SystemRole.isProtectedSuperAdmin(new SystemRole.UserRef(u.getId(), u.getUsername(), u.getRole())));
             row.put("status", u.getStatus());
             row.put("storageQuota", u.getStorageQuota() != null ? u.getStorageQuota() : 0);
             row.put("storageUsed", u.getStorageUsed() != null ? u.getStorageUsed() : 0);
@@ -127,7 +140,7 @@ public class AdminService {
     public ResponseEntity<Resource> loadUserAvatar(Long userId, jakarta.servlet.http.HttpServletRequest request) {
         long callerId = AuthHelper.requireUserId(request);
         User caller = userMapper.selectById(callerId);
-        if (caller == null || !"ADMIN".equalsIgnoreCase(caller.getRole())) {
+        if (caller == null || !adminAccessService.isAnyAdmin(caller)) {
             throw new BusinessException("需要管理员权限");
         }
         User user = userMapper.selectById(userId);
@@ -139,10 +152,11 @@ public class AdminService {
     }
 
     public void setUserStatus(Long userId, int status) {
-        requireAdmin();
-        User user = userMapper.selectById(userId);
-        if (user == null) throw new BusinessException("用户不存在");
-        if ("admin".equalsIgnoreCase(user.getUsername()) && status == UserStatus.DISABLED) {
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.USERS);
+        User user = adminAccessService.requireManageableTarget(actor, userId);
+        if (SystemRole.isProtectedSuperAdmin(new SystemRole.UserRef(user.getId(), user.getUsername(), user.getRole()))
+                && status == UserStatus.DISABLED) {
             throw new BusinessException("不能禁用超级管理员");
         }
         user.setStatus(status);
@@ -156,15 +170,15 @@ public class AdminService {
     }
 
     public void approveRegistration(Long userId) {
-        requireAdmin();
-        User user = userMapper.selectById(userId);
-        if (user == null) throw new BusinessException("用户不存在");
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.REGISTER);
+        User user = adminAccessService.requireManageableTarget(actor, userId);
         if (user.getStatus() == null || user.getStatus() != UserStatus.PENDING) {
             throw new BusinessException("该注册申请已处理");
         }
         user.setStatus(UserStatus.ACTIVE);
         if (user.getStorageQuota() == null || user.getStorageQuota() <= 0) {
-            user.setStorageQuota(UserStatus.DEFAULT_QUOTA_BYTES);
+            user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
         }
         userMapper.updateById(user);
         cacheService.delete("user:" + userId);
@@ -172,9 +186,9 @@ public class AdminService {
     }
 
     public void rejectRegistration(Long userId) {
-        requireAdmin();
-        User user = userMapper.selectById(userId);
-        if (user == null) throw new BusinessException("用户不存在");
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.REGISTER);
+        User user = adminAccessService.requireManageableTarget(actor, userId);
         if (user.getStatus() == null || user.getStatus() != UserStatus.PENDING) {
             throw new BusinessException("该注册申请已处理");
         }
@@ -185,7 +199,8 @@ public class AdminService {
     }
 
     public void rebuildSearchIndex() {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.SEARCH);
         if (fileSearchService == null) {
             throw new BusinessException("全文搜索未启用");
         }
@@ -195,7 +210,8 @@ public class AdminService {
     }
 
     public Map<String, Object> auditLogs(int page, int size) {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.AUDIT);
         Page<AuditLog> p = auditLogMapper.selectPage(new Page<>(page + 1, size),
                 new LambdaQueryWrapper<AuditLog>().orderByDesc(AuditLog::getCreateTime));
         Map<String, Object> result = new HashMap<>();
@@ -207,14 +223,17 @@ public class AdminService {
     }
 
     public void setUserQuota(Long userId, long quotaBytes) {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.USERS);
+        adminAccessService.requireManageableTarget(actor, userId);
         quotaService.setQuota(userId, quotaBytes);
         auditLogService.logCurrentUser("ADMIN_SET_QUOTA", "user", String.valueOf(userId),
                 "quota=" + quotaBytes);
     }
 
     public Map<String, Object> storageStats() {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.STORAGE);
         Map<String, Object> result = new LinkedHashMap<>();
         // 使用 selectMaps 只映射 file_size 列，避免全量 FileRecord 加载到内存
         // 更优方案：使用 MyBatis XML 或 @Select 注解写 SELECT SUM(file_size) SQL
@@ -250,31 +269,60 @@ public class AdminService {
         return result;
     }
 
-    /** 修改用户角色 */
-    public void setUserRole(Long userId, String role) {
-        requireAdmin();
-        if (!"ADMIN".equalsIgnoreCase(role) && !"USER".equalsIgnoreCase(role)) {
-            throw new BusinessException("非法的角色值，必须为 ADMIN 或 USER");
-        }
+    /** 修改用户角色（仅超级管理员，且不能操作超级管理员账号） */
+    public User setUserRole(Long userId, String role) {
+        User actor = adminAccessService.requireSuperAdmin();
         User user = userMapper.selectById(userId);
-        if (user == null) throw new BusinessException("用户不存在");
-        if ("admin".equalsIgnoreCase(user.getUsername())) {
-            throw new BusinessException("不能修改超级管理员的角色");
+        if (user == null) {
+            throw new BusinessException("用户不存在");
         }
-        user.setRole(role.toUpperCase());
+        adminAccessService.assertRoleAssignable(actor, role, user);
+        String normalized = SystemRole.normalize(role);
+        user.setRole(normalized);
+        if (SystemRole.ADMIN.equals(normalized)) {
+            user.setStorageQuota(UserStatus.DEFAULT_ADMIN_QUOTA_BYTES);
+        } else if (SystemRole.USER.equals(normalized)) {
+            user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
+        }
         userMapper.updateById(user);
-        cacheService.delete("user:" + userId);
-        auditLogService.logCurrentUser("ADMIN_SET_ROLE", "user", String.valueOf(userId), role.toUpperCase());
+        userCacheService.evict(userId);
+        auditLogService.logCurrentUser("ADMIN_SET_ROLE", "user", String.valueOf(userId), normalized);
+
+        String roleLabel = SystemRole.ADMIN.equals(normalized) ? "管理员" : "普通用户";
+        long quotaBytes = user.getStorageQuota() != null ? user.getStorageQuota() : 0;
+        String quotaLabel = quotaBytes > 0 ? formatQuotaSize(quotaBytes) : "不限";
+        notificationDispatcher.dispatch(userId, "ROLE_CHANGED", "角色与容量已更新",
+                "您的账号已调整为「" + roleLabel + "」，存储容量已更新为 " + quotaLabel + "。", normalized);
+        return user;
+    }
+
+    private static String formatQuotaSize(long bytes) {
+        if (bytes < 1024L * 1024 * 1024) {
+            return String.format("%.0f MB", bytes / 1024.0 / 1024);
+        }
+        return String.format("%.0f GB", bytes / 1024.0 / 1024 / 1024);
+    }
+
+    public Map<String, Object> adminContext() {
+        User actor = actor();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("role", actor.getRole());
+        m.put("superAdmin", adminAccessService.isSuperAdmin(actor));
+        return m;
     }
 
     /** 重置用户密码 */
     public void resetUserPassword(Long userId, String newPassword) {
-        requireAdmin();
+        User actor = actor();
+        adminAccessService.requirePermission(actor, AdminPermission.USERS);
+        adminAccessService.requireManageableTarget(actor, userId);
         if (newPassword == null || newPassword.isBlank()) {
             throw new BusinessException("密码不能为空");
         }
         User user = userMapper.selectById(userId);
-        if (user == null) throw new BusinessException("用户不存在");
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
         user.setPassword(passwordEncoder.encode(newPassword));
         userMapper.updateById(user);
         cacheService.delete("user:" + userId);

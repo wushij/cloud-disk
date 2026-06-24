@@ -53,6 +53,8 @@ public class FileService {
     private final VirusScanService virusScanService;
     private final FolderTreeHelper folderTreeHelper;
 
+    private final TeamAccessService teamAccessService;
+
     private final StoragePathService storagePathService;
 
     /** ElasticSearch 搜索服务（条件装配，ES 未启用时为 null） */
@@ -99,6 +101,7 @@ public class FileService {
             }
         }
 
+        List<Map<String, Object>> items = new ArrayList<>();
         Page<FileRecord> fp = new Page<>(page + 1, size);
         if (!foldersOnly) {
             LambdaQueryWrapper<FileRecord> fq = new LambdaQueryWrapper<FileRecord>()
@@ -116,12 +119,21 @@ public class FileService {
             fp = fileMapper.selectPage(fp, fq);
         }
 
-        List<Map<String, Object>> items = new ArrayList<>();
         for (Folder f : folders) {
-            items.add(folderToItem(f, userId));
+            Map<String, Object> item = folderToItem(f, userId);
+            if (sharedTeamFolder) {
+                teamAccessService.resolveForFolder(fid, userId)
+                        .ifPresent(ctx -> teamAccessService.enrichFolderItem(item, f, userId, ctx));
+            }
+            items.add(item);
         }
+        Optional<TeamAccessService.TeamContext> teamCtx = sharedTeamFolder
+                ? teamAccessService.resolveForFolder(fid, userId)
+                : Optional.empty();
         for (FileRecord f : fp.getRecords()) {
-            items.add(fileToItem(f));
+            Map<String, Object> item = fileToItem(f);
+            teamCtx.ifPresent(ctx -> teamAccessService.enrichFileItem(item, f, userId, ctx));
+            items.add(item);
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -129,6 +141,7 @@ public class FileService {
         result.put("totalElements", fp.getTotal() + folders.size());
         result.put("page", page);
         result.put("size", size);
+        teamCtx.ifPresent(ctx -> result.put("teamAccess", teamAccessService.toAccessMap(ctx, userId)));
         return result;
     }
 
@@ -181,6 +194,10 @@ public class FileService {
                                    String mimeType, String md5, String storagePath) {
         if (folderId != null && folderId > 0) {
             folderService.getOwnedOrShared(folderId, userId);
+            if (folderService.isSharedTeamFolder(folderId, userId)) {
+                teamAccessService.requireWrite(folderId, userId);
+                teamAccessService.checkTeamQuota(folderId, size);
+            }
         }
         fileValidator.validate(fileName, size);
         if (!StringUtils.hasText(mimeType)) {
@@ -202,7 +219,7 @@ public class FileService {
         fileCacheService.cacheFile(record);
         quotaService.addUsage(userId, size);
         if (StringUtils.hasText(md5)) {
-            cacheService.set("md5:" + md5, storagePath, MD5_CACHE_TTL);
+            cacheService.set(FileCacheService.md5PathCacheKey(userId, md5), storagePath, MD5_CACHE_TTL);
         }
         if (MediaProcessService.isVideo(mimeType, fileName)) {
             record.setTranscodeStatus(TranscodeStatus.PENDING);
@@ -230,15 +247,16 @@ public class FileService {
                 file.getContentType(), null, storagePath);
     }
 
-    public FileRecord findByMd5(String md5) {
-        return fileCacheService.getByMd5(md5);
+    /** 按当前用户 + MD5 查找可秒传文件（不跨用户）。 */
+    public FileRecord findByMd5(long userId, String md5) {
+        return fileCacheService.getByMd5(userId, md5);
     }
 
     public FileRecord instantUpload(String md5, String fileName, Long fileSize, Long folderId) {
         long userId = AuthService.currentUserId();
-        FileRecord existing = findByMd5(md5);
+        FileRecord existing = findByMd5(userId, md5);
         if (existing == null) {
-            throw new BusinessException("秒传失败：文件不存在");
+            throw new BusinessException("秒传失败：当前账号下不存在相同文件");
         }
         return createRecord(userId, folderId, fileName, fileSize, existing.getFileType(), md5, existing.getStoragePath());
     }
@@ -247,6 +265,7 @@ public class FileService {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
         if (file.getStatus() != 1) throw new BusinessException("文件在回收站中");
+        teamAccessService.requireModifyFile(file, userId);
         String name = req.getName();
         if (name == null || name.isBlank()) throw new BusinessException("名称不能为空");
         name = name.trim();
@@ -265,8 +284,14 @@ public class FileService {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
         if (file.getStatus() != 1) throw new BusinessException("文件在回收站中");
+        teamAccessService.requireModifyFile(file, userId);
         Long targetId = req.getTargetFolderId() != null ? req.getTargetFolderId() : 0L;
-        if (targetId > 0) folderService.getOwnedOrShared(targetId, userId);
+        if (targetId > 0) {
+            folderService.getOwnedOrShared(targetId, userId);
+            if (folderService.isSharedTeamFolder(targetId, userId)) {
+                teamAccessService.requireWrite(targetId, userId);
+            }
+        }
         checkDuplicateFileName(userId, targetId, file.getFileName(), id);
         file.setFolderId(targetId);
         fileMapper.updateById(file);
@@ -282,8 +307,14 @@ public class FileService {
         long userId = AuthService.currentUserId();
         FileRecord src = getOwnedOrShared(id, userId);
         if (src.getStatus() != 1) throw new BusinessException("文件在回收站中");
+        teamAccessService.requireModifyFile(src, userId);
         Long targetId = req.getTargetFolderId() != null ? req.getTargetFolderId() : src.getFolderId();
-        if (targetId > 0) folderService.getOwnedOrShared(targetId, userId);
+        if (targetId > 0) {
+            folderService.getOwnedOrShared(targetId, userId);
+            if (folderService.isSharedTeamFolder(targetId, userId)) {
+                teamAccessService.requireWrite(targetId, userId);
+            }
+        }
         String copyName = generateCopyName(userId, targetId, src.getFileName());
         return createRecord(userId, targetId, copyName, src.getFileSize(),
                 src.getFileType(), src.getFileMd5(), src.getStoragePath());
@@ -292,6 +323,7 @@ public class FileService {
     public void deleteToRecycle(Long id) {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
+        teamAccessService.requireDeleteFile(file, userId);
         file.setStatus(0);
         fileMapper.updateById(file);
         fileCacheService.evict(file.getId());

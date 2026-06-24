@@ -1,9 +1,10 @@
 -- CloudDisk Pro 完整数据库脚本（MySQL 8.x，utf8mb4）
--- 唯一入口：新环境直接执行本文件；已有库可重复执行（CREATE IF NOT EXISTS）
+-- 唯一入口：新环境直接执行本文件；已有库请执行 sql/update_system_rbac.sql 增量升级
 --
 -- cloud_disk 业务表：tb_user, tb_folder, tb_file, tb_share, tb_upload_session,
 --   tb_file_chunk, tb_audit_log, tb_team_space, tb_team_member, tb_team_invitation,
---   tb_notification
+--   tb_notification, tb_quota_application
+-- 系统角色：SUPER_ADMIN（超级管理员）/ ADMIN（管理员）/ USER（普通用户）
 -- xxl_job 调度库（可选）
 
 -- =============================================================================
@@ -25,8 +26,8 @@ CREATE TABLE IF NOT EXISTS `tb_user` (
   `email` VARCHAR(128) DEFAULT NULL,
   `phone` VARCHAR(32) DEFAULT NULL,
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '1正常 0禁用 2待审核',
-  `role` VARCHAR(32) NOT NULL DEFAULT 'USER' COMMENT 'USER/ADMIN',
-  `storage_quota` BIGINT NOT NULL DEFAULT 0 COMMENT '存储配额(字节)，0=不限；新注册用户默认200GB',
+  `role` VARCHAR(32) NOT NULL DEFAULT 'USER' COMMENT 'USER/ADMIN/SUPER_ADMIN',
+  `storage_quota` BIGINT NOT NULL DEFAULT 0 COMMENT '存储配额(字节)，0=不限；USER默认200GB，ADMIN默认500GB',
   `storage_used` BIGINT NOT NULL DEFAULT 0 COMMENT '已用存储(字节)',
   `create_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `update_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -34,6 +35,9 @@ CREATE TABLE IF NOT EXISTS `tb_user` (
   UNIQUE KEY `uk_username` (`username`),
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 默认超级管理员由应用首次启动时创建（admin / admin123，role=SUPER_ADMIN，配额不限）
+-- 若需手动初始化，可在表创建后执行 update_system_rbac.sql 中的角色与配额修正语句
 
 -- 文件夹表
 CREATE TABLE IF NOT EXISTS `tb_folder` (
@@ -175,7 +179,7 @@ CREATE TABLE IF NOT EXISTS `tb_team_member` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `space_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
-  `role` VARCHAR(16) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/ADMIN/MEMBER',
+  `role` VARCHAR(16) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/ADMIN/MEMBER/VIEWER',
   `join_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_space_user` (`space_id`, `user_id`),
@@ -190,7 +194,7 @@ CREATE TABLE IF NOT EXISTS `tb_team_invitation` (
   `space_id` BIGINT NOT NULL,
   `inviter_id` BIGINT NOT NULL,
   `invitee_id` BIGINT NOT NULL,
-  `role` VARCHAR(16) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/ADMIN/MEMBER',
+  `role` VARCHAR(16) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/ADMIN/MEMBER/VIEWER',
   `status` VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/ACCEPTED/REJECTED',
   `create_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `update_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -216,6 +220,22 @@ CREATE TABLE IF NOT EXISTS `tb_notification` (
   KEY `idx_notif_user` (`user_id`, `is_read`),
   KEY `idx_notif_user_time` (`user_id`, `create_time`),
   KEY `idx_notif_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 容量扩容申请
+CREATE TABLE IF NOT EXISTS `tb_quota_application` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT NOT NULL,
+  `current_quota` BIGINT NOT NULL,
+  `apply_quota` BIGINT NOT NULL COMMENT '申请增加到的总配额(字节)',
+  `reason` VARCHAR(512) DEFAULT NULL,
+  `status` VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+  `approval_opinion` VARCHAR(512) DEFAULT NULL,
+  `create_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_user_status` (`user_id`, `status`),
+  CONSTRAINT `fk_quota_user` FOREIGN KEY (`user_id`) REFERENCES `tb_user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================

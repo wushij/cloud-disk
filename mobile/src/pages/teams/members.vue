@@ -28,6 +28,9 @@ const members = ref<TeamMember[]>([])
 const membersLoading = ref(false)
 const inviteVisible = ref(false)
 const inviting = ref(false)
+const inviteConfirmVisible = ref(false)
+const inviteSuccessVisible = ref(false)
+const pendingInviteUsername = ref('')
 const avatarBroken = ref<Record<number, boolean>>({})
 const removeVisible = ref(false)
 const removeTarget = ref<TeamMember | null>(null)
@@ -95,6 +98,7 @@ function roleLabel(role: string) {
   switch (role) {
     case 'OWNER': return '创建者'
     case 'ADMIN': return '管理员'
+    case 'VIEWER': return '只读成员'
     default: return '成员'
   }
 }
@@ -103,6 +107,7 @@ function roleColor(role: string) {
   switch (role) {
     case 'OWNER': return '#f59e0b'
     case 'ADMIN': return '#22c55e'
+    case 'VIEWER': return '#6366f1'
     default: return '#94a3b8'
   }
 }
@@ -153,16 +158,22 @@ async function submitInvite(username: string) {
     uni.showToast({ title: '请输入用户名', icon: 'none' })
     return
   }
+  pendingInviteUsername.value = name
+  inviteVisible.value = false
+  inviteConfirmVisible.value = true
+}
+
+async function confirmSubmitInvite() {
   if (inviting.value) return
   inviting.value = true
   try {
     await request({
       url: `/api/teams/${spaceId.value}/members`,
       method: 'POST',
-      data: { username: name, role: 'MEMBER' }
+      data: { username: pendingInviteUsername.value, role: 'MEMBER' }
     })
-    inviteVisible.value = false
-    uni.showToast({ title: '邀请已发送，等待对方确认', icon: 'success' })
+    inviteConfirmVisible.value = false
+    inviteSuccessVisible.value = true
     await loadMembers()
   } catch {
     /* handled */
@@ -283,6 +294,24 @@ async function confirmRemove() {
       confirm-text="移除"
       danger
       @confirm="confirmRemove"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="inviteConfirmVisible"
+      title="发送邀请"
+      :message="`确定向用户「${pendingInviteUsername}」发送团队邀请吗？`"
+      confirm-text="确定发送"
+      tone="info"
+      @confirm="confirmSubmitInvite"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="inviteSuccessVisible"
+      title="邀请已发送"
+      :message="`已向「${pendingInviteUsername}」发出邀请。对方在消息中心接受后，即会加入团队。`"
+      confirm-text="好的"
+      alert-only
+      tone="success"
     />
   </view>
 </template>

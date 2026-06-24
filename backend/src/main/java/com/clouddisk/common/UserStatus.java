@@ -9,8 +9,12 @@ public final class UserStatus {
     /** 注册待管理员审核 */
     public static final int PENDING = 2;
 
-    /** 新用户默认存储配额：200 GB */
-    public static final long DEFAULT_QUOTA_BYTES = 200L * 1024 * 1024 * 1024;
+    /** 普通用户默认存储配额：200 GB */
+    public static final long DEFAULT_USER_QUOTA_BYTES = 200L * 1024 * 1024 * 1024;
+    /** 管理员默认存储配额：500 GB */
+    public static final long DEFAULT_ADMIN_QUOTA_BYTES = 500L * 1024 * 1024 * 1024;
+    /** 普通用户申请扩容目标：500 GB */
+    public static final long USER_APPLY_QUOTA_BYTES = 500L * 1024 * 1024 * 1024;
 
     private UserStatus() {
     }

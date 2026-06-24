@@ -62,6 +62,8 @@ public class FolderService {
 
     private final TeamMemberMapper teamMemberMapper;
 
+    private final TeamAccessService teamAccessService;
+
 
 
     @Autowired(required = false)
@@ -162,37 +164,11 @@ public class FolderService {
 
     /** 团队目录下的分享权限：仅 OWNER / ADMIN 可创建外链 */
     public void requireTeamSharePermission(long folderId, long userId) {
-        if (folderId <= 0) return;
-        TeamSpace space = resolveTeamSpaceForFolder(folderId);
-        if (space == null) return;
-
-        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
-                .eq(TeamMember::getSpaceId, space.getId())
-                .eq(TeamMember::getUserId, userId));
-        if (member == null) {
-            throw new BusinessException("你不是该团队的成员");
-        }
-        if ("OWNER".equals(member.getRole()) || "ADMIN".equals(member.getRole())) {
-            return;
-        }
-        throw new BusinessException("普通成员无法分享团队文件，请联系团队管理员");
+        teamAccessService.requireSharePermission(folderId, userId);
     }
 
     private TeamSpace resolveTeamSpaceForFolder(long folderId) {
-        Folder current = folderMapper.selectById(folderId);
-        if (current == null) return null;
-        int depth = 0;
-        while (current != null && depth < 30) {
-            TeamSpace space = teamSpaceMapper.selectOne(new LambdaQueryWrapper<TeamSpace>()
-                    .eq(TeamSpace::getRootFolderId, current.getId())
-                    .eq(TeamSpace::getStatus, 1));
-            if (space != null) return space;
-            Long parentId = current.getParentId();
-            if (parentId == null || parentId <= 0) break;
-            current = folderMapper.selectById(parentId);
-            depth++;
-        }
-        return null;
+        return teamAccessService.resolveTeamSpaceForFolder(folderId);
     }
 
 
@@ -236,6 +212,9 @@ public class FolderService {
             Folder parent = getOwnedOrShared(parentId, userId);
 
             if (parent.getDeleted() != 0) throw new BusinessException("父目录不存在");
+            if (isSharedTeamFolder(parentId, userId)) {
+                teamAccessService.requireWrite(parentId, userId);
+            }
 
         }
 
@@ -272,6 +251,7 @@ public class FolderService {
         Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹在回收站中");
+        teamAccessService.requireModifyFolder(folder, userId);
 
         String name = req.getName();
 
@@ -298,6 +278,7 @@ public class FolderService {
         Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹在回收站中");
+        teamAccessService.requireModifyFolder(folder, userId);
 
         Long targetId = req.getTargetFolderId() != null ? req.getTargetFolderId() : 0L;
 
@@ -312,6 +293,9 @@ public class FolderService {
             Folder target = getOwnedOrShared(targetId, userId);
 
             if (target.getDeleted() != 0) throw new BusinessException("目标目录不存在");
+            if (isSharedTeamFolder(targetId, userId)) {
+                teamAccessService.requireWrite(targetId, userId);
+            }
 
             if (isDescendant(targetId, folder.getId(), userId)) {
 
@@ -342,6 +326,7 @@ public class FolderService {
         Folder folder = getOwnedOrShared(id, userId);
 
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹已在回收站");
+        teamAccessService.requireDeleteFolder(folder, userId);
 
 
 

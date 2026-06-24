@@ -352,7 +352,7 @@ function formatDate(value?: string) {
           </el-dropdown>
 
           <button
-            v-if="simple"
+            v-if="simple && row.canDelete !== false"
             type="button"
             class="cd-grid-action-btn cd-grid-action-more"
             aria-label="删除"

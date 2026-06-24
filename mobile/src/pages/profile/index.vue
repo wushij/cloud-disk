@@ -100,6 +100,66 @@ function showAbout() {
 function goUserManage() {
   uni.navigateTo({ url: '/pages/admin/users' })
 }
+
+const applyVisible = ref(false)
+const applyGB = ref('')
+const applyReason = ref('')
+const applySaving = ref(false)
+const USER_APPLY_QUOTA_GB = 500
+
+const canApplyQuota = computed(
+  () => !auth.isSuperAdmin && usage.value != null && (usage.value.quotaBytes || 0) > 0
+)
+
+function openApplyQuota() {
+  applyVisible.value = true
+  applyGB.value = auth.isAdmin ? '' : String(USER_APPLY_QUOTA_GB)
+  applyReason.value = ''
+}
+
+async function submitApply() {
+  let quotaBytes: number
+  if (auth.isAdmin) {
+    if (!applyGB.value) {
+      uni.showToast({ title: '请输入目标容量', icon: 'none' })
+      return
+    }
+    const gb = Number(applyGB.value)
+    if (isNaN(gb) || gb <= 0) {
+      uni.showToast({ title: '容量必须大于 0', icon: 'none' })
+      return
+    }
+    quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
+  } else {
+    quotaBytes = USER_APPLY_QUOTA_GB * 1024 * 1024 * 1024
+  }
+  if (usage.value && quotaBytes <= usage.value.quotaBytes) {
+    uni.showToast({ title: '申请配额必须大于当前配额', icon: 'none' })
+    return
+  }
+
+  applySaving.value = true
+  try {
+    await request({
+      url: '/api/quota-applications',
+      method: 'POST',
+      data: {
+        applyQuota: quotaBytes,
+        reason: applyReason.value
+      }
+    })
+    uni.showToast({ title: '申请已提交', icon: 'success' })
+    applyVisible.value = false
+    
+    // Refresh storage usage
+    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    updateStorageUsage(data)
+  } catch (err: any) {
+    uni.showToast({ title: err.response?.data?.message || err.message || '提交失败', icon: 'none' })
+  } finally {
+    applySaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -144,7 +204,10 @@ function goUserManage() {
     <!-- 存储卡片 -->
     <view v-if="usage" class="storage-card">
       <view class="storage-head">
-        <text class="storage-title">存储空间</text>
+        <view class="storage-head-left">
+          <text class="storage-title">存储空间</text>
+          <text v-if="canApplyQuota" class="storage-apply-btn cd-pressable" @click="openApplyQuota">申请扩容</text>
+        </view>
         <text class="storage-percent">{{ storagePercent }}%</text>
       </view>
 
@@ -312,6 +375,65 @@ function goUserManage() {
         <text class="about-desc">个人专属的高性能云端存储系统</text>
         <view class="about-btn cd-pressable" @click="aboutVisible = false">
           <text>知道了</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 申请扩容弹窗 -->
+    <view v-if="applyVisible" class="about-root" @touchmove.stop.prevent>
+      <view class="about-mask" @click="applyVisible = false" />
+      <view class="about-panel cd-scale-in apply-panel" @click.stop>
+        <view class="apply-header">
+          <view class="apply-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" fill="var(--cd-primary)" />
+            </svg>
+          </view>
+          <text class="apply-title">申请容量扩容</text>
+        </view>
+        
+        <view class="apply-hint">
+          <text>请填写申请的目标容量（GB）及扩容原因</text>
+        </view>
+
+        <view class="apply-form">
+          <view v-if="auth.isAdmin" class="form-item">
+            <text class="form-label">目标容量 (GB)</text>
+            <view class="input-wrap">
+              <input
+                type="number"
+                v-model="applyGB"
+                placeholder="例如 1000"
+                class="apply-input"
+              />
+              <text class="input-unit">GB</text>
+            </view>
+          </view>
+          <view v-else class="form-item">
+            <text class="form-label">目标容量</text>
+            <view class="apply-fixed-quota">
+              <text>500 GB</text>
+            </view>
+          </view>
+          
+          <view class="form-item" style="margin-top: 20rpx;">
+            <text class="form-label">申请原因</text>
+            <textarea
+              v-model="applyReason"
+              placeholder="请输入申请扩容的理由..."
+              class="apply-textarea"
+              maxlength="200"
+            />
+          </view>
+        </view>
+
+        <view class="apply-buttons">
+          <view class="btn-cancel cd-pressable" @click="applyVisible = false">
+            <text>取消</text>
+          </view>
+          <view class="btn-submit cd-pressable" :class="{ loading: applySaving }" @click="submitApply">
+            <text>{{ applySaving ? '提交中...' : '提交申请' }}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -757,5 +879,199 @@ function goUserManage() {
 .about-btn:active {
   transform: scale(0.98);
   opacity: 0.95;
+}
+
+.storage-head-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.storage-apply-btn {
+  font-size: 20rpx;
+  color: var(--cd-primary);
+  background: rgba(79, 124, 255, 0.08);
+  font-weight: 700;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  transition: all var(--cd-transition-fast);
+  
+  &:active {
+    background: rgba(79, 124, 255, 0.15);
+    transform: scale(0.95);
+  }
+}
+
+/* 申请扩容弹窗样式 */
+.apply-panel {
+  max-width: 600rpx !important;
+  padding: 40rpx !important;
+}
+
+.apply-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  margin-bottom: 20rpx;
+}
+
+.apply-icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 18rpx;
+  background: rgba(79, 124, 255, 0.1);
+  color: var(--cd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.apply-title {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: var(--cd-text);
+}
+
+.apply-hint {
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--cd-text-secondary);
+  background: rgba(79, 124, 255, 0.04);
+  border-left: 6rpx solid var(--cd-primary);
+  padding: 16rpx 20rpx;
+  border-radius: 4rpx 16rpx 16rpx 4rpx;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  margin-bottom: 24rpx;
+}
+
+.apply-form {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.form-label {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--cd-text);
+}
+
+.apply-fixed-quota {
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f8fafc;
+  border: 1rpx solid var(--cd-border-light);
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--cd-text);
+}
+
+.input-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.apply-input {
+  width: 100%;
+  height: 80rpx;
+  background: var(--cd-bg);
+  border: 1rpx solid var(--cd-border);
+  border-radius: 16rpx;
+  padding: 0 80rpx 0 24rpx;
+  font-size: 28rpx;
+  color: var(--cd-text);
+}
+
+.input-unit {
+  position: absolute;
+  right: 24rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--cd-text-muted);
+}
+
+.apply-textarea {
+  width: 100%;
+  height: 160rpx;
+  background: var(--cd-bg);
+  border: 1rpx solid var(--cd-border);
+  border-radius: 16rpx;
+  padding: 16rpx 24rpx;
+  font-size: 28rpx;
+  color: var(--cd-text);
+  box-sizing: border-box;
+}
+
+.apply-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+  width: 100%;
+  margin-top: 36rpx;
+}
+
+.btn-cancel {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 999rpx;
+  background: #f1f5f9;
+  border: 1rpx solid var(--cd-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--cd-transition-fast);
+  
+  text {
+    font-size: 26rpx;
+    font-weight: 700;
+    color: var(--cd-text-secondary);
+  }
+  
+  &:active {
+    background: #e2e8f0;
+  }
+}
+
+.btn-submit {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 999rpx;
+  background: var(--cd-primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6rpx 16rpx rgba(1, 7, 16, 0.15);
+  transition: all var(--cd-transition-fast);
+  
+  text {
+    font-size: 26rpx;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  
+  &:active {
+    transform: scale(0.98);
+    opacity: 0.95;
+  }
+  
+  &.loading {
+    opacity: 0.7;
+    pointer-events: none;
+  }
 }
 </style>

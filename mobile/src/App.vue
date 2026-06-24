@@ -4,6 +4,8 @@ import { onLaunch, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { subscribeWs } from '@/utils/ws'
+import { updateStorageUsage } from '@/utils/sharedState'
+import { request } from '@/api/http'
 
 let unsubscribeWs: (() => void) | null = null
 
@@ -26,8 +28,15 @@ function setupNotifications() {
         content: data.content,
         refId: data.refId,
         inviteStatus: data.inviteStatus,
-        registrationStatus: data.registrationStatus
+        registrationStatus: data.registrationStatus,
+        quotaStatus: data.quotaStatus
       })
+      if (data.notifyType === 'ROLE_CHANGED' || data.notifyType === 'QUOTA_RESULT') {
+        auth.fetchProfile().catch(() => {})
+        request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+          .then((usage) => updateStorageUsage(usage))
+          .catch(() => {})
+      }
     }
   })
 }

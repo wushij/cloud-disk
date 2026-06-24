@@ -11,7 +11,8 @@ export const useAuthStore = defineStore('auth', () => {
   const avatarVersion = ref(0)
 
   const isLoggedIn = computed(() => !!token.value)
-  const isAdmin = computed(() => role.value === 'ADMIN')
+  const isAdmin = computed(() => role.value === 'ADMIN' || role.value === 'SUPER_ADMIN')
+  const isSuperAdmin = computed(() => role.value === 'SUPER_ADMIN')
 
   const avatarSrc = computed(() => {
     const t = token.value || localStorage.getItem(TOKEN_KEY)
@@ -133,6 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
     avatarInitial,
     isLoggedIn,
     isAdmin,
+    isSuperAdmin,
     restore,
     bumpAvatar,
     login,

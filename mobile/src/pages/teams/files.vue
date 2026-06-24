@@ -166,13 +166,23 @@ function handleBatchDownload() {
 }
 
 function handleBatchDelete() {
-  if (selectedItems.value.length === 0) return
+  const deletable = selectedItems.value.filter((i) => i.canDelete !== false)
+  if (deletable.length === 0) {
+    uni.showToast({ title: '所选项目无权删除', icon: 'none' })
+    return
+  }
+  selectedItems.value = deletable
   confirmAction.value = 'batch_delete'
   confirmVisible.value = true
 }
 
 // 菜单状态
 const myRole = ref('')
+const teamAccess = ref<{ canWrite?: boolean; canShare?: boolean } | null>(null)
+const canWriteTeam = computed(() => {
+  if (teamAccess.value?.canWrite != null) return teamAccess.value.canWrite
+  return myRole.value !== 'VIEWER'
+})
 const menuVisible = ref(false)
 const renameVisible = ref(false)
 const renaming = ref(false)
@@ -239,10 +249,12 @@ const actionList = computed(() => {
     if (row.previewable && row.officeFile) list.push({ name: '预览文档' })
     list.push({ name: '下载' })
   }
-  if (myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
+  if (teamAccess.value?.canShare || myRole.value === 'OWNER' || myRole.value === 'ADMIN') {
     list.push({ name: '分享' })
   }
-  list.push({ name: '删除', color: '#ef4444' })
+  if (row.canDelete !== false) {
+    list.push({ name: '删除', color: '#ef4444' })
+  }
   return list
 })
 
@@ -419,11 +431,15 @@ async function loadFiles() {
     if (currentFolderId.value !== rootFolderId.value) {
       params.folderId = currentFolderId.value
     }
-    const data = await request<{ items: FileItem[] }>({
+    const data = await request<{ items: FileItem[]; teamAccess?: { role: string; canWrite?: boolean; canShare?: boolean } }>({
       url: `/api/teams/${spaceId.value}/files`,
       data: params
     })
     items.value = data.items || []
+    teamAccess.value = data.teamAccess || null
+    if (teamAccess.value?.role) {
+      myRole.value = teamAccess.value.role
+    }
   } catch {
     items.value = []
   } finally {

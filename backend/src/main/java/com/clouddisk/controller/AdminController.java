@@ -83,11 +83,21 @@ public class AdminController {
 
     /** 修改用户角色 */
     @PutMapping("/users/{id}/role")
-    public Map<String, String> setUserRole(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public Map<String, Object> setUserRole(@PathVariable Long id, @RequestBody Map<String, String> body) {
         String role = body.get("role");
         if (role == null) throw new com.clouddisk.common.BusinessException("缺少 role 参数");
-        adminService.setUserRole(id, role);
-        return Map.of("message", "ok");
+        var user = adminService.setUserRole(id, role);
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("message", "ok");
+        result.put("role", user.getRole());
+        result.put("storageQuota", user.getStorageQuota() != null ? user.getStorageQuota() : 0);
+        return result;
+    }
+
+    /** 当前管理员上下文 */
+    @GetMapping("/context")
+    public Map<String, Object> adminContext() {
+        return adminService.adminContext();
     }
 
     /** 重置用户密码 */

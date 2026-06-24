@@ -231,9 +231,13 @@ function storageUsagePercent(user: UserStorageStat) {
   const used = user.storageUsed || 0
   const quota = user.storageQuota || 0
   if (quota > 0) {
-    return Math.min(100, Math.max(4, Math.round((used / quota) * 100)))
+    return Math.min(100, Math.round((used / quota) * 100))
   }
-  return Math.max(6, Math.round((used / maxStorageUsed.value) * 100))
+  const max = maxStorageUsed.value
+  if (max > 0) {
+    return Math.min(100, Math.round((used / max) * 100))
+  }
+  return 0
 }
 
 onMounted(loadAll)

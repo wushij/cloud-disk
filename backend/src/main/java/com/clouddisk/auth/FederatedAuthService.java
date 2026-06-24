@@ -90,7 +90,7 @@ public class FederatedAuthService {
             user.setEmail(email);
             user.setStatus(UserStatus.ACTIVE);
             user.setRole("USER");
-            user.setStorageQuota(UserStatus.DEFAULT_QUOTA_BYTES);
+            user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
             userMapper.insert(user);
         } else if (user.getStatus() != null && user.getStatus() == UserStatus.DISABLED) {
             throw new BusinessException("账号已被禁用");

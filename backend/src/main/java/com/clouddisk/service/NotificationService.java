@@ -7,7 +7,9 @@ import com.clouddisk.entity.Notification;
 import com.clouddisk.entity.TeamInvitation;
 import com.clouddisk.entity.User;
 import com.clouddisk.common.UserStatus;
+import com.clouddisk.entity.QuotaApplication;
 import com.clouddisk.mapper.NotificationMapper;
+import com.clouddisk.mapper.QuotaApplicationMapper;
 import com.clouddisk.mapper.TeamInvitationMapper;
 import com.clouddisk.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class NotificationService {
     private final NotificationMapper notificationMapper;
     private final TeamInvitationMapper teamInvitationMapper;
     private final UserMapper userMapper;
+    private final QuotaApplicationMapper quotaApplicationMapper;
 
     /**
      * 获取当前用户的通知列表（使用 MyBatis-Plus Page 分页，避免 SQL 注入）
@@ -51,6 +54,10 @@ public class NotificationService {
 
             if ("USER_REGISTER".equals(n.getType()) && n.getRefId() != null) {
                 m.put("registrationStatus", resolveRegistrationStatus(n.getRefId()));
+            }
+
+            if ("QUOTA_APPLY".equals(n.getType()) && n.getRefId() != null) {
+                m.put("quotaStatus", resolveQuotaStatus(n.getRefId()));
             }
             
             result.add(m);
@@ -161,6 +168,19 @@ public class NotificationService {
         }
     }
 
+    private String resolveQuotaStatus(String refId) {
+        try {
+            Long appId = Long.parseLong(refId);
+            QuotaApplication qa = quotaApplicationMapper.selectById(appId);
+            if (qa != null) {
+                return qa.getStatus();
+            }
+            return "REJECTED";
+        } catch (Exception e) {
+            return "PENDING";
+        }
+    }
+
     /** 供 WebSocket 推送时附带可操作状态 */
     public Map<String, String> resolveActionStatuses(String type, String refId) {
         Map<String, String> statuses = new LinkedHashMap<>();
@@ -169,6 +189,9 @@ public class NotificationService {
         }
         if ("USER_REGISTER".equals(type) && refId != null) {
             statuses.put("registrationStatus", resolveRegistrationStatus(refId));
+        }
+        if ("QUOTA_APPLY".equals(type) && refId != null) {
+            statuses.put("quotaStatus", resolveQuotaStatus(refId));
         }
         return statuses;
     }

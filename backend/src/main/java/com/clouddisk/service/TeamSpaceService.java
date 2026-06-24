@@ -6,6 +6,7 @@ import com.clouddisk.common.BusinessException;
 import com.clouddisk.entity.*;
 import com.clouddisk.mapper.*;
 import com.clouddisk.storage.StorageService;
+import com.clouddisk.team.TeamRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -32,6 +33,7 @@ public class TeamSpaceService {
     private final FolderTreeHelper folderTreeHelper;
     private final FileService fileService;
     private final StoragePathService storagePathService;
+    private final TeamAccessService teamAccessService;
 
     // ==================== 团队空间 CRUD ====================
 
@@ -91,7 +93,8 @@ public class TeamSpaceService {
             m.put("rootFolderId", space.getRootFolderId());
             m.put("maxSize", space.getMaxSize());
             m.put("avatar", space.getAvatar());
-            m.put("myRole", member != null ? member.getRole() : "MEMBER");
+            m.put("myRole", member != null ? TeamRole.normalize(member.getRole()) : TeamRole.MEMBER);
+            m.putAll(teamAccessService.usageStats(space));
             m.put("memberCount", teamMemberMapper.selectCount(
                     new LambdaQueryWrapper<TeamMember>().eq(TeamMember::getSpaceId, space.getId())));
             m.put("createdAt", space.getCreateTime());
@@ -188,7 +191,7 @@ public class TeamSpaceService {
     public Map<String, Object> inviteMemberByUsername(Long spaceId, String username, String role) {
         long currentUserId = AuthService.currentUserId();
         TeamSpace space = getOwnedSpace(spaceId, currentUserId);
-        requireAdmin(spaceId, currentUserId);
+        teamAccessService.requireManageTeam(spaceId, currentUserId);
 
         User invitee = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (invitee == null) {
@@ -215,7 +218,11 @@ public class TeamSpaceService {
             throw new BusinessException("已向该用户发送邀请，等待对方确认");
         }
 
-        if (role == null || role.isBlank()) role = "MEMBER";
+        if (role == null || role.isBlank()) role = TeamRole.MEMBER;
+        role = TeamRole.normalize(role);
+        if (!TeamRole.isValidInviteRole(role)) {
+            throw new BusinessException("无效的成员角色，可选：MEMBER、ADMIN、VIEWER");
+        }
 
         TeamInvitation invitation = new TeamInvitation();
         invitation.setSpaceId(spaceId);
@@ -433,10 +440,14 @@ public class TeamSpaceService {
             throw new BusinessException("无权访问该目录");
         }
 
+        TeamAccessService.TeamContext teamCtx = teamAccessService.resolveForFolder(fid, userId)
+                .orElseThrow(() -> new BusinessException("你不是该团队的成员"));
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("spaceId", spaceId);
         result.put("rootFolderId", space.getRootFolderId());
         result.put("currentFolderId", fid);
+        result.put("teamAccess", teamAccessService.toAccessMap(teamCtx, userId));
 
         List<Folder> folders = folderMapper.selectList(
                 new LambdaQueryWrapper<Folder>()
@@ -458,6 +469,7 @@ public class TeamSpaceService {
             item.put("type", "folder");
             item.put("parentId", f.getParentId());
             item.put("createdAt", f.getCreateTime());
+            teamAccessService.enrichFolderItem(item, f, userId, teamCtx);
             items.add(item);
         }
         for (FileRecord f : files) {
@@ -470,7 +482,9 @@ public class TeamSpaceService {
             item.put("folderId", f.getFolderId());
             item.put("hasThumbnail", StringUtils.hasText(f.getThumbnailPath()) || StringUtils.hasText(f.getPosterPath()));
             item.put("previewable", fileService.isPreviewable(f.getFileType(), f.getFileName()));
+            item.put("officeFile", fileService.isOfficePreviewable(f.getFileType(), f.getFileName()));
             item.put("createdAt", f.getCreateTime());
+            teamAccessService.enrichFileItem(item, f, userId, teamCtx);
             items.add(item);
         }
 
@@ -508,13 +522,55 @@ public class TeamSpaceService {
     }
 
     private void requireAdmin(Long spaceId, long userId) {
-        TeamMember member = teamMemberMapper.selectOne(
-                new LambdaQueryWrapper<TeamMember>()
-                        .eq(TeamMember::getSpaceId, spaceId)
-                        .eq(TeamMember::getUserId, userId));
-        if (member == null || (!"OWNER".equals(member.getRole()) && !"ADMIN".equals(member.getRole()))) {
-            throw new BusinessException("需要管理员权限");
+        teamAccessService.requireManageTeam(spaceId, userId);
+    }
+
+    /**
+     * 管理员调整成员角色（不可修改创建者，不可设为 OWNER）
+     */
+    public void updateMemberRole(Long spaceId, Long targetUserId, String role) {
+        long currentUserId = AuthService.currentUserId();
+        requireAdmin(spaceId, currentUserId);
+        role = TeamRole.normalize(role);
+        if (!TeamRole.isAssignableRole(role)) {
+            throw new BusinessException("无效的成员角色，可选：MEMBER、ADMIN、VIEWER");
         }
+        TeamSpace space = getSpace(spaceId);
+        if (Objects.equals(space.getOwnerId(), targetUserId)) {
+            throw new BusinessException("不能修改创建者的角色");
+        }
+        TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
+                .eq(TeamMember::getSpaceId, spaceId)
+                .eq(TeamMember::getUserId, targetUserId));
+        if (member == null) {
+            throw new BusinessException("成员不存在");
+        }
+        if (TeamRole.isOwner(member.getRole())) {
+            throw new BusinessException("不能修改创建者的角色");
+        }
+        member.setRole(role);
+        teamMemberMapper.updateById(member);
+    }
+
+    /**
+     * 管理员设置团队存储配额（0 表示不限）
+     */
+    public TeamSpace updateQuota(Long spaceId, Long maxSize) {
+        long currentUserId = AuthService.currentUserId();
+        requireAdmin(spaceId, currentUserId);
+        if (maxSize == null || maxSize < 0) {
+            throw new BusinessException("配额无效");
+        }
+        TeamSpace space = getOwnedSpace(spaceId, currentUserId);
+        if (maxSize > 0) {
+            long used = teamAccessService.calculateTeamUsedBytes(space.getRootFolderId());
+            if (maxSize < used) {
+                throw new BusinessException("团队配额不能小于当前已用容量 " + used + " 字节");
+            }
+        }
+        space.setMaxSize(maxSize);
+        teamSpaceMapper.updateById(space);
+        return space;
     }
 
     /**
