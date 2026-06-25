@@ -1,4 +1,4 @@
-import { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
 
 export type WsMessage = {
   type?: string
@@ -19,13 +19,13 @@ export type WsMessage = {
 type WsListener = (data: WsMessage) => void
 
 let ws: WebSocket | null = null
+let connectPromise: Promise<void> | null = null
 const listeners = new Set<WsListener>()
 
-function ensureConnected() {
-  const token = localStorage.getItem(TOKEN_KEY)
-  if (!token || ws) return
+async function connectWs() {
+  const { data } = await http.post<{ ticket: string }>('/api/auth/ws-ticket')
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  ws = new WebSocket(`${proto}://${location.host}/ws/upload?token=${encodeURIComponent(token)}`)
+  ws = new WebSocket(`${proto}://${location.host}/ws/upload?ticket=${encodeURIComponent(data.ticket)}`)
   ws.onmessage = (ev) => {
     try {
       const data = JSON.parse(ev.data) as WsMessage
@@ -39,9 +39,19 @@ function ensureConnected() {
   }
 }
 
+async function ensureConnected() {
+  if (ws) return
+  if (!connectPromise) {
+    connectPromise = connectWs().finally(() => {
+      connectPromise = null
+    })
+  }
+  await connectPromise
+}
+
 export function subscribeWs(listener: WsListener) {
   listeners.add(listener)
-  ensureConnected()
+  void ensureConnected()
   return () => {
     listeners.delete(listener)
     if (listeners.size === 0) {

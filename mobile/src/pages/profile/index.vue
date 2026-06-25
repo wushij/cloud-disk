@@ -29,7 +29,10 @@ onShow(async () => {
   uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
   try {
-    auth.fetchProfile().catch(() => {})
+    await Promise.all([
+      auth.ensureMediaToken().catch(() => {}),
+      auth.fetchProfile().catch(() => {})
+    ])
     notifyStore.loadFromApi().catch(() => {})
     const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
     updateStorageUsage(data)
@@ -105,7 +108,6 @@ const applyVisible = ref(false)
 const applyGB = ref('')
 const applyReason = ref('')
 const applySaving = ref(false)
-const USER_APPLY_QUOTA_GB = 500
 
 const canApplyQuota = computed(
   () => !auth.isSuperAdmin && usage.value != null && (usage.value.quotaBytes || 0) > 0
@@ -113,26 +115,21 @@ const canApplyQuota = computed(
 
 function openApplyQuota() {
   applyVisible.value = true
-  applyGB.value = auth.isAdmin ? '' : String(USER_APPLY_QUOTA_GB)
+  applyGB.value = ''
   applyReason.value = ''
 }
 
 async function submitApply() {
-  let quotaBytes: number
-  if (auth.isAdmin) {
-    if (!applyGB.value) {
-      uni.showToast({ title: '请输入目标容量', icon: 'none' })
-      return
-    }
-    const gb = Number(applyGB.value)
-    if (isNaN(gb) || gb <= 0) {
-      uni.showToast({ title: '容量必须大于 0', icon: 'none' })
-      return
-    }
-    quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
-  } else {
-    quotaBytes = USER_APPLY_QUOTA_GB * 1024 * 1024 * 1024
+  if (!applyGB.value) {
+    uni.showToast({ title: '请输入目标容量', icon: 'none' })
+    return
   }
+  const gb = Number(applyGB.value)
+  if (isNaN(gb) || gb <= 0) {
+    uni.showToast({ title: '容量必须大于 0', icon: 'none' })
+    return
+  }
+  const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
   if (usage.value && quotaBytes <= usage.value.quotaBytes) {
     uni.showToast({ title: '申请配额必须大于当前配额', icon: 'none' })
     return
@@ -175,12 +172,13 @@ async function submitApply() {
           <view class="hero-avatar" @click="changeAvatar">
             <view class="avatar-ring">
               <image
-                v-if="auth.hasAvatar && !avatarLoadFailed"
-                :src="auth.avatarSrc"
+                v-if="auth.avatarDisplaySrc && !avatarLoadFailed"
+                :src="auth.avatarDisplaySrc"
                 class="avatar-image"
                 mode="aspectFill"
                 @error="onAvatarError"
               />
+              <view v-else-if="auth.hasAvatar" class="avatar-inner avatar-skeleton" />
               <view v-else class="avatar-inner">{{ avatarInitial }}</view>
               <!-- 头像编辑角标 overlay -->
               <view class="avatar-edit-badge">
@@ -397,22 +395,21 @@ async function submitApply() {
         </view>
 
         <view class="apply-form">
-          <view v-if="auth.isAdmin" class="form-item">
-            <text class="form-label">目标容量 (GB)</text>
+          <view class="form-item">
+            <text class="form-label">
+              目标容量 (GB)
+              <text v-if="usage?.quotaBytes" class="form-label-tip">
+                （当前 {{ fmtSize(usage.quotaBytes) }}）
+              </text>
+            </text>
             <view class="input-wrap">
               <input
                 type="number"
                 v-model="applyGB"
-                placeholder="例如 1000"
+                placeholder="例如 10"
                 class="apply-input"
               />
               <text class="input-unit">GB</text>
-            </view>
-          </view>
-          <view v-else class="form-item">
-            <text class="form-label">目标容量</text>
-            <view class="apply-fixed-quota">
-              <text>500 GB</text>
             </view>
           </view>
           
@@ -514,6 +511,17 @@ async function submitApply() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.avatar-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35) 25%, rgba(255, 255, 255, 0.65) 50%, rgba(255, 255, 255, 0.35) 75%);
+  background-size: 200% 100%;
+  animation: avatar-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes avatar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .avatar-image {

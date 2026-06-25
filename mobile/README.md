@@ -12,7 +12,7 @@ npm run dev:h5
 
 H5 开发地址：http://localhost:5174
 
-API 通过 Vite 代理转发到 `http://127.0.0.1:8088`（与 PC 端一致）。
+API 通过 Vite 代理转发到 `http://127.0.0.1:8055`（与 PC 端一致）。
 
 > 手机通过局域网 IP 访问 H5 时，上传/下载依赖的任务 ID 已兼容非 HTTPS 环境（不依赖 `crypto.randomUUID`）。
 

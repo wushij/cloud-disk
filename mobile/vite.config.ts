@@ -4,6 +4,7 @@ import uni from '@dcloudio/vite-plugin-uni'
 import { lanAccessBanner } from '../scripts/vite-lan-banner.mjs'
 
 export default defineConfig({
+  base: '/',
   plugins: [uni(), lanAccessBanner('CloudDisk Mobile H5') as any],
   css: {
     preprocessorOptions: {
@@ -20,13 +21,13 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8088',
+        target: 'http://127.0.0.1:8055',
         changeOrigin: true,
         timeout: 3_600_000,
         proxyTimeout: 3_600_000
       },
       '/share': {
-        target: 'http://127.0.0.1:8088',
+        target: 'http://127.0.0.1:8055',
         changeOrigin: true,
         bypass: (req, res) => {
           const url = req.url || ''
@@ -48,7 +49,7 @@ export default defineConfig({
         }
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8088',
+        target: 'ws://127.0.0.1:8055',
         ws: true
       }
     }

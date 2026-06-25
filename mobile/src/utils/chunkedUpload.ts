@@ -11,6 +11,12 @@ interface UploadResult {
   uploadId?: string
 }
 
+export interface ChunkedUploadOptions {
+  existingUploadId?: string
+  skipMd5Check?: boolean
+  onInit?: (session: { uploadId: string; chunkSize: number; totalChunks: number }) => void
+}
+
 interface FileInfo {
   filePath: string
   size: number
@@ -56,14 +62,19 @@ export async function uploadChunkedFile(
   folderId: number,
   fileMd5?: string,
   onProgress?: (ratio: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: ChunkedUploadOptions
 ): Promise<UploadResult> {
-  onProgress?.(0)
+  const isResume = !!options?.existingUploadId
+
+  if (!isResume) {
+    onProgress?.(0)
+  }
 
   if (signal?.aborted) throw new Error('Canceled')
 
   // 步骤 1: 秒传检查
-  if (fileMd5) {
+  if (fileMd5 && !options?.skipMd5Check) {
     try {
       const check = await request<{ exists: boolean; instant: boolean; fileId: number }>({
         url: '/api/upload/check-md5',
@@ -86,33 +97,56 @@ export async function uploadChunkedFile(
 
   if (signal?.aborted) throw new Error('Canceled')
 
-  // 步骤 2: 初始化分片上传
-  const init = await request<{
-    uploadId: string
-    chunkSize: number
-    totalChunks: number
-    uploadedChunks: number[]
-  }>({
-    url: '/api/upload/init',
-    method: 'POST',
-    data: {
-      fileName,
-      totalSize: fileSize,
-      chunkSize: CHUNK_SIZE,
-      fileMd5: fileMd5 || undefined,
-      folderId
-    }
-  })
+  let uploadId: string
+  let serverChunkSize: number
+  let totalChunks: number
+  let uploadedSet: Set<number>
 
-  const uploadId = init.uploadId
-  const serverChunkSize = init.chunkSize
-  const totalChunks = init.totalChunks
-  const uploadedSet = new Set(init.uploadedChunks || [])
+  if (isResume && options?.existingUploadId) {
+    const resume = await request<{
+      uploadId: string
+      chunkSize: number
+      totalChunks: number
+      uploadedChunks: number[]
+    }>({
+      url: `/api/upload/${options.existingUploadId}/resume`,
+      method: 'GET'
+    })
+    uploadId = resume.uploadId
+    serverChunkSize = resume.chunkSize
+    totalChunks = resume.totalChunks
+    uploadedSet = new Set(resume.uploadedChunks || [])
+    if (totalChunks > 0) {
+      onProgress?.(0.05 + (uploadedSet.size / totalChunks) * 0.9)
+    }
+  } else {
+    // 步骤 2: 初始化分片上传
+    const init = await request<{
+      uploadId: string
+      chunkSize: number
+      totalChunks: number
+      uploadedChunks: number[]
+    }>({
+      url: '/api/upload/init',
+      method: 'POST',
+      data: {
+        fileName,
+        totalSize: fileSize,
+        chunkSize: CHUNK_SIZE,
+        fileMd5: fileMd5 || undefined,
+        folderId
+      }
+    })
+
+    uploadId = init.uploadId
+    serverChunkSize = init.chunkSize
+    totalChunks = init.totalChunks
+    uploadedSet = new Set(init.uploadedChunks || [])
+    options?.onInit?.({ uploadId, chunkSize: serverChunkSize, totalChunks })
+  }
 
   // 步骤 3: 并发上传分片
   let done = 0
-  const uploadedCount = uploadedSet.size
-  done = uploadedCount
 
   const uploadChunk = async (index: number): Promise<void> => {
     if (uploadedSet.has(index)) return
@@ -206,7 +240,7 @@ export async function uploadChunkedFile(
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, totalChunks - uploadedCount) }, () => worker())
+    Array.from({ length: Math.min(CONCURRENCY, totalChunks) }, () => worker())
   )
 
   if (signal?.aborted) throw new Error('Canceled')
@@ -232,7 +266,8 @@ export async function smartUpload(
   folderId: number,
   fileMd5?: string,
   onProgress?: (ratio: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: ChunkedUploadOptions
 ): Promise<UploadResult> {
   if (fileSize <= SIMPLE_MAX) {
     // 小文件使用简单上传
@@ -257,5 +292,5 @@ export async function smartUpload(
     return {}
   }
   // 大文件使用分片上传
-  return uploadChunkedFile(filePath, fileName, fileSize, folderId, fileMd5, onProgress, signal)
+  return uploadChunkedFile(filePath, fileName, fileSize, folderId, fileMd5, onProgress, signal, options)
 }

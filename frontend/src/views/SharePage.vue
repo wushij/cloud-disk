@@ -244,9 +244,8 @@ async function resolveSharePreviewUrl(fileId: number): Promise<string> {
   try {
 
     const { data } = await http.get(`/share/${code}/direct-url`, {
-
-      params: { fileId, extractCode: extractCode.value || undefined }
-
+      params: { fileId, extractCode: extractCode.value || undefined },
+      skipErrorHandler: true
     })
 
     if (data.url) return data.url

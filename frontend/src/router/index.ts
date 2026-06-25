@@ -27,6 +27,9 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore()
   auth.restore()
+  if (!to.meta.public && auth.token) {
+    void auth.ensureMediaToken()
+  }
   if (!to.meta.public && !auth.token) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }

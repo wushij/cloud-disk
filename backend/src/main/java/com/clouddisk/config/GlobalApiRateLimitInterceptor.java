@@ -28,15 +28,36 @@ public class GlobalApiRateLimitInterceptor implements HandlerInterceptor {
         if (!uri.startsWith("/api/")) {
             return true;
         }
-        if (uri.startsWith("/api/auth/captcha")) {
+        if (shouldSkip(uri, request.getMethod())) {
             return true;
         }
         String ip = ClientIpUtil.resolve(request);
         String key = "rate:api:ip:" + ip;
         long count = cacheService.increment(key, 60);
         if (count > properties.getRateLimit().getApiPerMinute()) {
-            throw new BusinessException("请求过于频繁，请稍后再试");
+            throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
         }
         return true;
+    }
+
+    /** 页面初始化、预览/头像等高频只读接口不计入全站 API 配额 */
+    private static boolean shouldSkip(String uri, String method) {
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            return true;
+        }
+        if (uri.startsWith("/api/auth/captcha")) {
+            return true;
+        }
+        if (uri.equals("/api/auth/me") || uri.equals("/api/auth/media-token")) {
+            return true;
+        }
+        if (!"GET".equalsIgnoreCase(method)) {
+            return false;
+        }
+        return uri.startsWith("/api/auth/avatar/view")
+                || uri.matches("/api/admin/users/\\d+/avatar")
+                || uri.matches("/api/teams/\\d+/avatar")
+                || uri.matches("/api/files/\\d+/(preview|thumbnail|download)")
+                || uri.equals("/api/files/download/zip");
     }
 }

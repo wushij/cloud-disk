@@ -122,14 +122,18 @@ async function handleClearAllConfirm() {
   <view class="page">
     <MobileHeader
       title="回收站"
-      :subtitle="`${list.length} 项待处理`"
+      :subtitle="list.length ? `${list.length} 项` : ''"
+      caption="已删除的文件与文件夹可在此恢复，或彻底删除释放空间"
       gradient
       icon-type="recycle"
     >
       <template #right>
-        <view v-if="list.length > 0" class="clear-all-btn cd-pressable" @click="confirmClearAll">
-          <u-icon name="trash" size="16" color="#fff" />
-          <text class="clear-text">清空</text>
+        <view v-if="list.length" class="header-action-btn danger cd-pressable" @click="confirmClearAll">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          <text class="header-action-text">清空</text>
         </view>
       </template>
     </MobileHeader>
@@ -142,7 +146,7 @@ async function handleClearAllConfirm() {
         <EmptyState
           icon="trash"
           title="回收站是空的"
-          description="删除的文件会在这里保留，可随时恢复或彻底删除"
+          description="已删除的文件可暂存在这里，可随时找回"
         />
       </view>
       <view v-else class="list-wrapper">
@@ -251,25 +255,39 @@ async function handleClearAllConfirm() {
   padding: 4rpx 0 24rpx;
 }
 
-.clear-all-btn {
+.header-action-btn {
   display: flex;
   align-items: center;
   gap: 6rpx;
-  padding: 10rpx 22rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8rpx);
-  transition: all var(--cd-transition);
+  padding: 10rpx 20rpx;
+  border-radius: var(--cd-radius-full);
+  background: rgba(79, 124, 255, 0.05);
+  border: 1rpx solid rgba(79, 124, 255, 0.12);
+  transition: all var(--cd-transition-fast);
+
+  &.danger {
+    background: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.12);
+
+    .header-action-text,
+    svg {
+      color: #ef4444;
+    }
+
+    &:active {
+      background: rgba(239, 68, 68, 0.12);
+    }
+  }
+
   &:active {
-    background: rgba(255, 255, 255, 0.28);
-    transform: scale(0.94);
+    opacity: 0.85;
   }
 }
 
-.clear-text {
+.header-action-text {
   font-size: 22rpx;
-  color: #fff;
   font-weight: 700;
+  color: #ef4444;
 }
 
 .list-wrapper {

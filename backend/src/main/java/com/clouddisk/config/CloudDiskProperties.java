@@ -70,7 +70,7 @@ public class CloudDiskProperties {
         private String documentServerUrl = "http://127.0.0.1:8082";
         private String jwtSecret = "clouddisk-onlyoffice-jwt-secret-change-me";
         /** 后端对外地址，供 Document Server 回调/拉取文件 */
-        private String callbackBaseUrl = "http://127.0.0.1:8088";
+        private String callbackBaseUrl = "http://127.0.0.1:8055";
         /** edit 或 view */
         private String editMode = "edit";
         /** OnlyOffice 内部服务地址，若在 Docker 环境下，供后端直接访问 OnlyOffice 容器 */
@@ -167,7 +167,7 @@ public class CloudDiskProperties {
         private String clientId = "";
         private String clientSecret = "";
         /** 后端回调地址，需在 IdP 注册 */
-        private String redirectUri = "http://127.0.0.1:8088/api/auth/sso/callback";
+        private String redirectUri = "http://127.0.0.1:8055/api/auth/sso/callback";
         /** SSO 成功后跳转前端 */
         private String frontendRedirect = "http://127.0.0.1:5173/login";
         private String scope = "openid profile email";

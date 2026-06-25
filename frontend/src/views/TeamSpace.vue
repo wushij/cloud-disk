@@ -2,7 +2,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { resolveFilePreviewUrl } from '@/utils/fileUrl'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
@@ -89,14 +91,10 @@ function handleBatchDownload() {
   const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
   const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
   if (folders.length === 0 && files.length === 0) return
-  let url = `/api/files/download/zip?access_token=${tokenParam()}`
-  if (folders.length > 0) {
-    url += `&folderIds=${folders.join(',')}`
-  }
-  if (files.length > 0) {
-    url += `&fileIds=${files.join(',')}`
-  }
-  downloadZip(url)
+  const params: string[] = []
+  if (folders.length > 0) params.push(`folderIds=${folders.join(',')}`)
+  if (files.length > 0) params.push(`fileIds=${files.join(',')}`)
+  downloadZip(`/api/files/download/zip?${params.join('&')}`)
 }
 
 async function handleBatchDelete() {
@@ -158,10 +156,10 @@ const teamAvatarInputRef = ref<HTMLInputElement | null>(null)
 
 function teamAvatarSrc(space: TeamSpace) {
   if (!space.avatar) return ''
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = mediaTokenParam()
   if (!token) return ''
   const v = getTeamAvatarVersion(space.id)
-  return `/api/teams/${space.id}/avatar?access_token=${encodeURIComponent(token)}&v=${v}`
+  return `/api/teams/${space.id}/avatar?access_token=${token}&v=${v}`
 }
 
 function openTeamAvatarPicker() {
@@ -258,7 +256,7 @@ const isPdf = computed(() => previewType.value.includes('pdf'))
 const isText = computed(() => isTextFile(previewType.value, previewName.value))
 
 function tokenParam() {
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  return mediaTokenParam()
 }
 
 function teamAvatarStyle(teamId: number) {
@@ -301,13 +299,13 @@ function memberInitial(member: TeamMember) {
 
 function memberAvatarSrc(member: TeamMember) {
   if (avatarBroken.value[member.userId]) return ''
-  if (member.username === auth.username && auth.avatarSrc) return auth.avatarSrc
+  if (member.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   const hasAvatar = member.hasAvatar ?? !!member.avatar
   if (!hasAvatar) return ''
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = mediaTokenParam()
   const ctx = membersContext.value
   if (!token || !ctx) return ''
-  return `/api/teams/${ctx.id}/members/${member.userId}/avatar?access_token=${encodeURIComponent(token)}`
+  return `/api/teams/${ctx.id}/members/${member.userId}/avatar?access_token=${token}`
 }
 
 function onMemberAvatarError(userId: number) {
@@ -526,20 +524,14 @@ function backToList() {
 
 function downloadFile(row: FileItem) {
   if (row.type === 'folder') {
-    downloadZip(`/api/files/download/zip?folderIds=${row.id}&access_token=${tokenParam()}`)
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
     return
   }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
 }
 
 async function resolvePreviewUrl(fileId: number): Promise<string> {
-  try {
-    const { data } = await http.get(`/api/files/${fileId}/direct-url`)
-    if (data.url) return data.url
-  } catch {
-    /* fallback proxy preview */
-  }
-  return `/api/files/${fileId}/preview?access_token=${tokenParam()}`
+  return resolveFilePreviewUrl(fileId)
 }
 
 async function previewFile(row: FileItem) {

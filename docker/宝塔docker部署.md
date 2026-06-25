@@ -18,7 +18,7 @@
 Docker: clouddisk-nginx:8080
     ├── 静态页 PC  (frontend/dist)
     ├── 静态页 H5  (mobile/dist/build/h5)  ← UA 自动选择
-    ├── /api/*  → clouddisk-backend:8088
+    ├── /api/*  → clouddisk-backend:8055
     └── /ws/*   → WebSocket
 
 Docker 内网:
@@ -180,7 +180,7 @@ CLOUDDISK_CORS_ORIGIN: ${CLOUDDISK_CORS_ORIGIN:-https://disk.example.com}
 以下服务的 `ports:` 整段删掉或注释，避免数据库、Redis 等暴露公网：
 
 - `mysql`、`redis`、`minio`、`rabbitmq`、`elasticsearch`
-- `backend` 的 `8088:8088`（可选，调试时再开）
+- `backend` 的 `8055:8055`（可选，调试时再开）
 
 保留：
 
@@ -226,7 +226,7 @@ docker compose --env-file docker/.env.prod \
 docker compose -f docker/docker-compose.yml --profile app ps
 
 curl -s http://127.0.0.1:8080 | head
-curl -s http://127.0.0.1:8088/actuator/health
+curl -s http://127.0.0.1:8055/actuator/health
 ```
 
 全部容器应为 `Up`，health 为 `{"status":"UP"}`。

@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { usePromptDialogStore } from '@/stores/promptDialog'
 import { calcFileMd5 } from '@/utils/md5'
 import { uploadFile } from '@/utils/upload'
@@ -24,8 +25,16 @@ export interface TransferTask {
   // 运行期控制变量（在内存中维护）
   abortController?: AbortController
   startTime?: number
+  /** 速度计算基准：已传输字节数（暂停恢复后从此继续计速） */
+  speedBaseLoaded?: number
+  /** 速度计算基准时间戳 */
+  speedBaseTime?: number
   fileObj?: File
   md5?: string | null
+  /** 分片上传会话 ID，暂停恢复时复用 */
+  uploadId?: string
+  chunkSize?: number
+  totalChunks?: number
 }
 
 const DOWNLOAD_IN_MEMORY_MAX = 300 * 1024 * 1024 // 300MB
@@ -37,8 +46,27 @@ function formatSpeed(bytesPerSec: number): string {
   return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
 }
 
+function calcTransferSpeed(
+  loaded: number,
+  speedBaseLoaded: number | undefined,
+  speedBaseTime: number | undefined,
+  fallback: string
+): string {
+  const baseLoaded = speedBaseLoaded ?? 0
+  const baseTime = speedBaseTime ?? Date.now()
+  const elapsed = (Date.now() - baseTime) / 1000
+  if (elapsed < 0.5) return fallback
+  const delta = loaded - baseLoaded
+  if (delta <= 0) return '0 B/s'
+  return formatSpeed(delta / elapsed)
+}
+
+function speedBaseline(loaded: number): Pick<TransferTask, 'speedBaseLoaded' | 'speedBaseTime'> {
+  return { speedBaseLoaded: loaded, speedBaseTime: Date.now() }
+}
+
 function tokenParam() {
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  return mediaTokenParam()
 }
 
 export const useTransferStore = defineStore('transfer', () => {
@@ -102,37 +130,64 @@ export const useTransferStore = defineStore('transfer', () => {
     patchTask(taskId, { status: 'paused', speed: '已暂停' })
   }
 
-  // 恢复任务（重新调用上传流程）
+  // 恢复任务（断点续传：复用 uploadId 与已上传分片）
   async function resumeTask(taskId: string) {
     const task = getTask(taskId)
     if (!task || task.status !== 'paused' || !task.fileObj) return
 
     const abortController = new AbortController()
+    const baseProgress = task.progress
+    const resumeLoaded = task.loaded
     patchTask(taskId, {
       status: 'running',
       startTime: Date.now(),
-      abortController
+      abortController,
+      ...speedBaseline(resumeLoaded)
     })
 
     try {
+      let md5 = task.md5 ?? null
+      if (!md5) {
+        md5 = await calcFileMd5(task.fileObj, (r) => {
+          const current = getTask(taskId)
+          if (!current || current.status !== 'running') return
+          const progress = Math.max(baseProgress, r * 0.15)
+          patchTask(taskId, {
+            progress,
+            loaded: Math.round(progress * task.fileObj!.size),
+            speed: '校验 MD5...'
+          })
+        })
+        patchTask(taskId, { md5, startTime: Date.now(), ...speedBaseline(Math.round(task.fileObj!.size * baseProgress)) })
+      }
+
       const onProgress = (ratio: number) => {
         const current = getTask(taskId)
         if (!current || current.status !== 'running') return
-        const loaded = Math.round(ratio * current.size)
-        const elapsed = (Date.now() - (current.startTime || Date.now())) / 1000
+        const progress = Math.max(baseProgress, 0.15 + ratio * 0.85)
+        const loaded = Math.round(progress * current.size)
         patchTask(taskId, {
-          progress: ratio,
+          progress,
           loaded,
-          speed: elapsed > 0 ? formatSpeed(loaded / elapsed) : current.speed
+          speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, current.speed)
         })
       }
 
       const result = await uploadFile(
         task.fileObj,
         task.folderId || 0,
-        task.md5 || null,
+        md5,
         onProgress,
-        abortController.signal
+        abortController.signal,
+        {
+          existingUploadId: task.uploadId,
+          skipMd5Check: true,
+          onInit: (session) => patchTask(taskId, {
+            uploadId: session.uploadId,
+            chunkSize: session.chunkSize,
+            totalChunks: session.totalChunks
+          })
+        }
       )
 
       let nextId = taskId
@@ -198,7 +253,7 @@ export const useTransferStore = defineStore('transfer', () => {
           speed: '校验 MD5...'
         })
       })
-      patchTask(taskId, { md5, startTime: Date.now() })
+      patchTask(taskId, { md5, startTime: Date.now(), ...speedBaseline(Math.round(file.size * 0.15)) })
 
       const result = await uploadFile(
         file,
@@ -209,14 +264,21 @@ export const useTransferStore = defineStore('transfer', () => {
           if (!current || current.status !== 'running') return
           const progress = 0.15 + ratio * 0.85
           const loaded = Math.round(progress * file.size)
-          const elapsed = (Date.now() - (current.startTime || Date.now())) / 1000
           patchTask(taskId, {
             progress,
             loaded,
-            speed: elapsed > 0 ? formatSpeed((loaded - file.size * 0.15) / elapsed) : current.speed
+            speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, current.speed)
           })
         },
-        abortController.signal
+        abortController.signal,
+        {
+          skipMd5Check: true,
+          onInit: (session) => patchTask(taskId, {
+            uploadId: session.uploadId,
+            chunkSize: session.chunkSize,
+            totalChunks: session.totalChunks
+          })
+        }
       )
 
       if (result.uploadId) {
@@ -295,11 +357,14 @@ export const useTransferStore = defineStore('transfer', () => {
     }
 
     try {
-      patchTask(taskId, { status: 'running', speed: '连接中...', startTime: Date.now() })
+      patchTask(taskId, { status: 'running', speed: '连接中...', startTime: Date.now(), ...speedBaseline(0) })
 
       let downloadUrl = `/api/files/${fileId}/download?access_token=${tokenParam()}`
       try {
-        const { data } = await http.get(`/api/files/${fileId}/direct-url`, { signal: abortController.signal })
+        const { data } = await http.get(`/api/files/${fileId}/direct-url`, {
+          signal: abortController.signal,
+          skipErrorHandler: true
+        })
         if (data?.url) downloadUrl = data.url
       } catch (err: any) {
         if (axios.isCancel(err) || err?.name === 'CanceledError') throw err
@@ -323,7 +388,7 @@ export const useTransferStore = defineStore('transfer', () => {
           patchTask(taskId, {
             loaded,
             progress,
-            speed: elapsed > 0 ? formatSpeed(loaded / elapsed) : '下载中...'
+            speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, '下载中...')
           })
         }
       })

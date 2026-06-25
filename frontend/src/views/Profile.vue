@@ -37,6 +37,7 @@ const storageColor = computed(() => {
 })
 
 onMounted(async () => {
+  await auth.ensureMediaToken()
   const data = await auth.fetchProfile()
   nickname.value = data.nickname || ''
   email.value = data.email || ''
@@ -121,9 +122,15 @@ async function save() {
             title="点击更换头像"
             @click="openAvatarPicker"
           >
+            <div
+              v-if="auth.hasAvatar && !auth.avatarDisplaySrc && !avatarLoadFailed"
+              class="profile-avatar profile-avatar-skeleton"
+              aria-hidden="true"
+            />
             <el-avatar
+              v-else
               :size="96"
-              :src="avatarLoadFailed ? undefined : auth.avatarSrc || undefined"
+              :src="auth.avatarDisplaySrc && !avatarLoadFailed ? auth.avatarDisplaySrc : undefined"
               class="profile-avatar"
               @error="onAvatarError"
             >
@@ -291,9 +298,26 @@ async function save() {
   font-size: 36px !important;
   font-weight: 700 !important;
   background: var(--cd-primary-gradient) !important;
+  color: #fff !important;
   border: 4px solid #fff !important;
   box-shadow: 0 8px 28px var(--theme-primary-muted-strong), 0 0 0 1px var(--theme-primary-muted) !important;
   transition: transform 0.2s ease;
+}
+
+.profile-avatar-skeleton {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 8px 28px var(--theme-primary-muted-strong), 0 0 0 1px var(--theme-primary-muted);
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: profile-avatar-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes profile-avatar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .profile-avatar-mask {

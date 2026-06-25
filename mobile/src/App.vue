@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { subscribeWs } from '@/utils/ws'
 import { updateStorageUsage } from '@/utils/sharedState'
 import { request } from '@/api/http'
+import { redirectPublicSharePathIfNeeded } from '@/utils/shareUrl'
 
 let unsubscribeWs: (() => void) | null = null
 
@@ -43,12 +44,16 @@ function setupNotifications() {
 
 onLaunch(() => {
   useAuthStore().restore()
+  redirectPublicSharePathIfNeeded()
 })
 
 onShow(() => {
   const auth = useAuthStore()
   if (auth.isLoggedIn) {
-    auth.fetchProfile().catch(() => {})
+    Promise.all([
+      auth.ensureMediaToken().catch(() => {}),
+      auth.fetchProfile().catch(() => {})
+    ])
   }
   setupNotifications()
 })

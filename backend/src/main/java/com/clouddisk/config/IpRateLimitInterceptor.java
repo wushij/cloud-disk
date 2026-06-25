@@ -30,7 +30,7 @@ public class IpRateLimitInterceptor implements HandlerInterceptor {
         String key = "rate:ip:" + ip + ":" + bucket;
         long count = cacheService.increment(key, 60);
         if (count > limit(bucket)) {
-            throw new BusinessException("请求过于频繁，请稍后再试");
+            throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
         }
         return true;
     }

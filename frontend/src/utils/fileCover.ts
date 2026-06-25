@@ -1,8 +1,8 @@
 import type { FileItem } from '@/stores/file'
-import { TOKEN_KEY } from '@/api/http'
+import { mediaTokenParam } from '@/utils/mediaToken'
 
 function accessToken(): string {
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  return mediaTokenParam()
 }
 
 function isImageMime(mime?: string | null): boolean {

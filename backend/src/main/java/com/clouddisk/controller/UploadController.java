@@ -24,8 +24,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 
 
-import java.util.List;
-
 import java.util.Map;
 
 
@@ -104,7 +102,7 @@ public class UploadController {
 
     @SentinelResource(value = "upload_api", blockHandler = "uploadBlocked")
 
-    public List<Integer> resume(@PathVariable String uploadId) {
+    public Map<String, Object> resume(@PathVariable String uploadId) {
 
         return uploadService.resume(uploadId);
 

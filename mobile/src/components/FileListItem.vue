@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
-import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
+import { fileCoverUrl, fileHasCover, fileCoverKind, type FileCoverContext } from '@/utils/fileCover'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import { fmtSize } from '@/utils/fileCover'
 
@@ -13,11 +13,21 @@ function formatDate(d: string) {
   return `${dt.getFullYear()}/${m}/${day}`
 }
 
-defineProps<{
+const props = defineProps<{
   item: FileItem
   selectMode?: boolean
   checked?: boolean
+  shareCode?: string
+  extractCode?: string
 }>()
+
+const coverCtx = computed<FileCoverContext | undefined>(() =>
+  props.shareCode ? { shareCode: props.shareCode, extractCode: props.extractCode } : undefined
+)
+
+function coverUrl() {
+  return fileCoverUrl(props.item, coverCtx.value)
+}
 
 const emit = defineEmits<{
   (e: 'click'): void
@@ -58,14 +68,14 @@ function onMoreClick() {
     >
       <image
         v-if="fileHasCover(item) && fileCoverKind(item) === 'image' && !coverBroken"
-        :src="fileCoverUrl(item)"
+        :src="coverUrl()"
         class="file-cover"
         mode="aspectFill"
         @error="coverBroken = true"
       />
       <view v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video' && !coverBroken" class="file-video-wrap">
         <video
-          :src="fileCoverUrl(item)"
+          :src="coverUrl()"
           class="file-cover"
           muted
           :show-center-play-btn="false"

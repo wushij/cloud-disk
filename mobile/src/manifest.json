@@ -47,7 +47,7 @@
     "title": "CloudDisk Pro",
     "router": {
       "mode": "hash",
-      "base": "./"
+      "base": "/"
     },
     "devServer": {
       "port": 5174

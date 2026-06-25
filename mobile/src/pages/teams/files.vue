@@ -178,7 +178,7 @@ function handleBatchDelete() {
 
 // 菜单状态
 const myRole = ref('')
-const teamAccess = ref<{ canWrite?: boolean; canShare?: boolean } | null>(null)
+const teamAccess = ref<{ role?: string; canWrite?: boolean; canShare?: boolean } | null>(null)
 const canWriteTeam = computed(() => {
   if (teamAccess.value?.canWrite != null) return teamAccess.value.canWrite
   return myRole.value !== 'VIEWER'
@@ -572,8 +572,7 @@ function openShare(row: FileItem) {
 }
 
 function previewPdf(row: FileItem) {
-  const token = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
-  const url = fileApiUrl(`/api/files/${row.id}/preview?access_token=${token}`)
+  const url = fileApiUrl(`/api/files/${row.id}/preview`)
   // #ifdef H5
   window.open(url, '_blank')
   // #endif

@@ -187,6 +187,8 @@ public class ShareService {
         m.put("fileId", file.getId());
         m.put("previewable", fileService.isPreviewable(file.getFileType(), file.getFileName()));
         m.put("officeFile", fileService.isOfficePreviewable(file.getFileType(), file.getFileName()));
+        m.put("hasThumbnail", org.springframework.util.StringUtils.hasText(file.getThumbnailPath())
+                || org.springframework.util.StringUtils.hasText(file.getPosterPath()));
         return m;
     }
 
@@ -243,6 +245,8 @@ public class ShareService {
             row.put("mimeType", f.getFileType());
             row.put("previewable", fileService.isPreviewable(f.getFileType(), f.getFileName()));
             row.put("officeFile", fileService.isOfficePreviewable(f.getFileType(), f.getFileName()));
+            row.put("hasThumbnail", org.springframework.util.StringUtils.hasText(f.getThumbnailPath())
+                    || org.springframework.util.StringUtils.hasText(f.getPosterPath()));
             items.add(row);
         }
         return items;

@@ -7,6 +7,21 @@ const SIMPLE_MAX = 8 * MB
 const CONCURRENCY = 4
 const RETRIES = 3
 
+export interface UploadSessionInfo {
+  uploadId: string
+  chunkSize: number
+  totalChunks: number
+}
+
+export interface UploadResumeOptions {
+  /** 已有上传会话 ID，继续传剩余分片 */
+  existingUploadId?: string
+  /** 跳过秒传 MD5 检查（暂停恢复时） */
+  skipMd5Check?: boolean
+  /** 分片会话创建后回调，用于保存 uploadId 供断点续传 */
+  onInit?: (session: UploadSessionInfo) => void
+}
+
 function retryable(e: unknown): boolean {
   if (!axios.isAxiosError(e)) return false
   if (!e.response) return true
@@ -52,11 +67,16 @@ export async function uploadFile(
   folderId: number,
   fileMd5: string | null,
   onProgress: (ratio: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: UploadResumeOptions
 ): Promise<{ instant?: boolean; fileId?: number; uploadId?: string }> {
-  onProgress(0)
+  const isResume = !!options?.existingUploadId
 
-  if (fileMd5) {
+  if (!isResume) {
+    onProgress(0)
+  }
+
+  if (fileMd5 && !options?.skipMd5Check) {
     const { data: check } = await http.post('/api/upload/check-md5', {
       fileMd5,
       fileName: file.name,
@@ -87,19 +107,41 @@ export async function uploadFile(
     return {}
   }
 
-  const chunkSize = pickChunkSize(file.size)
-  const { data: init } = await http.post('/api/upload/init', {
-    fileName: file.name,
-    totalSize: file.size,
-    chunkSize,
-    fileMd5: fileMd5 || undefined,
-    folderId
-  }, { signal })
+  let uploadId: string
+  let serverChunk: number
+  let totalChunks: number
+  let uploaded: Set<number>
 
-  const uploaded = new Set<number>((init.uploadedChunks as number[]) || [])
-  const totalChunks = init.totalChunks as number
-  const serverChunk = init.chunkSize as number
-  const uploadId = init.uploadId as string
+  if (isResume && options?.existingUploadId) {
+    const { data: resume } = await http.get<{
+      uploadId: string
+      chunkSize: number
+      totalChunks: number
+      uploadedChunks: number[]
+    }>(`/api/upload/${options.existingUploadId}/resume`, { signal })
+    uploadId = resume.uploadId
+    serverChunk = resume.chunkSize
+    totalChunks = resume.totalChunks
+    uploaded = new Set<number>(resume.uploadedChunks || [])
+    if (totalChunks > 0) {
+      onProgress(uploaded.size / totalChunks)
+    }
+  } else {
+    const chunkSize = pickChunkSize(file.size)
+    const { data: init } = await http.post('/api/upload/init', {
+      fileName: file.name,
+      totalSize: file.size,
+      chunkSize,
+      fileMd5: fileMd5 || undefined,
+      folderId
+    }, { signal })
+
+    uploaded = new Set<number>((init.uploadedChunks as number[]) || [])
+    totalChunks = init.totalChunks as number
+    serverChunk = init.chunkSize as number
+    uploadId = init.uploadId as string
+    options?.onInit?.({ uploadId, chunkSize: serverChunk, totalChunks })
+  }
 
   await uploadChunksParallel(
     totalChunks,
@@ -122,4 +164,3 @@ export async function uploadFile(
   onProgress(1)
   return { uploadId }
 }
-

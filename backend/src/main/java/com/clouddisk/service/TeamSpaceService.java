@@ -6,6 +6,7 @@ import com.clouddisk.common.BusinessException;
 import com.clouddisk.entity.*;
 import com.clouddisk.mapper.*;
 import com.clouddisk.storage.StorageService;
+import com.clouddisk.util.AuthHelper;
 import com.clouddisk.team.TeamRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ public class TeamSpaceService {
     private final FolderTreeHelper folderTreeHelper;
     private final FileService fileService;
     private final StoragePathService storagePathService;
+    private final AuthHelper authHelper;
     private final TeamAccessService teamAccessService;
 
     // ==================== 团队空间 CRUD ====================
@@ -306,7 +308,7 @@ public class TeamSpaceService {
 
     public ResponseEntity<org.springframework.core.io.Resource> loadMemberAvatar(
             Long spaceId, Long targetUserId, jakarta.servlet.http.HttpServletRequest request) {
-        long userId = com.clouddisk.util.AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
         getOwnedSpace(spaceId, userId);
 
         TeamMember member = teamMemberMapper.selectOne(new LambdaQueryWrapper<TeamMember>()
@@ -363,7 +365,7 @@ public class TeamSpaceService {
      */
     public ResponseEntity<org.springframework.core.io.Resource> loadTeamAvatar(
             Long spaceId, jakarta.servlet.http.HttpServletRequest request) {
-        long userId = com.clouddisk.util.AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
         getOwnedSpace(spaceId, userId);
 
         TeamSpace space = teamSpaceMapper.selectById(spaceId);

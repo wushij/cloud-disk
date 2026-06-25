@@ -1,6 +1,15 @@
 import type { FileItem } from '@/stores/file'
 import { fileApiUrl } from '@/api/http'
 
+function apiOrigin(): string {
+  const base = (import.meta.env.VITE_API_BASE || '').trim()
+  if (/^https?:\/\//.test(base)) return base.replace(/\/$/, '')
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  return ''
+}
+
 function isImage(mime?: string | null) {
   return (mime || '').toLowerCase().startsWith('image/')
 }
@@ -12,22 +21,46 @@ function isVideo(mime?: string | null, name?: string) {
   return ['.mp4', '.webm', '.mkv', '.avi', '.mov'].some((ext) => lower.endsWith(ext))
 }
 
+export interface FileCoverContext {
+  shareCode?: string
+  extractCode?: string
+}
+
+function shareCoverUrl(
+  row: FileItem,
+  shareCode: string,
+  extractCode?: string,
+  kind: 'thumbnail' | 'preview' = 'preview'
+): string {
+  const origin = apiOrigin()
+  const ec = extractCode ? `&extractCode=${encodeURIComponent(extractCode)}` : ''
+  return `${origin}/share/${shareCode}/${kind}?fileId=${row.id}${ec}`
+}
+
+/** 是否展示真实封面（图片/视频），而非扩展名占位图标 */
 export function fileHasCover(row: FileItem): boolean {
   if (row.type !== 'file') return false
   if (row.hasThumbnail) return true
-  if (isImage(row.mimeType)) return true
-  // 视频需等缩略图生成后再展示封面（H5 列表内 video 预览不稳定）
-  if (isVideo(row.mimeType, row.name)) return false
-  return false
+  return isImage(row.mimeType) || isVideo(row.mimeType, row.name)
 }
 
 export function fileCoverKind(row: FileItem): 'image' | 'video' | null {
   if (!fileHasCover(row)) return null
   if (row.hasThumbnail || isImage(row.mimeType)) return 'image'
+  if (isVideo(row.mimeType, row.name)) return 'video'
   return null
 }
 
-export function fileCoverUrl(row: FileItem): string {
+export function fileCoverUrl(row: FileItem, ctx?: FileCoverContext): string {
+  if (ctx?.shareCode) {
+    if (row.hasThumbnail) {
+      return shareCoverUrl(row, ctx.shareCode, ctx.extractCode, 'thumbnail')
+    }
+    if (isImage(row.mimeType) || isVideo(row.mimeType, row.name)) {
+      return shareCoverUrl(row, ctx.shareCode, ctx.extractCode, 'preview')
+    }
+    return ''
+  }
   if (row.hasThumbnail) {
     return fileApiUrl(`/api/files/${row.id}/thumbnail`)
   }
@@ -61,4 +94,21 @@ export function isImageFile(row: FileItem) {
 
 export function isVideoFile(row: FileItem) {
   return row.type === 'file' && isVideo(row.mimeType, row.name)
+}
+
+export function shareSingleCoverUrl(
+  fileId: number,
+  mimeType: string | undefined,
+  hasThumbnail: boolean | undefined,
+  shareCode: string,
+  extractCode?: string
+): string {
+  const row: FileItem = {
+    id: fileId,
+    name: '',
+    type: 'file',
+    mimeType,
+    hasThumbnail
+  }
+  return fileCoverUrl(row, { shareCode, extractCode })
 }

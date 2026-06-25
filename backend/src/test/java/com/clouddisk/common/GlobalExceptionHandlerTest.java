@@ -25,7 +25,10 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void businessException_returnsUnifiedBody() {
-        ApiErrorResponse resp = handler.handleBusiness(new BusinessException("用户名或密码错误"), request);
+        org.springframework.http.ResponseEntity<ApiErrorResponse> entity = handler.handleBusiness(new BusinessException("用户名或密码错误"), request);
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, entity.getStatusCode());
+        ApiErrorResponse resp = entity.getBody();
+        assertNotNull(resp);
         assertEquals("用户名或密码错误", resp.getError());
         assertEquals("BUSINESS_ERROR", resp.getCode());
         assertEquals(400, resp.getStatus());

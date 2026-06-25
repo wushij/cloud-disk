@@ -156,10 +156,18 @@ public class UploadService {
         return record;
     }
 
-    public List<Integer> resume(String uploadId) {
+    public Map<String, Object> resume(String uploadId) {
         long userId = AuthService.currentUserId();
-        getSession(uploadId, userId);
-        return getUploadedChunks(uploadId);
+        UploadSession session = getSession(uploadId, userId);
+        List<Integer> uploaded = getUploadedChunks(uploadId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("uploadId", uploadId);
+        result.put("chunkSize", session.getChunkSize());
+        result.put("totalChunks", session.getTotalChunks());
+        result.put("uploadedChunks", uploaded);
+        result.put("fileName", session.getFileName());
+        result.put("totalSize", session.getTotalSize());
+        return result;
     }
 
     private List<Integer> getUploadedChunks(String uploadId) {

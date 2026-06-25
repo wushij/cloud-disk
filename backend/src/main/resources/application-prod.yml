@@ -1,4 +1,7 @@
 # 生产/服务器环境
+server:
+  port: ${SERVER_PORT:8055}
+
 spring:
   config:
     activate:
@@ -9,8 +12,8 @@ spring:
       - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRestClientAutoConfiguration
   datasource:
     url: jdbc:mysql://${CLOUDDISK_DB_HOST:127.0.0.1}:${CLOUDDISK_DB_PORT:3306}/cloud_disk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
-    password: root
+    username: ${CLOUDDISK_DB_USER:cloud_disk}
+    password: ${CLOUDDISK_DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
@@ -22,18 +25,17 @@ spring:
 clouddisk:
   redis:
     enabled: true
+  rate-limit:
+    api-per-minute: 1200
   storage:
-    type: minio
-  minio:
-    endpoint: ${CLOUDDISK_MINIO_ENDPOINT:http://127.0.0.1:9000}
-    access-key: ${CLOUDDISK_MINIO_ACCESS_KEY:minioadmin}
-    secret-key: ${CLOUDDISK_MINIO_SECRET_KEY:minioadmin}
-    bucket: ${CLOUDDISK_MINIO_BUCKET:cloud-disk}
+    type: local
+    local-root: ${CLOUDDISK_STORAGE:C:/clouddisk-data}
   onlyoffice:
-    callback-base-url: ${CLOUDDISK_CALLBACK_BASE_URL:http://127.0.0.1:8088}
+    callback-base-url: ${CLOUDDISK_CALLBACK_BASE_URL:https://disk.wushij.online}
   cors:
     allowed-origin-patterns:
-      - ${CLOUDDISK_CORS_ORIGIN:https://disk.example.com}
+      - https://disk.wushij.online
+      - http://disk.wushij.online
 
 sa-token:
   alone-redis:

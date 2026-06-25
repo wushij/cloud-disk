@@ -12,7 +12,7 @@ public class StartupSuccessListener {
     @EventListener(ApplicationReadyEvent.class)
     public void onReady(ApplicationReadyEvent event) {
         Environment env = event.getApplicationContext().getEnvironment();
-        String port = env.getProperty("server.port", "8088");
+        String port = env.getProperty("server.port", "8055");
         String contextPath = env.getProperty("server.servlet.context-path", "");
         if (!StringUtils.hasText(contextPath)) {
             contextPath = "";
@@ -43,7 +43,7 @@ public class StartupSuccessListener {
         System.out.println("  " + b + "API" + r + "        : " + y + baseUrl + r);
         System.out.println("  " + b + "接口文档" + r + "   : " + y + baseUrl + "/doc.html" + r);
         System.out.println("  " + b + "健康检查" + r + "   : " + y + baseUrl + "/actuator/health" + r);
-        System.out.println("  " + b + "默认账号" + r + "   : " + y + "admin / admin123" + r);
+        System.out.println("  " + b + "默认账号" + r + "   : " + y + "admin" + r + "（首次登录请修改密码）");
         System.out.println(c + line + r);
         System.out.println();
     }

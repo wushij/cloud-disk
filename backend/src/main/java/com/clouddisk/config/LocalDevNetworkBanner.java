@@ -32,7 +32,7 @@ public class LocalDevNetworkBanner {
 
     @EventListener(ApplicationReadyEvent.class)
     public void printLanUrls() {
-        String port = environment.getProperty("local.server.port", environment.getProperty("server.port", "8088"));
+        String port = environment.getProperty("local.server.port", environment.getProperty("server.port", "8055"));
         List<String> ips = collectLanIpv4();
         if (ips.isEmpty()) {
             return;

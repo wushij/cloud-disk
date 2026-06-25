@@ -101,7 +101,7 @@ public class MultiLevelCacheService implements CacheService {
         // 仅使用 Redis 保证原子性，同时更新 L1
         try {
             Long v = redis.opsForValue().increment(key);
-            if (ttlSeconds > 0) {
+            if (v != null && v == 1L && ttlSeconds > 0) {
                 redis.expire(key, ttlSeconds, TimeUnit.SECONDS);
             }
             // 同步 L1

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { toUserMessage } from '@/utils/error'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+// 与 package.json 中 pdfjs-dist 版本一致；避免 Nginx 将 .mjs 当作 octet-stream 导致 worker 无法加载
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs'
 
 const props = defineProps<{ src: string }>()
 const containerRef = ref<HTMLDivElement | null>(null)

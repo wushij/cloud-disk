@@ -5,7 +5,7 @@ import { request } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import FileListItem from '@/components/FileListItem.vue'
 import type { FileItem } from '@/stores/file'
-import { isImageFile, isVideoFile } from '@/utils/fileCover'
+import { isImageFile, isVideoFile, shareSingleCoverUrl } from '@/utils/fileCover'
 
 const code = ref('')
 const extractInput = ref('')
@@ -83,10 +83,51 @@ async function loadItems() {
       type: 'file',
       sizeBytes: Number(info.value.fileSize || 0),
       mimeType: String(info.value.mimeType || ''),
-      previewable: !!info.value.previewable
+      previewable: !!info.value.previewable,
+      hasThumbnail: !!info.value.hasThumbnail
     }
   ]
 }
+
+const isSingleFileShare = computed(() => info.value?.shareType !== 'FOLDER')
+
+const singleCoverUrl = computed(() => {
+  if (!isSingleFileShare.value || !info.value?.fileId) return ''
+  return shareSingleCoverUrl(
+    Number(info.value.fileId),
+    String(info.value.mimeType || ''),
+    !!info.value.hasThumbnail,
+    code.value,
+    extractInput.value || undefined
+  )
+})
+
+const showSingleCover = computed(() => {
+  if (needExtract.value && !verified.value) return false
+  if (!singleCoverUrl.value || !info.value?.fileId) return false
+  const mime = String(info.value.mimeType || '')
+  const name = String(info.value.fileName || '')
+  const row = {
+    id: Number(info.value.fileId),
+    name,
+    type: 'file' as const,
+    mimeType: mime,
+    hasThumbnail: !!info.value.hasThumbnail
+  }
+  return isImageFile(row) || isVideoFile(row) || !!info.value.hasThumbnail
+})
+
+const singleCoverIsImage = computed(() => {
+  if (!info.value?.fileId) return false
+  const row = {
+    id: Number(info.value.fileId),
+    name: String(info.value.fileName || ''),
+    type: 'file' as const,
+    mimeType: String(info.value.mimeType || ''),
+    hasThumbnail: !!info.value.hasThumbnail
+  }
+  return !!info.value.hasThumbnail || isImageFile(row)
+})
 
 async function submitExtract() {
   if (!extractInput.value.trim()) {
@@ -233,6 +274,23 @@ function onSheetSelect(item: { name: string }) {
     </view>
 
     <scroll-view v-else scroll-y class="scroll">
+      <view v-if="showSingleCover" class="share-cover-wrap">
+        <image
+          v-if="singleCoverIsImage"
+          :src="singleCoverUrl"
+          class="share-cover-img"
+          mode="aspectFill"
+        />
+        <video
+          v-else
+          :src="singleCoverUrl"
+          class="share-cover-img"
+          muted
+          :show-center-play-btn="false"
+          :controls="false"
+          object-fit="cover"
+        />
+      </view>
       <view v-if="loading" class="state-box"><u-loading-icon text="加载中" color="var(--cd-primary)" /></view>
       <view v-else-if="!items.length" class="state-box">
         <u-empty mode="list" text="暂无文件" />
@@ -242,6 +300,8 @@ function onSheetSelect(item: { name: string }) {
           v-for="item in items"
           :key="`${item.type}-${item.id}`"
           :item="item"
+          :share-code="code"
+          :extract-code="extractInput || undefined"
           @click="openItem(item)"
           @more="showActions(item)"
         />
@@ -337,6 +397,21 @@ function onSheetSelect(item: { name: string }) {
 
 .list-wrap {
   padding: 4rpx 0 32rpx;
+}
+
+.share-cover-wrap {
+  margin: 16rpx 24rpx 8rpx;
+  border-radius: var(--cd-radius-xl);
+  overflow: hidden;
+  height: 360rpx;
+  background: #0f172a;
+  box-shadow: var(--cd-shadow-card);
+}
+
+.share-cover-img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .state-box {

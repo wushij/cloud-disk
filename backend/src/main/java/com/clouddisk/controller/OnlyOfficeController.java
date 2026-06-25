@@ -40,7 +40,9 @@ public class OnlyOfficeController {
     }
 
     @PostMapping("/api/onlyoffice/callback")
-    public Map<String, Object> callback(@RequestBody Map<String, Object> body) {
-        return onlyOfficeService.handleCallback(body);
+    public Map<String, Object> callback(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return onlyOfficeService.handleCallback(body, authorization);
     }
 }

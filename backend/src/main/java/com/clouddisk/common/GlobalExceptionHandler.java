@@ -9,6 +9,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -35,10 +36,14 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiErrorResponse handleBusiness(BusinessException e, HttpServletRequest request) {
-        log.debug("业务异常 path={} code={}: {}", request.getRequestURI(), e.getCode(), e.getMessage());
-        return build(HttpStatus.BAD_REQUEST, e.getMessage(), e.getCode(), request);
+    public ResponseEntity<ApiErrorResponse> handleBusiness(BusinessException e, HttpServletRequest request) {
+        HttpStatus status = "RATE_LIMITED".equals(e.getCode())
+                ? HttpStatus.TOO_MANY_REQUESTS
+                : HttpStatus.BAD_REQUEST;
+        if (status == HttpStatus.BAD_REQUEST) {
+            log.debug("业务异常 path={} code={}: {}", request.getRequestURI(), e.getCode(), e.getMessage());
+        }
+        return ResponseEntity.status(status).body(build(status, e.getMessage(), e.getCode(), request));
     }
 
     @ExceptionHandler(NotLoginException.class)

@@ -9,6 +9,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { globalShareList } from '@/utils/sharedState'
+import { buildPublicShareUrl } from '@/utils/shareUrl'
 
 interface ShareItem {
   id: number
@@ -177,7 +178,7 @@ function openShare(item: ShareItem) {
 }
 
 function copyLink(item: ShareItem) {
-  const link = `${location.origin}${location.pathname}#/pages/share/view?code=${encodeURIComponent(item.shareCode)}`
+  const link = buildPublicShareUrl(item.shareCode)
   uni.setClipboardData({
     data: link,
     success: () => uni.showToast({ title: '链接已复制', icon: 'success' })

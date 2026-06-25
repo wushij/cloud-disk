@@ -1,5 +1,5 @@
 server:
-  port: 8088
+  port: ${SERVER_PORT:8055}
   shutdown: graceful
 
 spring:
@@ -7,6 +7,9 @@ spring:
     name: clouddisk-pro
   profiles:
     default: prod
+    group:
+      local:
+        - dev
   lifecycle:
     timeout-per-shutdown-phase: 30s
   web:
@@ -80,7 +83,7 @@ clouddisk:
     enabled: false
   storage:
     type: local
-    local-root: ${CLOUDDISK_STORAGE:${user.home}/clouddisk-data}
+    local-root: ${CLOUDDISK_STORAGE:../datas}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
@@ -99,7 +102,7 @@ clouddisk:
     enabled: ${ONLYOFFICE_ENABLED:false}
     document-server-url: ${ONLYOFFICE_DOC_SERVER_URL:http://127.0.0.1:8082}
     jwt-secret: ${ONLYOFFICE_JWT_SECRET:clouddisk-onlyoffice-jwt-secret-change-me}
-    callback-base-url: ${ONLYOFFICE_CALLBACK_URL:http://127.0.0.1:8088}
+    callback-base-url: ${ONLYOFFICE_CALLBACK_URL:http://127.0.0.1:8055}
     edit-mode: ${ONLYOFFICE_EDIT_MODE:edit}
   schedule:
     enabled: true
@@ -179,8 +182,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env,loggers
+        include: health,info,metrics
   endpoint:
+    env:
+      enabled: false
+    loggers:
+      enabled: false
     health:
       show-details: when_authorized
       probes:

@@ -75,8 +75,8 @@ spring.boot.admin.client:
   url: ${clouddisk.monitoring.admin-server-url}
   instance:
     service-host-type: IP
-    service-base-url: ${CLOUDDISK_ADMIN_SERVICE_BASE_URL:http://backend:8088}
-    management-url: ${CLOUDDISK_ADMIN_MANAGEMENT_URL:http://backend:8088/actuator}
+    service-base-url: ${CLOUDDISK_ADMIN_SERVICE_BASE_URL:http://backend:8055}
+    management-url: ${CLOUDDISK_ADMIN_MANAGEMENT_URL:http://backend:8055/actuator}
     metadata:
       tags:
         environment: docker
@@ -85,8 +85,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env,loggers,threaddump,heapdump
+        include: health,info,metrics
   endpoint:
+    env:
+      enabled: false
+    loggers:
+      enabled: false
+    threaddump:
+      enabled: false
+    heapdump:
+      enabled: false
     health:
       show-details: always
   health:

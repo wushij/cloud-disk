@@ -124,8 +124,8 @@ function memberAvatarSrc(member: TeamMember) {
   if (avatarBroken.value[member.userId]) return ''
   const hasAvatar = member.hasAvatar ?? !!member.avatar
   if (!hasAvatar) return ''
-  if (member.username === auth.username && auth.hasAvatar) {
-    return auth.avatarSrc
+  if (member.username === auth.username && auth.avatarDisplaySrc) {
+    return auth.avatarDisplaySrc
   }
   return fileApiUrl(`/api/teams/${spaceId.value}/members/${member.userId}/avatar`)
 }

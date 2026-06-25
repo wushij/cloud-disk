@@ -1,4 +1,4 @@
-import { TOKEN_KEY } from '@/api/http'
+import { request, TOKEN_KEY } from '@/api/http'
 
 export type WsMessage = {
   type?: string
@@ -22,24 +22,27 @@ let socketTask: UniApp.SocketTask | null = null
 const listeners = new Set<WsListener>()
 let connecting = false
 
-function wsUrl(token: string) {
+async function wsUrl(): Promise<string> {
   // #ifdef H5
+  const data = await request<{ ticket: string }>({
+    url: '/api/auth/ws-ticket',
+    method: 'POST'
+  })
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}/ws/upload?token=${encodeURIComponent(token)}`
+  return `${proto}://${location.host}/ws/upload?ticket=${encodeURIComponent(data.ticket)}`
   // #endif
   // #ifndef H5
   return ''
   // #endif
 }
 
-function ensureConnected() {
+async function ensureConnected() {
   // #ifndef H5
   return
   // #endif
-  const token = uni.getStorageSync(TOKEN_KEY)
-  if (!token || socketTask || connecting) return
+  if (socketTask || connecting) return
 
-  const url = wsUrl(token)
+  const url = await wsUrl()
   if (!url) return
 
   connecting = true
@@ -73,7 +76,7 @@ function ensureConnected() {
 
 export function subscribeWs(listener: WsListener) {
   listeners.add(listener)
-  ensureConnected()
+  void ensureConnected()
   return () => {
     listeners.delete(listener)
     if (listeners.size === 0 && socketTask) {

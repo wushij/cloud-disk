@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '@/api/http'
+import { buildPublicShareUrl } from '@/utils/shareUrl'
 
 const props = defineProps<{
   modelValue: boolean
@@ -47,7 +48,7 @@ async function createShare() {
     else body.fileId = props.fileId
     const { data } = await http.post('/api/share', body)
     result.value = data
-    fullShareUrl.value = `${window.location.origin}${data.shareUrl}`
+    fullShareUrl.value = buildPublicShareUrl(data.shareCode, data.shareUrl)
     ElMessage.success('分享创建成功')
   } catch (e: unknown) {
     // 错误已由全局拦截器提示

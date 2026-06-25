@@ -1,12 +1,12 @@
-# 本地开发：MySQL 3306 + 本机 Redis 6379（无密码）+ MinIO
+# 本地开发：MySQL 3306 + 本机 Redis 6379（无密码）+ 本地磁盘存储
 spring:
   config:
     activate:
-      on-profile: local
+      on-profile: dev
   datasource:
     url: jdbc:mysql://${CLOUDDISK_DB_HOST:127.0.0.1}:${CLOUDDISK_DB_PORT:3306}/cloud_disk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
-    password: root
+    username: ${CLOUDDISK_DB_USER:root}
+    password: ${CLOUDDISK_DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
@@ -23,12 +23,9 @@ clouddisk:
   sentinel:
     enabled: false
   storage:
-    type: minio
-  minio:
-    endpoint: ${CLOUDDISK_MINIO_ENDPOINT:http://127.0.0.1:9000}
-    access-key: ${CLOUDDISK_MINIO_ACCESS_KEY:minioadmin}
-    secret-key: ${CLOUDDISK_MINIO_SECRET_KEY:minioadmin}
-    bucket: ${CLOUDDISK_MINIO_BUCKET:cloud-disk}
+    type: local
+    # 工作目录为 backend/ 时，../datas = 项目根目录/datas
+    local-root: ${CLOUDDISK_STORAGE:../datas}
   cors:
     allowed-origin-patterns:
       - http://localhost:*

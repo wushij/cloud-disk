@@ -14,7 +14,8 @@ import {
   List,
   ArrowRight
 } from '@element-plus/icons-vue'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
@@ -62,12 +63,19 @@ const primaryStats = [
   { key: 'totalUsedBytes', label: '存储用量', icon: Coin, tone: 'sky', size: true }
 ] as const
 
+function formatStorageLabel(type?: unknown, bucket?: unknown) {
+  const t = String(type || '')
+  const b = String(bucket || '')
+  if (t === 'local') return '本地磁盘'
+  if (t === 'minio' && b) return `MinIO · ${b}`
+  if (b && b !== t) return `${t} · ${b}`
+  return t || '-'
+}
+
 const infraTags = computed(() => [
   {
-    label: '对象存储',
-    value: dashboard.value.bucket
-      ? `${dashboard.value.storageType} · ${dashboard.value.bucket}`
-      : String(dashboard.value.storageType || '-'),
+    label: '文件存储',
+    value: formatStorageLabel(dashboard.value.storageType, dashboard.value.bucket),
     on: true
   },
   {
@@ -215,12 +223,12 @@ function userInitial(user: UserStorageStat) {
 
 function userAvatarSrc(user: UserStorageStat) {
   if (!user.userId || avatarBroken.value[user.userId]) return ''
-  if (user.username === auth.username && auth.avatarSrc) return auth.avatarSrc
+  if (user.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   if (!user.hasAvatar) return ''
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = mediaTokenParam()
   if (!token) return ''
   const base = import.meta.env.VITE_API_BASE || ''
-  return `${base}/api/admin/users/${user.userId}/avatar?access_token=${encodeURIComponent(token)}&v=${auth.avatarVersion}`
+  return `${base}/api/admin/users/${user.userId}/avatar?access_token=${token}&v=${auth.avatarVersion}`
 }
 
 function onAvatarError(userId: number) {

@@ -161,8 +161,8 @@ docker compose -f docker/docker-compose.yml --profile app up -d --no-build
 | 地址 | 说明 |
 |------|------|
 | http://localhost:8080 | 云盘（PC / 手机 H5 同端口，Nginx 按 UA 分流） |
-| http://localhost:8088 | 后端 API |
-| http://localhost:8088/doc.html | 接口文档 |
+| http://localhost:8055 | 后端 API |
+| http://localhost:8055/doc.html | 接口文档 |
 | http://localhost:8090 | Spring Boot Admin 监控 |
 | 账号 | `admin` / `admin123` |
 
@@ -212,7 +212,7 @@ cd mobile && npm run dev:h5
 |------|------|
 | http://localhost:5173 | PC 前端 |
 | http://localhost:5174 | 移动端 H5 |
-| http://localhost:8088 | 后端 API |
+| http://localhost:8055 | 后端 API |
 
 ---
 
@@ -221,7 +221,7 @@ cd mobile && npm run dev:h5
 | 服务 | 宿主机端口 |
 |------|-----------|
 | Nginx（PC / H5） | 8080 |
-| Backend API | 8088 |
+| Backend API | 8055 |
 | Admin 监控 | 8090 |
 | MySQL | 3307 |
 | Redis | 6379 |

@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UserFilled, Coin, Lock, Check, Close, Search } from '@element-plus/icons-vue'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { fmtSize } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -123,11 +124,11 @@ watch([searchKeyword, filterRole, filterStatus], () => {
 
 function userAvatarSrc(row: UserRow) {
   if (avatarBroken.value[row.id]) return ''
-  if (row.username === auth.username && auth.avatarSrc) return auth.avatarSrc
+  if (row.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   if (!row.hasAvatar) return ''
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = mediaTokenParam()
   if (!token) return ''
-  return `/api/admin/users/${row.id}/avatar?access_token=${encodeURIComponent(token)}&v=${auth.avatarVersion}`
+  return `/api/admin/users/${row.id}/avatar?access_token=${token}&v=${auth.avatarVersion}`
 }
 
 function onAvatarError(userId: number) {
@@ -186,7 +187,7 @@ async function toggleUserRole(row: UserRow) {
 async function handleApprove(row: UserRow) {
   const ok = await confirmDialog.open({
     title: '通过注册申请',
-    message: `确定通过「${row.nickname || row.username}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`,
+    message: `确定通过「${row.nickname || row.username}」的注册申请吗？通过后该账号将被激活并分配 3GB 存储空间。`,
     confirmText: '通过',
     danger: false
   })

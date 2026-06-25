@@ -186,7 +186,7 @@ function requestApproveRegistration(item: AppNotification) {
   const subject = getRegistrationSubject(item.content)
   openActionConfirm(
     '通过注册申请',
-    `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`,
+    `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 3GB 存储空间。`,
     '通过',
     false,
     () => doApproveRegistration(item, subject)
@@ -211,7 +211,7 @@ async function doApproveRegistration(item: AppNotification, subject: string) {
     await notifyStore.approveRegistration(item)
     syncNotifyItem(item, {
       title: '已通过注册',
-      content: '该用户现在可以登录使用云盘（200GB 空间）。',
+      content: '该用户现在可以登录使用云盘（3GB 空间）。',
       registrationStatus: 'APPROVED',
       read: true
     })

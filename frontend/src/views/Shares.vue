@@ -2,7 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Notebook, Files } from '@element-plus/icons-vue'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { buildPublicShareUrl } from '@/utils/shareUrl'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
@@ -79,7 +81,7 @@ function isImageShare(row: ShareRow) {
 }
 
 function getShareImageUrl(row: ShareRow) {
-  const token = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  const token = mediaTokenParam()
   return `/api/files/${row.fileId}/preview?access_token=${token}`
 }
 
@@ -112,7 +114,7 @@ async function load() {
 }
 
 function copyLink(row: ShareRow) {
-  const url = `${window.location.origin}${row.shareUrl}`
+  const url = buildPublicShareUrl(row.shareCode, row.shareUrl)
   navigator.clipboard.writeText(url).then(() => ElMessage.success('链接已复制'))
 }
 

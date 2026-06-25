@@ -19,6 +19,7 @@ import com.clouddisk.common.BusinessException;
 import com.clouddisk.security.CaptchaService;
 import com.clouddisk.security.LoginProtectionService;
 import com.clouddisk.util.ClientIpUtil;
+import com.clouddisk.util.AuthHelper;
 
 import com.clouddisk.mapper.UserMapper;
 
@@ -38,6 +39,8 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 
 import java.util.List;
+
+import java.util.Locale;
 
 import java.util.Map;
 
@@ -71,6 +74,8 @@ public class AuthService {
     private final NotificationDispatcher notificationDispatcher;
 
     private final StoragePathService storagePathService;
+
+    private final AuthHelper authHelper;
 
 
 
@@ -309,11 +314,7 @@ public class AuthService {
 
         userCacheService.evict(userId);
 
-        Map<String, Object> m = new HashMap<>();
-
-        m.put("avatarUrl", "/api/auth/avatar/view");
-
-        return m;
+        return me();
 
     }
 
@@ -321,7 +322,7 @@ public class AuthService {
 
     public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> loadAvatar(
             jakarta.servlet.http.HttpServletRequest request) {
-        Long userId = com.clouddisk.util.AuthHelper.requireUserId(request);
+        Long userId = authHelper.requireUserId(request);
 
         User user = userMapper.selectById(userId);
 
@@ -335,10 +336,27 @@ public class AuthService {
 
         return org.springframework.http.ResponseEntity.ok()
 
-                .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                .contentType(resolveAvatarMediaType(user.getAvatar()))
 
                 .body(resource);
 
+    }
+
+    private static org.springframework.http.MediaType resolveAvatarMediaType(String path) {
+        if (path == null) {
+            return org.springframework.http.MediaType.IMAGE_JPEG;
+        }
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) {
+            return org.springframework.http.MediaType.IMAGE_PNG;
+        }
+        if (lower.endsWith(".gif")) {
+            return org.springframework.http.MediaType.IMAGE_GIF;
+        }
+        if (lower.endsWith(".webp")) {
+            return org.springframework.http.MediaType.parseMediaType("image/webp");
+        }
+        return org.springframework.http.MediaType.IMAGE_JPEG;
     }
 
 

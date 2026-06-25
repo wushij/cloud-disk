@@ -76,6 +76,10 @@ const notifyVisible = ref(false)
 
 const avatarBroken = ref(false)
 
+const showHeaderAvatar = computed(
+  () => !!auth.avatarDisplaySrc && !avatarBroken.value
+)
+
 const navItems = [
   { path: '/disk', label: '我的云盘', icon: 'FolderOpened' },
   { path: '/shares', label: '我的分享', icon: 'Share' },
@@ -113,7 +117,10 @@ onMounted(async () => {
 
   try {
 
-    await auth.fetchProfile()
+    await Promise.all([
+      auth.fetchProfile(),
+      auth.ensureMediaToken()
+    ])
 
   } catch {
 
@@ -335,7 +342,7 @@ async function approveRegistration(item: { id: string; refId?: string; content?:
   const subject = getRegistrationSubject(item.content || '')
   const ok = await confirmDialog.open({
     title: '通过注册申请',
-    message: `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`,
+    message: `确定通过「${subject}」的注册申请吗？通过后该账号将被激活并分配 3GB 存储空间。`,
     confirmText: '通过'
   })
   if (!ok) return
@@ -343,7 +350,7 @@ async function approveRegistration(item: { id: string; refId?: string; content?:
     await notifyStore.approveRegistration(item as any)
     syncNotifyItem(item, {
       title: '已通过注册',
-      content: '该用户现在可以登录使用云盘（200GB 空间）。',
+      content: '该用户现在可以登录使用云盘（3GB 空间）。',
       registrationStatus: 'APPROVED',
       read: true
     })
@@ -436,7 +443,6 @@ const applyQuotaVisible = ref(false)
 const applyQuotaGB = ref('')
 const applyReason = ref('')
 const applySaving = ref(false)
-const USER_APPLY_QUOTA_GB = 500
 
 const canApplyQuota = computed(
   () => !auth.isSuperAdmin && storageUsage.value != null && storageUsage.value.quotaBytes > 0
@@ -444,26 +450,21 @@ const canApplyQuota = computed(
 
 function openApplyQuotaDialog() {
   applyQuotaVisible.value = true
-  applyQuotaGB.value = auth.isAdmin ? '' : String(USER_APPLY_QUOTA_GB)
+  applyQuotaGB.value = ''
   applyReason.value = ''
 }
 
 async function submitApplyQuota() {
-  let quotaBytes: number
-  if (auth.isAdmin) {
-    if (!applyQuotaGB.value) {
-      ElMessage.warning('请输入目标容量')
-      return
-    }
-    const gb = Number(applyQuotaGB.value)
-    if (isNaN(gb) || gb <= 0) {
-      ElMessage.warning('容量大小必须大于 0')
-      return
-    }
-    quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
-  } else {
-    quotaBytes = USER_APPLY_QUOTA_GB * 1024 * 1024 * 1024
+  if (!applyQuotaGB.value) {
+    ElMessage.warning('请输入目标容量')
+    return
   }
+  const gb = Number(applyQuotaGB.value)
+  if (isNaN(gb) || gb <= 0) {
+    ElMessage.warning('容量大小必须大于 0')
+    return
+  }
+  const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
   if (storageUsage.value && quotaBytes <= storageUsage.value.quotaBytes) {
     ElMessage.warning('申请配额必须大于当前配额')
     return
@@ -700,9 +701,15 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
 
             <div class="cd-user-info">
 
+              <div
+                v-if="auth.hasAvatar && !auth.avatarDisplaySrc && !avatarBroken"
+                class="cd-user-avatar cd-user-avatar-skeleton"
+                aria-hidden="true"
+              />
               <el-avatar
+                v-else
                 :size="32"
-                :src="avatarBroken ? undefined : auth.avatarSrc || undefined"
+                :src="showHeaderAvatar ? auth.avatarDisplaySrc : undefined"
                 class="cd-user-avatar"
                 @error="avatarBroken = true"
               >
@@ -977,7 +984,7 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
         <span class="hint-text">请填写申请的目标容量（GB）及扩容原因</span>
       </div>
 
-      <div v-if="auth.isAdmin" class="cd-form-group">
+      <div class="cd-form-group">
         <label class="cd-form-label">
           目标容量 (GB)
           <span class="cd-form-label-tip" v-if="storageUsage">
@@ -986,7 +993,7 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
         </label>
         <el-input
           v-model="applyQuotaGB"
-          placeholder="例如 500"
+          placeholder="例如 10"
           type="number"
           :min="1"
         >
@@ -994,11 +1001,6 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
             <span class="cd-input-suffix-text">GB</span>
           </template>
         </el-input>
-      </div>
-
-      <div v-else class="cd-form-group">
-        <label class="cd-form-label">目标容量</label>
-        <div class="cd-quota-fixed-value">500 GB</div>
       </div>
 
       <div class="cd-form-group" style="margin-top: 16px;">
@@ -1272,6 +1274,21 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
 
   font-size: 13px !important;
 
+}
+
+.cd-user-avatar-skeleton {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--cd-border) 25%, var(--cd-bg-soft) 50%, var(--cd-border) 75%);
+  background-size: 200% 100%;
+  animation: cd-avatar-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes cd-avatar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 

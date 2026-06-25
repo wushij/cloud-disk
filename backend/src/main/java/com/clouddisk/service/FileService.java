@@ -409,7 +409,13 @@ public class FileService {
         }
         var url = storageService.presignedDownloadUrl(storagePath, 3600);
         if (url.isEmpty()) {
-            throw new BusinessException("当前存储模式不支持直链，请使用下载接口");
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("url", null);
+            m.put("expireSeconds", 0);
+            m.put("storageType", storageService.storageType());
+            m.put("bucket", storageService.bucketName());
+            m.put("proxy", true);
+            return m;
         }
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("url", url.get());

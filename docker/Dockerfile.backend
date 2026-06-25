@@ -11,6 +11,6 @@ COPY backend/target/clouddisk-pro-*.jar app.jar
 
 ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 
-EXPOSE 8088
+EXPOSE 8055
 
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]

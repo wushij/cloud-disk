@@ -9,6 +9,8 @@ import com.clouddisk.dto.ProfileUpdateRequest;
 import com.clouddisk.dto.RegisterRequest;
 import com.clouddisk.security.CaptchaService;
 import com.clouddisk.security.LoginProtectionService;
+import com.clouddisk.security.MediaAccessTokenService;
+import com.clouddisk.security.WebSocketTicketService;
 import com.clouddisk.service.AuthService;
 import com.clouddisk.util.ClientIpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,6 +32,8 @@ public class AuthController {
     private final FederatedAuthService federatedAuthService;
     private final CaptchaService captchaService;
     private final LoginProtectionService loginProtection;
+    private final WebSocketTicketService webSocketTicketService;
+    private final MediaAccessTokenService mediaAccessTokenService;
 
     @GetMapping("/providers")
     public Map<String, Object> providers() {
@@ -56,7 +60,7 @@ public class AuthController {
     }
 
     public static Map<String, Object> loginBlocked(LoginRequest req, BlockException ex) {
-        throw new BusinessException("请求过于频繁，请稍后再试");
+        throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
     }
 
     @PostMapping("/ldap/login")
@@ -78,7 +82,7 @@ public class AuthController {
     }
 
     public static Map<String, Object> ldapLoginBlocked(LoginRequest req, BlockException ex) {
-        throw new BusinessException("请求过于频繁，请稍后再试");
+        throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
     }
 
     @GetMapping("/sso/authorize")
@@ -102,7 +106,7 @@ public class AuthController {
     }
 
     public static Map<String, Object> registerBlocked(RegisterRequest req, BlockException ex) {
-        throw new BusinessException("请求过于频繁，请稍后再试");
+        throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
     }
 
     @GetMapping("/me")
@@ -110,8 +114,20 @@ public class AuthController {
         return authService.me();
     }
 
+    @PostMapping("/ws-ticket")
+    public Map<String, String> wsTicket() {
+        long userId = AuthService.currentUserId();
+        return Map.of("ticket", webSocketTicketService.issue(userId));
+    }
+
+    @GetMapping("/media-token")
+    public Map<String, Object> mediaToken() {
+        long userId = AuthService.currentUserId();
+        return mediaAccessTokenService.issue(userId);
+    }
+
     @PutMapping("/profile")
-    public Map<String, Object> updateProfile(@RequestBody ProfileUpdateRequest req) {
+    public Map<String, Object> updateProfile(@Valid @RequestBody ProfileUpdateRequest req) {
         return authService.updateProfile(req);
     }
 

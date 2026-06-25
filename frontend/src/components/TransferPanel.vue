@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTransferStore, type TransferTask } from '@/stores/transfer'
 import { fmtSize } from '@/utils/fileMeta'
-import { TOKEN_KEY } from '@/api/http'
+import { mediaTokenParam } from '@/utils/mediaToken'
 import { ElMessage } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
@@ -60,7 +60,7 @@ function getFileIconInfo(name: string): FileIconInfo {
 }
 
 function tokenParam() {
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
+  return mediaTokenParam()
 }
 
 function taskCoverKind(t: TransferTask): 'image' | 'video' | null {

@@ -8,16 +8,12 @@ import com.clouddisk.entity.ShareRecord;
 import com.clouddisk.mapper.FileMapper;
 import com.clouddisk.service.FileService;
 import com.clouddisk.service.ShareService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import javax.crypto.SecretKey;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -34,7 +30,7 @@ public class ShareOnlyOfficeService {
     private final FileService fileService;
     private final FileMapper fileMapper;
     private final CacheService cacheService;
-    private final ObjectMapper objectMapper;
+    private final OnlyOfficeJwtHelper onlyOfficeJwtHelper;
 
     public Map<String, Object> buildEditorConfig(String shareCode, String extractCode, Long fileId) {
         if (!properties.getOnlyoffice().isEnabled()) {
@@ -95,7 +91,7 @@ public class ShareOnlyOfficeService {
         config.put("documentType", documentType(ext));
         config.put("document", document);
         config.put("editorConfig", editorConfig);
-        signConfig(config);
+        onlyOfficeJwtHelper.signConfig(config);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("documentServerUrl", properties.getOnlyoffice().getDocumentServerUrl());
@@ -108,18 +104,6 @@ public class ShareOnlyOfficeService {
         FileRecord file = fileMapper.selectById(fileId);
         if (file == null) throw new BusinessException("文件不存在");
         return fileService.download(file.getId(), file.getUserId());
-    }
-
-    private void signConfig(Map<String, Object> config) {
-        try {
-            SecretKey key = Keys.hmacShaKeyFor(
-                    properties.getOnlyoffice().getJwtSecret().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            String json = objectMapper.writeValueAsString(config);
-            String token = Jwts.builder().content(json, "UTF-8").signWith(key).compact();
-            config.put("token", token);
-        } catch (Exception e) {
-            log.warn("OnlyOffice JWT 签名失败: {}", e.getMessage());
-        }
     }
 
     private String createOoToken(String shareCode, Long fileId) {

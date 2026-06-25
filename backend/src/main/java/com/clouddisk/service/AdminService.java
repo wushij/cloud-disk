@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.clouddisk.auth.AdminPermission;
 import com.clouddisk.auth.SystemRole;
-import com.clouddisk.cache.CacheService;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.common.UserStatus;
 import com.clouddisk.config.CloudDiskProperties;
@@ -24,6 +23,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+
 import java.util.*;
 import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,12 +38,13 @@ public class AdminService {
     private final AuditLogMapper auditLogMapper;
     private final StorageService storageService;
     private final CloudDiskProperties properties;
-    private final CacheService cacheService;
     private final AuditLogService auditLogService;
     private final StorageQuotaService quotaService;
     private final PasswordEncoder passwordEncoder;
     private final AdminAccessService adminAccessService;
     private final UserCacheService userCacheService;
+
+    private final AuthHelper authHelper;
     private final NotificationDispatcher notificationDispatcher;
 
     @Autowired(required = false)
@@ -138,7 +140,7 @@ public class AdminService {
     }
 
     public ResponseEntity<Resource> loadUserAvatar(Long userId, jakarta.servlet.http.HttpServletRequest request) {
-        long callerId = AuthHelper.requireUserId(request);
+        long callerId = authHelper.requireUserId(request);
         User caller = userMapper.selectById(callerId);
         if (caller == null || !adminAccessService.isAnyAdmin(caller)) {
             throw new BusinessException("需要管理员权限");
@@ -148,7 +150,24 @@ public class AdminService {
             throw new BusinessException("头像不存在");
         }
         Resource resource = storageService.loadAsResource(user.getAvatar());
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
+        return ResponseEntity.ok().contentType(resolveAvatarMediaType(user.getAvatar())).body(resource);
+    }
+
+    private static MediaType resolveAvatarMediaType(String path) {
+        if (path == null) {
+            return MediaType.IMAGE_JPEG;
+        }
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) {
+            return MediaType.IMAGE_PNG;
+        }
+        if (lower.endsWith(".gif")) {
+            return MediaType.IMAGE_GIF;
+        }
+        if (lower.endsWith(".webp")) {
+            return MediaType.parseMediaType("image/webp");
+        }
+        return MediaType.IMAGE_JPEG;
     }
 
     public void setUserStatus(Long userId, int status) {
@@ -161,7 +180,7 @@ public class AdminService {
         }
         user.setStatus(status);
         userMapper.updateById(user);
-        cacheService.delete("user:" + userId);
+        userCacheService.evict(userId);
         if (status == UserStatus.DISABLED) {
             StpUtil.logout(userId);
         }
@@ -181,7 +200,7 @@ public class AdminService {
             user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
         }
         userMapper.updateById(user);
-        cacheService.delete("user:" + userId);
+        userCacheService.evict(userId);
         auditLogService.logCurrentUser("ADMIN_APPROVE_REGISTER", "user", String.valueOf(userId), user.getUsername());
     }
 
@@ -194,7 +213,7 @@ public class AdminService {
         }
         String username = user.getUsername();
         userMapper.deleteById(userId);
-        cacheService.delete("user:" + userId);
+        userCacheService.evict(userId);
         auditLogService.logCurrentUser("ADMIN_REJECT_REGISTER", "user", String.valueOf(userId), username);
     }
 
@@ -325,7 +344,7 @@ public class AdminService {
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userMapper.updateById(user);
-        cacheService.delete("user:" + userId);
+        userCacheService.evict(userId);
         StpUtil.logout(userId); // 重置密码后强制下线
         auditLogService.logCurrentUser("ADMIN_RESET_PASSWORD", "user", String.valueOf(userId), "重置密码");
     }

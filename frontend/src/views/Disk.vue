@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
-import http, { TOKEN_KEY } from '@/api/http'
+import http from '@/api/http'
+import { resolveFilePreviewUrl } from '@/utils/fileUrl'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePromptDialogStore } from '@/stores/promptDialog'
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
@@ -88,14 +89,10 @@ function handleBatchDownload() {
   const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
   const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
   if (folders.length === 0 && files.length === 0) return
-  let url = `/api/files/download/zip?access_token=${tokenParam()}`
-  if (folders.length > 0) {
-    url += `&folderIds=${folders.join(',')}`
-  }
-  if (files.length > 0) {
-    url += `&fileIds=${files.join(',')}`
-  }
-  downloadZip(url)
+  const params: string[] = []
+  if (folders.length > 0) params.push(`folderIds=${folders.join(',')}`)
+  if (files.length > 0) params.push(`fileIds=${files.join(',')}`)
+  downloadZip(`/api/files/download/zip?${params.join('&')}`)
 }
 
 async function handleBatchDelete() {
@@ -117,10 +114,6 @@ async function handleBatchDelete() {
   } catch {
     /* error */
   }
-}
-
-function tokenParam() {
-  return encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
 }
 
 async function refreshAfterChange() {
@@ -168,7 +161,7 @@ function onDragLeave(e: DragEvent) {
 
 function download(row: FileItem) {
   if (row.type === 'folder') {
-    downloadZip(`/api/files/download/zip?folderIds=${row.id}&access_token=${tokenParam()}`)
+    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
     return
   }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)
@@ -179,13 +172,7 @@ async function directDownload(row: FileItem) {
 }
 
 async function resolvePreviewUrl(fileId: number): Promise<string> {
-  try {
-    const { data } = await http.get(`/api/files/${fileId}/direct-url`)
-    if (data.url) return data.url
-  } catch {
-    /* fallback proxy preview */
-  }
-  return `/api/files/${fileId}/preview?access_token=${tokenParam()}`
+  return resolveFilePreviewUrl(fileId)
 }
 
 async function preview(row: FileItem) {

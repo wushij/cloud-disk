@@ -65,5 +65,7 @@ http.interceptors.response.use(
   }
 )
 
-export { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY }
+const HAS_AVATAR_KEY = 'cd_has_avatar'
+
+export { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY }
 export default http

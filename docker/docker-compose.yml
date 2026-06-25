@@ -148,15 +148,15 @@ services:
       CLOUDDISK_REDIS_HOST: redis
       CLOUDDISK_REDIS_PORT: "6379"
       CLOUDDISK_MINIO_ENDPOINT: http://minio:9000
-      CLOUDDISK_ONLYOFFICE_CALLBACK_BASE_URL: http://backend:8088
+      CLOUDDISK_ONLYOFFICE_CALLBACK_BASE_URL: http://backend:8055
       CLOUDDISK_ONLYOFFICE_INTERNAL_DOCUMENT_SERVER_URL: http://onlyoffice
       CLOUDDISK_RABBITMQ_HOST: rabbitmq
       CLOUDDISK_ES_URIS: http://elasticsearch:9200
       CLOUDDISK_MONITORING_ADMIN_SERVER_URL: http://admin-server:8090
-      CLOUDDISK_ADMIN_SERVICE_BASE_URL: http://backend:8088
-      CLOUDDISK_ADMIN_MANAGEMENT_URL: http://backend:8088/actuator
+      CLOUDDISK_ADMIN_SERVICE_BASE_URL: http://backend:8055
+      CLOUDDISK_ADMIN_MANAGEMENT_URL: http://backend:8055/actuator
     ports:
-      - "8088:8088"
+      - "8055:8055"
     depends_on:
       admin-server:
         condition: service_started

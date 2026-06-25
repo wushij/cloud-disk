@@ -28,6 +28,7 @@ const EN_MESSAGE_MAP: Record<string, string> = {
   'Request aborted': '请求已取消',
   'Failed to fetch': '网络连接失败，请检查网络后重试',
   cancel: '',
+  canceled: '',
   close: ''
 }
 
@@ -103,13 +104,16 @@ export function showSuccessToast(message: string) {
   ElMessage.success(text)
 }
 
-/** Element Plus MessageBox 等用户主动取消，不应当作错误提示 */
+/** Element Plus MessageBox / 传输暂停等主动取消，不应当作错误提示 */
 export function isBenignUserCancel(err: unknown): boolean {
-  if (err === 'cancel' || err === 'close') return true
+  if (axios.isCancel(err)) return true
   if (typeof err === 'object' && err !== null) {
-    const action = (err as { action?: string }).action
-    if (action === 'cancel' || action === 'close') return true
+    const e = err as { name?: string; code?: string; message?: string; action?: string }
+    if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED') return true
+    if (typeof e.message === 'string' && /^canceled?$/i.test(e.message.trim())) return true
+    if (e.action === 'cancel' || e.action === 'close') return true
   }
+  if (err === 'cancel' || err === 'close') return true
   return false
 }
 
@@ -126,6 +130,7 @@ export function getApiErrorMessage(err: unknown, fallback = '操作失败'): str
     if (!ax.response) {
       if (ax.code === 'ECONNABORTED') return '请求超时，请稍后重试'
       if (ax.code === 'ERR_NETWORK') return '网络连接失败，请检查网络后重试'
+      if (ax.code === 'ERR_CANCELED') return ''
       return toUserMessage(ax.message || '', '网络连接失败，请检查网络后重试')
     }
 
@@ -144,6 +149,7 @@ export function getApiErrorMessage(err: unknown, fallback = '操作失败'): str
 }
 
 export function shouldShowGlobalError(err: unknown): boolean {
+  if (isBenignUserCancel(err)) return false
   const ax = err as AxiosError
   if (ax.config?.skipErrorHandler) return false
   return true

@@ -39,6 +39,7 @@ import java.util.zip.ZipOutputStream;
 public class FileController {
 
     private final FileService fileService;
+    private final AuthHelper authHelper;
 
     /** ES 搜索服务（条件装配，ES 未启用时为 null） */
     @Autowired(required = false)
@@ -89,7 +90,7 @@ public class FileController {
 
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> download(@PathVariable Long id, HttpServletRequest request) {
-        long userId = AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
         FileRecord file = fileService.getOwnedOrShared(id, userId);
         Resource resource = fileService.download(id, userId);
         String encoded = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
@@ -106,7 +107,7 @@ public class FileController {
             @RequestParam(required = false) List<Long> fileIds,
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
-        long userId = AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
 
         List<FileService.ZipEntrySource> sources = fileService.prepareZipSources(folderIds, fileIds, userId);
         if (sources.isEmpty()) {
@@ -182,7 +183,7 @@ public class FileController {
 
     @GetMapping("/{id}/preview")
     public ResponseEntity<Resource> preview(@PathVariable Long id, HttpServletRequest request) {
-        long userId = AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
         FileRecord file = fileService.getOwnedOrShared(id, userId);
         if (!fileService.isPreviewable(file.getFileType(), file.getFileName())) {
             return ResponseEntity.badRequest().build();
@@ -194,7 +195,7 @@ public class FileController {
 
     @GetMapping("/{id}/thumbnail")
     public ResponseEntity<Resource> thumbnail(@PathVariable Long id, HttpServletRequest request) {
-        long userId = AuthHelper.requireUserId(request);
+        long userId = authHelper.requireUserId(request);
         Resource resource = fileService.loadThumbnail(id, userId);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
     }

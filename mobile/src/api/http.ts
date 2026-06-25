@@ -3,6 +3,8 @@ export const USER_KEY = 'cd_username'
 export const NICKNAME_KEY = 'cd_nickname'
 export const ROLE_KEY = 'cd_role'
 
+import { mediaTokenQuery } from '@/utils/mediaToken'
+
 const BASE_URL = import.meta.env.VITE_API_BASE || ''
 
 function apiOrigin(): string {
@@ -48,6 +50,7 @@ const EN_MSG_MAP: Record<string, string> = {
   'Failed to fetch': '网络连接失败，请检查网络后重试',
   'timeout': '请求超时，请稍后重试',
   'cancel': '',
+  'canceled': '',
   'close': ''
 }
 
@@ -183,12 +186,19 @@ export function uploadFile(options: {
 }
 
 export function tokenQuery(): string {
-  const token = uni.getStorageSync(TOKEN_KEY)
-  return encodeURIComponent(token || '')
+  return mediaTokenQuery()
+}
+
+export async function refreshMediaAccessToken(): Promise<string> {
+  const { refreshMediaToken } = await import('@/utils/mediaToken')
+  return refreshMediaToken()
 }
 
 export function fileApiUrl(path: string): string {
-  const token = tokenQuery()
+  if (/[?&]access_token=/.test(path)) {
+    return buildUrl(path)
+  }
+  const token = mediaTokenQuery()
   const join = path.includes('?') ? '&' : '?'
   return `${buildUrl(path)}${join}access_token=${token}`
 }

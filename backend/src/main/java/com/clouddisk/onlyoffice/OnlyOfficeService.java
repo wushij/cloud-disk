@@ -7,9 +7,6 @@ import com.clouddisk.entity.FileRecord;
 import com.clouddisk.mapper.FileMapper;
 import com.clouddisk.service.FileService;
 import com.clouddisk.storage.StorageService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import com.clouddisk.service.TeamAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,13 +14,13 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import javax.crypto.SecretKey;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -37,7 +34,7 @@ public class OnlyOfficeService {
     private final FileService fileService;
     private final StorageService storageService;
     private final CacheService cacheService;
-    private final ObjectMapper objectMapper;
+    private final OnlyOfficeJwtHelper onlyOfficeJwtHelper;
     private final TeamAccessService teamAccessService;
 
     public Map<String, Object> buildEditorConfig(Long fileId, long userId, String username) {
@@ -107,7 +104,7 @@ public class OnlyOfficeService {
         config.put("document", document);
         config.put("editorConfig", editorConfig);
 
-        signConfig(config);
+        onlyOfficeJwtHelper.signConfig(config);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("documentServerUrl", properties.getOnlyoffice().getDocumentServerUrl());
@@ -125,15 +122,17 @@ public class OnlyOfficeService {
         return storageService.loadAsResource(file.getStoragePath());
     }
 
-    public Map<String, Object> handleCallback(Map<String, Object> body) {
+    public Map<String, Object> handleCallback(Map<String, Object> body, String authorizationHeader) {
         ensureEnabled();
-        int status = body.get("status") instanceof Number n ? n.intValue() : 0;
+        Map<String, Object> payload = onlyOfficeJwtHelper.unwrapCallback(body, authorizationHeader);
+        int status = payload.get("status") instanceof Number n ? n.intValue() : 0;
         Map<String, Object> result = Map.of("error", 0);
         if (status == 2 || status == 6) {
-            String url = (String) body.get("url");
-            Object keyObj = body.get("key");
+            String url = (String) payload.get("url");
+            Object keyObj = payload.get("key");
             if (!StringUtils.hasText(url) || keyObj == null) return result;
             try {
+                assertAllowedDownloadUrl(url);
                 long fileId = Long.parseLong(String.valueOf(keyObj).split("_")[0]);
                 FileRecord file = fileMapper.selectById(fileId);
                 if (file == null) return result;
@@ -142,11 +141,68 @@ public class OnlyOfficeService {
                         file.getFileType());
                 log.info("OnlyOffice 文档已保存 fileId={}", fileId);
             } catch (Exception e) {
-                log.error("OnlyOffice 回调保存失败, body=" + body, e);
+                log.error("OnlyOffice 回调保存失败", e);
                 return Map.of("error", 1);
             }
         }
         return result;
+    }
+
+    private void assertAllowedDownloadUrl(String url) {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (Exception e) {
+            throw new BusinessException("OnlyOffice 回调 URL 无效");
+        }
+        String host = uri.getHost();
+        if (!StringUtils.hasText(host)) {
+            throw new BusinessException("OnlyOffice 回调 URL 无效");
+        }
+        String hostLower = host.toLowerCase(Locale.ROOT);
+        Set<String> allowedHosts = collectAllowedHosts();
+        if (!allowedHosts.contains(hostLower)) {
+            throw new BusinessException("OnlyOffice 回调 URL 来源未授权");
+        }
+        try {
+            for (InetAddress addr : InetAddress.getAllByName(host)) {
+                if (isPrivateOrLinkLocal(addr) && !allowedHosts.contains(hostLower)) {
+                    throw new BusinessException("OnlyOffice 回调 URL 指向内网地址");
+                }
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException("OnlyOffice 回调 URL 解析失败");
+        }
+    }
+
+    private Set<String> collectAllowedHosts() {
+        Set<String> hosts = new HashSet<>();
+        addAllowedHost(hosts, properties.getOnlyoffice().getDocumentServerUrl());
+        addAllowedHost(hosts, properties.getOnlyoffice().getInternalDocumentServerUrl());
+        hosts.add("onlyoffice");
+        return hosts;
+    }
+
+    private void addAllowedHost(Set<String> hosts, String baseUrl) {
+        if (!StringUtils.hasText(baseUrl)) {
+            return;
+        }
+        try {
+            String host = URI.create(baseUrl).getHost();
+            if (host != null) {
+                hosts.add(host.toLowerCase(Locale.ROOT));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean isPrivateOrLinkLocal(InetAddress addr) {
+        return addr.isAnyLocalAddress()
+                || addr.isLoopbackAddress()
+                || addr.isLinkLocalAddress()
+                || addr.isSiteLocalAddress();
     }
 
     private byte[] downloadRemote(String url) throws Exception {
@@ -210,18 +266,6 @@ public class OnlyOfficeService {
             throw new RuntimeException("下载编辑结果失败 HTTP " + resp.statusCode());
         }
         return resp.body();
-    }
-
-    private void signConfig(Map<String, Object> config) {
-        try {
-            SecretKey key = Keys.hmacShaKeyFor(
-                    properties.getOnlyoffice().getJwtSecret().getBytes(StandardCharsets.UTF_8));
-            String json = objectMapper.writeValueAsString(config);
-            String token = Jwts.builder().content(json, "UTF-8").signWith(key).compact();
-            config.put("token", token);
-        } catch (Exception e) {
-            log.warn("OnlyOffice JWT 签名失败（若 Document Server 未启用 JWT 可忽略）: {}", e.getMessage());
-        }
     }
 
     public String createOoToken(Long fileId, Long userId) {

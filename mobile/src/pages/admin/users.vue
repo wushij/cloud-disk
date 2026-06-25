@@ -168,7 +168,7 @@ function approveUser() {
   const user = selectedUser.value
   if (!user) return
   closeActions()
-  openConfirm('通过注册申请', `确定通过「${user.nickname || user.username}」的注册申请吗？通过后该账号将被激活并分配 200GB 存储空间。`, false, async () => {
+  openConfirm('通过注册申请', `确定通过「${user.nickname || user.username}」的注册申请吗？通过后该账号将被激活并分配 3GB 存储空间。`, false, async () => {
     try {
       await request({ url: `/api/admin/registrations/${user.id}/approve`, method: 'POST' })
       uni.showToast({ title: '已通过注册', icon: 'success' })

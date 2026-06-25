@@ -6,7 +6,7 @@ import { lanAccessBanner } from '../scripts/vite-lan-banner.mjs'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiTarget = process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8088'
+  const apiTarget = process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8055'
   const wsTarget = apiTarget.startsWith('https://')
     ? apiTarget.replace(/^https:\/\//, 'wss://')
     : apiTarget.replace(/^http:\/\//, 'ws://')

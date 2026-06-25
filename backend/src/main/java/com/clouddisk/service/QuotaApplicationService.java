@@ -52,22 +52,15 @@ public class QuotaApplicationService {
         if (SystemRole.isSuperAdmin(user.getRole())) {
             throw new BusinessException("超级管理员无需申请扩容");
         }
-
-        long currentQuota = user.getStorageQuota() != null ? user.getStorageQuota() : 0L;
-        long targetQuota;
-        if (SystemRole.isUser(user.getRole())) {
-            targetQuota = UserStatus.USER_APPLY_QUOTA_BYTES;
-            if (currentQuota >= targetQuota) {
-                throw new BusinessException("您当前配额已达到可申请上限（500GB）");
-            }
-        } else if (SystemRole.isAdmin(user.getRole())) {
-            if (applyQuota == null || applyQuota <= currentQuota) {
-                throw new BusinessException("申请配额必须大于当前配额");
-            }
-            targetQuota = applyQuota;
-        } else {
+        if (!SystemRole.isUser(user.getRole()) && !SystemRole.isAdmin(user.getRole())) {
             throw new BusinessException("当前账号无法申请扩容");
         }
+
+        long currentQuota = user.getStorageQuota() != null ? user.getStorageQuota() : 0L;
+        if (applyQuota == null || applyQuota <= currentQuota) {
+            throw new BusinessException("申请配额必须大于当前配额");
+        }
+        long targetQuota = applyQuota;
 
         // 3. 创建申请工单
         QuotaApplication qa = new QuotaApplication();

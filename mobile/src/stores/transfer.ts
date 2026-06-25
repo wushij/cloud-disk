@@ -23,6 +23,11 @@ export interface TransferTask {
   abortController?: AbortController // 上传使用
   downloadTask?: UniApp.DownloadTask // 原生下载使用
   startTime?: number
+  speedBaseLoaded?: number
+  speedBaseTime?: number
+  uploadId?: string
+  chunkSize?: number
+  totalChunks?: number
 }
 
 function formatSpeed(bytesPerSec: number): string {
@@ -30,6 +35,25 @@ function formatSpeed(bytesPerSec: number): string {
   if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(1)} B/s`
   if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
   return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
+}
+
+function calcTransferSpeed(
+  loaded: number,
+  speedBaseLoaded: number | undefined,
+  speedBaseTime: number | undefined,
+  fallback: string
+): string {
+  const baseLoaded = speedBaseLoaded ?? 0
+  const baseTime = speedBaseTime ?? Date.now()
+  const elapsed = (Date.now() - baseTime) / 1000
+  if (elapsed < 0.5) return fallback
+  const delta = loaded - baseLoaded
+  if (delta <= 0) return '0 B/s'
+  return formatSpeed(delta / elapsed)
+}
+
+function speedBaseline(loaded: number): Pick<TransferTask, 'speedBaseLoaded' | 'speedBaseTime'> {
+  return { speedBaseLoaded: loaded, speedBaseTime: Date.now() }
 }
 
 export const useTransferStore = defineStore('transfer', () => {
@@ -64,13 +88,17 @@ export const useTransferStore = defineStore('transfer', () => {
     task.speed = '已暂停'
   }
 
-  // 恢复上传任务
+  // 恢复上传任务（断点续传）
   async function resumeUpload(taskId: string) {
     const task = tasks.value.find((t) => t.id === taskId)
     if (!task || task.status !== 'paused' || !task.filePath) return
 
+    const baseProgress = task.progress
+    const resumeLoaded = task.loaded
     task.status = 'running'
     task.startTime = Date.now()
+    task.speedBaseLoaded = resumeLoaded
+    task.speedBaseTime = Date.now()
     task.abortController = new AbortController()
 
     try {
@@ -79,25 +107,30 @@ export const useTransferStore = defineStore('transfer', () => {
         task.name,
         task.size,
         task.folderId || 0,
-        undefined, // MD5
+        undefined,
         (ratio) => {
           if (task.status !== 'running') return
-          task.progress = ratio
-          task.loaded = Math.round(ratio * task.size)
-          const elapsed = (Date.now() - (task.startTime || Date.now())) / 1000
-          if (elapsed > 0) {
-            task.speed = formatSpeed(task.loaded / elapsed)
-          }
+          task.progress = Math.max(baseProgress, ratio)
+          task.loaded = Math.round(task.progress * task.size)
+          task.speed = calcTransferSpeed(task.loaded, task.speedBaseLoaded, task.speedBaseTime, task.speed)
         },
-        task.abortController.signal
+        task.abortController.signal,
+        {
+          existingUploadId: task.uploadId,
+          skipMd5Check: true,
+          onInit: (session) => {
+            task.uploadId = session.uploadId
+            task.chunkSize = session.chunkSize
+            task.totalChunks = session.totalChunks
+          }
+        }
       )
 
       task.status = 'done'
       task.progress = 1
       task.loaded = task.size
       task.speed = '已完成'
-      
-      // 触发页面刷新事件
+
       uni.$emit('refresh-file-list')
     } catch (e: any) {
       if (e?.message === 'Canceled') {
@@ -154,23 +187,28 @@ export const useTransferStore = defineStore('transfer', () => {
     try {
       task.status = 'running'
       task.startTime = Date.now()
+      Object.assign(task, speedBaseline(0))
 
       await smartUpload(
         filePath,
         name,
         size,
         folderId,
-        undefined, // MD5
+        undefined,
         (ratio) => {
           if (task.status !== 'running') return
           task.progress = ratio
           task.loaded = Math.round(ratio * size)
-          const elapsed = (Date.now() - (task.startTime || Date.now())) / 1000
-          if (elapsed > 0) {
-            task.speed = formatSpeed(task.loaded / elapsed)
-          }
+          task.speed = calcTransferSpeed(task.loaded, task.speedBaseLoaded, task.speedBaseTime, task.speed)
         },
-        task.abortController?.signal
+        task.abortController?.signal,
+        {
+          onInit: (session) => {
+            task.uploadId = session.uploadId
+            task.chunkSize = session.chunkSize
+            task.totalChunks = session.totalChunks
+          }
+        }
       )
 
       task.status = 'done'
@@ -226,6 +264,7 @@ export const useTransferStore = defineStore('transfer', () => {
     } else {
       task.status = 'running'
       task.startTime = Date.now()
+      Object.assign(task, speedBaseline(0))
       
       const xhr = new XMLHttpRequest()
       xhr.open('GET', url)
@@ -247,7 +286,7 @@ export const useTransferStore = defineStore('transfer', () => {
         }
         const elapsed = (Date.now() - (task.startTime || Date.now())) / 1000
         if (elapsed > 0) {
-          task.speed = formatSpeed(task.loaded / elapsed)
+          task.speed = calcTransferSpeed(task.loaded, task.speedBaseLoaded, task.speedBaseTime, '下载中...')
         }
       }
 

@@ -1,6 +1,7 @@
 package com.clouddisk.service;
 
 import com.clouddisk.cache.CacheService;
+import com.clouddisk.config.StpInterfaceImpl;
 import com.clouddisk.entity.User;
 import com.clouddisk.mapper.UserMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -53,6 +54,7 @@ public class UserCacheService {
     public void evict(Long id) {
         if (id != null) {
             cacheService.delete("user:" + id);
+            StpInterfaceImpl.evictAuthCache(cacheService, id);
         }
     }
 }

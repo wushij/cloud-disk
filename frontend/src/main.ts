@@ -14,6 +14,9 @@ import router from './router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { setupGlobalErrorHandlers } from '@/plugins/error-handler'
+import { redirectLegacyMobileShareLink } from '@/utils/shareUrl'
+
+redirectLegacyMobileShareLink()
 
 const app = createApp(App)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

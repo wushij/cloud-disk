@@ -296,8 +296,7 @@ function previewText(row: FileItem) {
 }
 
 function previewPdf(row: FileItem) {
-  const token = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')
-  const url = fileApiUrl(`/api/files/${row.id}/preview?access_token=${token}`)
+  const url = fileApiUrl(`/api/files/${row.id}/preview`)
   // #ifdef H5
   window.open(url, '_blank')
   // #endif
@@ -938,3 +937,4 @@ async function chooseAndUpload() {
   font-size: 19rpx;
 }
 </style>
+

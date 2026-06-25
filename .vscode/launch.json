@@ -5,14 +5,14 @@
       "name": "后端 dev",
       "type": "node-terminal",
       "request": "launch",
-      "command": "$env:SPRING_PROFILES_ACTIVE='local'; mvn spring-boot:run \"-DskipTests\"",
+      "command": "$env:SPRING_PROFILES_ACTIVE='dev'; mvn spring-boot:run \"-DskipTests\"",
       "cwd": "${workspaceFolder}/backend"
     },
     {
       "name": "后端 dev + 监控",
       "type": "node-terminal",
       "request": "launch",
-      "command": "$env:SPRING_PROFILES_ACTIVE='local,monitoring'; mvn spring-boot:run \"-DskipTests\"",
+      "command": "$env:SPRING_PROFILES_ACTIVE='dev,monitoring'; mvn spring-boot:run \"-DskipTests\"",
       "cwd": "${workspaceFolder}/backend"
     },
     {

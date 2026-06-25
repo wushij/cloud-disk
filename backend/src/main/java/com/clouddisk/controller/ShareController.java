@@ -69,6 +69,8 @@ public class ShareController {
         m.put("fileSize", file.getFileSize());
         m.put("mimeType", file.getFileType());
         m.put("previewable", fileService.isPreviewable(file.getFileType(), file.getFileName()));
+        m.put("hasThumbnail", org.springframework.util.StringUtils.hasText(file.getThumbnailPath())
+                || org.springframework.util.StringUtils.hasText(file.getPosterPath()));
         return m;
     }
 
@@ -102,6 +104,16 @@ public class ShareController {
                 ? MediaType.parseMediaType(file.getFileType())
                 : MediaType.APPLICATION_OCTET_STREAM);
         return ResponseEntity.ok().contentType(mediaType).body(resource);
+    }
+
+    @GetMapping("/share/{code}/thumbnail")
+    public ResponseEntity<Resource> thumbnail(
+            @PathVariable String code,
+            @RequestParam(required = false) String extractCode,
+            @RequestParam(required = false) Long fileId) {
+        FileRecord file = shareService.resolveSharedFile(code, extractCode, fileId);
+        Resource resource = fileService.loadThumbnail(file.getId(), file.getUserId());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
     }
 
     @GetMapping("/share/{code}/direct-url")

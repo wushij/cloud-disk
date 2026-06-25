@@ -23,8 +23,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env,loggers,threaddump,heapdump
+        include: health,info,metrics
   endpoint:
+    env:
+      enabled: false
+    loggers:
+      enabled: false
+    threaddump:
+      enabled: false
+    heapdump:
+      enabled: false
     health:
       show-details: always
   health:
