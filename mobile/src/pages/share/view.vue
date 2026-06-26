@@ -68,9 +68,8 @@ async function loadInfo() {
 async function loadItems() {
   if (!info.value) return
   if (info.value.shareType === 'FOLDER') {
-    const q = extractInput.value ? `?extractCode=${encodeURIComponent(extractInput.value)}` : ''
     const data = await request<{ items?: FileItem[] }>({
-      url: `/share/${code.value}/items${q}`,
+      url: `/share/${code.value}/items`,
       skipAuth: true
     })
     items.value = data.items || []
@@ -152,7 +151,7 @@ async function submitExtract() {
 }
 
 function shareQuery() {
-  return extractInput.value ? `&extractCode=${encodeURIComponent(extractInput.value)}` : ''
+  return ''
 }
 
 function openItem(item: FileItem) {

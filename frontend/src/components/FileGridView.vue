@@ -7,6 +7,7 @@ import { fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover
 import CachedCover from '@/components/CachedCover.vue'
 import type { FileItem } from '@/stores/file'
 import FolderTypeIcon from './FolderTypeIcon.vue'
+import { sanitizeHighlight } from '@/utils/sanitize'
 
 export type { FileItem }
 
@@ -205,8 +206,7 @@ function formatDate(value?: string) {
 
           <div class="cd-grid-name" :title="row.name">
 
-            <span v-if="row.highlightName" v-html="row.highlightName" />
-
+            <span v-if="row.highlightName" v-html="sanitizeHighlight(row.highlightName)" />
             <span v-else>{{ row.name }}</span>
 
           </div>

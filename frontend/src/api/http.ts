@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getApiErrorMessage, shouldShowGlobalError, showErrorToast } from '@/utils/error'
+import { getSessionBearer } from '@/api/sessionAuth'
 
 const TOKEN_KEY = 'cd_token'
 const USER_KEY = 'cd_username'
@@ -9,8 +10,10 @@ const AVATAR_VERSION_KEY = 'cd_avatar_v'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
-  timeout: 0,
-  withCredentials: true
+  timeout: 15000,
+  withCredentials: true,
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN'
 })
 
 function clearAuth() {
@@ -31,12 +34,13 @@ http.interceptors.request.use((config) => {
   const path = config.url ?? ''
   const isAuth = path.includes('/api/auth/login') || path.includes('/api/auth/register')
   if (isAuth) {
-    delete config.headers.Authorization
     config.skipErrorHandler = true
-    return config
+  } else {
+    const bearer = getSessionBearer()
+    if (bearer) {
+      config.headers.Authorization = `Bearer ${bearer}`
+    }
   }
-  const t = localStorage.getItem(TOKEN_KEY)
-  if (t) config.headers.Authorization = `Bearer ${t}`
   return config
 })
 
@@ -52,10 +56,10 @@ http.interceptors.response.use(
       const onLoginPage = window.location.pathname.startsWith('/login')
       const isPublic = isPublicAuthRequest(url) || error.config?.skipErrorHandler
 
-      if (!isPublic && shouldShowGlobalError(error)) {
+      if (!isPublic && !onLoginPage && shouldShowGlobalError(error)) {
         showErrorToast(getApiErrorMessage(error, '未登录或登录已过期，请重新登录'))
       }
-      if (!isPublic && !onLoginPage) {
+      if (!isPublic && !onLoginPage && !error.config?.skipErrorHandler) {
         clearAuth()
         redirectToLogin()
       }

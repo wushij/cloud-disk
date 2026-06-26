@@ -28,7 +28,9 @@ public class StorageController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("type", storageService.storageType());
         m.put("bucket", storageService.bucketName());
-        m.put("endpoint", properties.getMinio().getEndpoint());
+        if (cn.dev33.satoken.stp.StpUtil.isLogin() && (cn.dev33.satoken.stp.StpUtil.hasRole("ADMIN") || cn.dev33.satoken.stp.StpUtil.hasRole("SUPER_ADMIN"))) {
+            m.put("endpoint", properties.getMinio().getEndpoint());
+        }
         m.put("healthy", true);
         return m;
     }

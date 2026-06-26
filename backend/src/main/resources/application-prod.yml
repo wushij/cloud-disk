@@ -36,8 +36,21 @@ clouddisk:
     allowed-origin-patterns:
       - https://disk.wushij.online
       - http://disk.wushij.online
+  upload:
+    allowed-extensions: "jpg,jpeg,png,gif,bmp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,md,zip,rar,7z,mp3,mp4,avi,mov"
 
 sa-token:
   alone-redis:
     database: 1
     timeout: 86400
+  cookie:
+    secure: true
+
+knife4j:
+  enable: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

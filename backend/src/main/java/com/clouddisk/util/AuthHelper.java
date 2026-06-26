@@ -20,10 +20,6 @@ public class AuthHelper {
             if (mediaUserId != null) {
                 return mediaUserId;
             }
-            Object loginId = StpUtil.getLoginIdByToken(queryToken);
-            if (loginId != null) {
-                return Long.parseLong(loginId.toString());
-            }
         }
         if (!StpUtil.isLogin()) {
             throw new BusinessException("未登录或登录已过期");

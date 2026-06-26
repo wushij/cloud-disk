@@ -96,6 +96,11 @@ watch(() => auth.avatarVersion, () => {
   avatarBroken.value = false
 })
 
+function onHeaderAvatarError() {
+  avatarBroken.value = true
+  auth.markAvatarUnavailable()
+}
+
 const active = computed(() => route.path)
 
 const pageTitle = computed(() => {
@@ -208,12 +213,9 @@ onUnmounted(() => {
 
 
 
-function logout() {
-
-  auth.logout()
-
+async function logout() {
+  await auth.logout()
   router.push('/login')
-
 }
 
 function onUserCommand(cmd: string) {
@@ -717,7 +719,7 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
                 :size="32"
                 :src="showHeaderAvatar ? auth.avatarDisplaySrc : undefined"
                 class="cd-user-avatar"
-                @error="avatarBroken = true"
+                @error="onHeaderAvatarError"
               >
 
                 {{ auth.avatarInitial }}

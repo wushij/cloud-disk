@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -41,7 +42,9 @@ public class AuthController {
     }
 
     @GetMapping("/captcha")
-    public Map<String, Object> captcha() {
+    public Map<String, Object> captcha(HttpServletResponse response) {
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate, max-age=0");
+        response.setHeader(HttpHeaders.PRAGMA, "no-cache");
         return captchaService.create();
     }
 
@@ -99,6 +102,15 @@ public class AuthController {
         response.sendRedirect(result.get("redirectUrl"));
     }
 
+    @PostMapping("/sso/ticket")
+    public Map<String, Object> ssoTicket(@RequestBody Map<String, String> body, HttpServletResponse response) {
+        String ticket = body.get("ticket");
+        if (ticket == null || ticket.isBlank()) {
+            throw new BusinessException("缺少票据");
+        }
+        return federatedAuthService.loginWithSsoTicket(ticket, response);
+    }
+
     @PostMapping("/register")
     @SentinelResource(value = "auth_register", blockHandler = "registerBlocked")
     public Map<String, Object> register(@Valid @RequestBody RegisterRequest req) {
@@ -137,7 +149,6 @@ public class AuthController {
         return Map.of("message", "已退出");
     }
 
-    /** 将当前 Bearer 会话写入 httpOnly Cookie，供 img/video 等同域资源鉴权 */
     @PostMapping("/sync-cookie")
     public Map<String, String> syncCookie(jakarta.servlet.http.HttpServletResponse response) {
         authService.syncSessionCookie(response);

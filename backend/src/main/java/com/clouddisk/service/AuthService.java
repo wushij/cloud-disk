@@ -80,6 +80,8 @@ public class AuthService {
 
     private final AuthHelper authHelper;
 
+    private final com.clouddisk.util.FileValidator fileValidator;
+
 
 
     @PostConstruct
@@ -232,18 +234,13 @@ public class AuthService {
         Map<String, Object> m = new HashMap<>();
 
         m.put("id", user.getId());
-
         m.put("username", user.getUsername());
-
         m.put("nickname", user.getNickname());
-
-        m.put("avatar", user.getAvatar());
-
+        m.put("avatar", resolveReadableAvatarPath(user.getAvatar()));
         m.put("email", user.getEmail());
-
         m.put("phone", user.getPhone());
-
         m.put("role", user.getRole() != null ? user.getRole() : "USER");
+        m.put("defaultPassword", passwordEncoder.matches("admin123", user.getPassword()));
 
         return m;
 
@@ -264,8 +261,6 @@ public class AuthService {
         if (req.getEmail() != null) user.setEmail(req.getEmail());
 
         if (req.getPhone() != null) user.setPhone(req.getPhone());
-
-        if (req.getAvatar() != null) user.setAvatar(req.getAvatar());
 
         userMapper.updateById(user);
 
@@ -289,11 +284,21 @@ public class AuthService {
             throw new BusinessException("未登录或登录已过期");
         }
         String tokenValue = StpUtil.getTokenValue();
-        Cookie cookie = new Cookie("Authorization", tokenValue);
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(86400);
-        response.addCookie(cookie);
+        org.springframework.web.context.request.ServletRequestAttributes attributes = 
+                (org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        boolean isSecure = false;
+        if (attributes != null) {
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            isSecure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
+        }
+        org.springframework.http.ResponseCookie cookie = org.springframework.http.ResponseCookie.from("Authorization", tokenValue)
+                .httpOnly(true)
+                .secure(isSecure)
+                .path("/")
+                .maxAge(86400)
+                .sameSite("Lax")
+                .build();
+        response.addHeader(org.springframework.http.HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
 
@@ -312,7 +317,13 @@ public class AuthService {
 
         }
 
-        String path = storagePathService.buildUserAvatarPath(userId);
+        java.io.InputStream magicIn = file.getInputStream();
+        if (!magicIn.markSupported()) {
+            magicIn = new java.io.BufferedInputStream(magicIn);
+        }
+        String imageExt = fileValidator.detectImageExtension(magicIn);
+
+        String path = storagePathService.buildUserAvatarPath(userId, imageExt);
 
         User user = userMapper.selectById(userId);
 
@@ -342,18 +353,40 @@ public class AuthService {
 
         User user = userMapper.selectById(userId);
 
-        if (user == null || user.getAvatar() == null) {
-
+        if (user == null) {
             throw new BusinessException("头像不存在");
-
         }
 
-        var resource = storageService.loadAsResource(user.getAvatar());
+        String avatarPath = resolveReadableAvatarPath(user.getAvatar());
+        if (avatarPath == null) {
+            throw new BusinessException("头像不存在");
+        }
+
+        var resource = storageService.loadAsResource(avatarPath);
 
         return MediaResponseHeaders.ok()
-                .contentType(resolveAvatarMediaType(user.getAvatar()))
+                .contentType(resolveAvatarMediaType(avatarPath))
                 .body(resource);
 
+    }
+
+    private String resolveReadableAvatarPath(String avatarPath) {
+        if (!StringUtils.hasText(avatarPath)) {
+            return null;
+        }
+        if (avatarPath.contains("..") || avatarPath.contains(":")
+                || (!avatarPath.startsWith("头像/") && !avatarPath.startsWith("团队头像/"))) {
+            return null;
+        }
+        try {
+            var resource = storageService.loadAsResource(avatarPath);
+            if (resource.exists() && resource.isReadable()) {
+                return avatarPath;
+            }
+        } catch (Exception ignored) {
+            // 存储中无对应文件时视为无头像
+        }
+        return null;
     }
 
     private static org.springframework.http.MediaType resolveAvatarMediaType(String path) {
@@ -388,14 +421,11 @@ public class AuthService {
         Map<String, Object> m = new HashMap<>();
 
         m.put("token", StpUtil.getTokenValue());
-
         m.put("username", user.getUsername());
-
         m.put("nickname", user.getNickname());
-
         m.put("role", user.getRole() != null ? user.getRole() : "USER");
-
         m.put("userId", user.getId());
+        m.put("defaultPassword", passwordEncoder.matches("admin123", user.getPassword()));
 
         return m;
 

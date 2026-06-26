@@ -18,7 +18,11 @@ public class StoragePathService {
     }
 
     public String buildUserAvatarPath(long userId) {
-        return StoragePathHelper.userAvatarPath(resolveUsername(userId));
+        return buildUserAvatarPath(userId, "jpg");
+    }
+
+    public String buildUserAvatarPath(long userId, String ext) {
+        return StoragePathHelper.userAvatarPath(resolveUsername(userId), ext);
     }
 
     public String buildTeamAvatarPath(String teamName, long spaceId) {

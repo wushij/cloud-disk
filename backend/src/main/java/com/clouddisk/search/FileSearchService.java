@@ -161,7 +161,7 @@ public class FileSearchService {
             // 高亮结果
             Map<String, List<String>> highlights = hit.getHighlightFields();
             if (highlights.containsKey("fileName") && !highlights.get("fileName").isEmpty()) {
-                item.put("highlightName", highlights.get("fileName").get(0));
+                item.put("highlightName", sanitizeHighlight(highlights.get("fileName").get(0)));
             }
             items.add(item);
         }
@@ -245,9 +245,18 @@ public class FileSearchService {
                     .should(s -> s.wildcard(w -> w.field("fileName").value("*.rar")))
                     .should(s -> s.wildcard(w -> w.field("fileName").value("*.7z")))
             ));
-            default -> {
-            }
         }
+    }
+
+    private String sanitizeHighlight(String text) {
+        if (text == null) {
+            return null;
+        }
+        String placeholderStart = "___HIGHLIGHT_START___";
+        String placeholderEnd = "___HIGHLIGHT_END___";
+        String replaced = text.replace("<em>", placeholderStart).replace("</em>", placeholderEnd);
+        String escaped = org.springframework.web.util.HtmlUtils.htmlEscape(replaced);
+        return escaped.replace(placeholderStart, "<em>").replace(placeholderEnd, "</em>");
     }
 }
 

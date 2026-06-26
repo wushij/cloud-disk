@@ -83,6 +83,7 @@ function openAvatarPicker() {
 
 function onAvatarError() {
   avatarLoadFailed.value = true
+  auth.markAvatarUnavailable()
 }
 
 watch(() => auth.avatarVersion, () => {

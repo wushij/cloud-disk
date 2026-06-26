@@ -98,6 +98,7 @@ export async function uploadFile(
         return fd
       })(), {
         signal,
+        timeout: 0,
         onUploadProgress: (e) => {
           if (e.total) onProgress(Math.min(0.99, e.loaded / e.total))
         }
@@ -153,13 +154,13 @@ export async function uploadFile(
       fd.append('uploadId', uploadId)
       fd.append('chunkIndex', String(i))
       fd.append('file', file.slice(start, end), `part-${i}`)
-      await withRetry(() => http.post('/api/upload/chunk', fd, { signal }))
+      await withRetry(() => http.post('/api/upload/chunk', fd, { signal, timeout: 0 }))
     },
     (r) => onProgress(0.05 + r * 0.9)
   )
 
   const { data: record } = await withRetry(() =>
-    http.post<{ id?: number }>('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal })
+    http.post<{ id?: number }>('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal, timeout: 0 })
   )
   onProgress(1)
   return { uploadId, fileId: record?.id }

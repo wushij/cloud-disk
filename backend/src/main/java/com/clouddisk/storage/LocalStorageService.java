@@ -48,6 +48,11 @@ public class LocalStorageService implements StorageService {
     }
 
     @Override
+    public long size(String relativePath) throws Exception {
+        return Files.size(resolvePath(relativePath));
+    }
+
+    @Override
     public Path resolvePath(String relativePath) {
         Path p = root.resolve(relativePath).normalize();
         if (!p.startsWith(root)) {

@@ -238,6 +238,13 @@ public class FileService {
         if (file.isEmpty()) throw new BusinessException("文件为空");
         String fileName = Objects.requireNonNullElse(file.getOriginalFilename(), "unnamed");
         fileValidator.validate(fileName, file.getSize());
+
+        java.io.InputStream magicIn = file.getInputStream();
+        if (!magicIn.markSupported()) {
+            magicIn = new java.io.BufferedInputStream(magicIn);
+        }
+        fileValidator.validateMagicBytes(fileName, magicIn);
+
         String storagePath = buildStoragePath(userId, fileName);
         storageService.store(file.getInputStream(), storagePath, file.getSize(), file.getContentType());
         try (var in = storageService.loadAsResource(storagePath).getInputStream()) {

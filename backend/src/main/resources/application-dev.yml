@@ -42,3 +42,5 @@ sa-token:
   alone-redis:
     database: 1
     timeout: 86400
+  cookie:
+    secure: false

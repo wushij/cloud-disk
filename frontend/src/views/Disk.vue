@@ -23,6 +23,7 @@ import { isTextFile } from '@/utils/filePreview'
 import { connectUploadWs, disconnectUploadWs, type WsMessage } from '@/utils/ws'
 import { downloadZip } from '@/utils/download'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+import { sanitizeHighlight } from '@/utils/sanitize'
 
 defineOptions({ name: 'Disk' })
 
@@ -609,7 +610,7 @@ onUnmounted(() => {
                       <Document />
                     </el-icon>
                   </div>
-                  <span v-if="row.highlightName" class="cd-name-text" v-html="row.highlightName" />
+                  <span v-if="row.highlightName" class="cd-name-text" v-html="sanitizeHighlight(row.highlightName)" />
                   <span v-else class="cd-name-text">{{ row.name }}</span>
                   <el-tag
                     v-if="row.type === 'file' && transcodeLabel(row.transcodeStatus)"

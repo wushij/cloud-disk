@@ -134,7 +134,7 @@ public class AdminService {
             row.put("storageQuota", u.getStorageQuota() != null ? u.getStorageQuota() : 0);
             row.put("storageUsed", u.getStorageUsed() != null ? u.getStorageUsed() : 0);
             row.put("createTime", u.getCreateTime());
-            row.put("hasAvatar", u.getAvatar() != null && !u.getAvatar().isBlank());
+            row.put("hasAvatar", resolveReadableAvatarPath(u.getAvatar()) != null);
             result.add(row);
         }
         return result;
@@ -147,11 +147,31 @@ public class AdminService {
             throw new BusinessException("需要管理员权限");
         }
         User user = userMapper.selectById(userId);
-        if (user == null || user.getAvatar() == null || user.getAvatar().isBlank()) {
+        String avatarPath = resolveReadableAvatarPath(user != null ? user.getAvatar() : null);
+        if (avatarPath == null) {
             throw new BusinessException("头像不存在");
         }
-        Resource resource = storageService.loadAsResource(user.getAvatar());
-        return ResponseEntity.ok().contentType(resolveAvatarMediaType(user.getAvatar())).body(resource);
+        Resource resource = storageService.loadAsResource(avatarPath);
+        return ResponseEntity.ok().contentType(resolveAvatarMediaType(avatarPath)).body(resource);
+    }
+
+    private String resolveReadableAvatarPath(String avatarPath) {
+        if (!org.springframework.util.StringUtils.hasText(avatarPath)) {
+            return null;
+        }
+        if (avatarPath.contains("..") || avatarPath.contains(":")
+                || (!avatarPath.startsWith("头像/") && !avatarPath.startsWith("团队头像/"))) {
+            return null;
+        }
+        try {
+            Resource resource = storageService.loadAsResource(avatarPath);
+            if (resource.exists() && resource.isReadable()) {
+                return avatarPath;
+            }
+        } catch (Exception ignored) {
+            // 存储中无对应文件时视为无头像
+        }
+        return null;
     }
 
     private static MediaType resolveAvatarMediaType(String path) {
@@ -280,7 +300,7 @@ public class AdminService {
             row.put("userId", u.getId());
             row.put("username", u.getUsername());
             row.put("nickname", u.getNickname());
-            row.put("hasAvatar", u.getAvatar() != null && !u.getAvatar().isBlank());
+            row.put("hasAvatar", resolveReadableAvatarPath(u.getAvatar()) != null);
             row.put("storageUsed", u.getStorageUsed() != null ? u.getStorageUsed() : 0);
             row.put("storageQuota", u.getStorageQuota() != null ? u.getStorageQuota() : 0);
             userStats.add(row);

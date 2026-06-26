@@ -14,6 +14,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import com.clouddisk.cache.CacheService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -31,6 +38,9 @@ public class FederatedAuthService {
     private final CloudDiskProperties properties;
     private final ObjectProvider<LdapAuthService> ldapAuthService;
     private final ObjectProvider<SsoAuthService> ssoAuthService;
+    private final CacheService cacheService;
+    private final ObjectMapper objectMapper;
+    private final Environment environment;
 
     public Map<String, Object> authProviders() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -69,12 +79,65 @@ public class FederatedAuthService {
         Map<String, String> profile = sso.exchangeCode(code, state);
         User user = provisionUser(profile.get("username"), profile.get("nickname"), profile.get("email"), "SSO");
         Map<String, Object> auth = finishLogin(user, "SSO");
+
+        String ticket = UUID.randomUUID().toString().replace("-", "");
+        Map<String, String> ticketData = new HashMap<>();
+        ticketData.put("token", String.valueOf(auth.get("token")));
+        ticketData.put("username", String.valueOf(auth.get("username")));
+        ticketData.put("nickname", String.valueOf(auth.get("nickname")));
+        ticketData.put("role", String.valueOf(auth.get("role")));
+
+        try {
+            cacheService.set("sso:ticket:" + ticket, objectMapper.writeValueAsString(ticketData), 60);
+        } catch (Exception e) {
+            throw new BusinessException("SSO 登录失败");
+        }
+
         Map<String, String> result = new HashMap<>();
-        result.put("token", String.valueOf(auth.get("token")));
-        result.put("username", String.valueOf(auth.get("username")));
-        result.put("nickname", String.valueOf(auth.get("nickname")));
-        result.put("redirectUrl", sso.buildFrontendRedirectUrl(result));
+        result.put("redirectUrl", sso.buildFrontendRedirectUrl(ticket));
         return result;
+    }
+
+    public Map<String, Object> loginWithSsoTicket(String ticket, HttpServletResponse response) {
+        String key = "sso:ticket:" + ticket;
+        String json = cacheService.get(key);
+        if (json == null || json.isBlank()) {
+            throw new BusinessException("票据无效或已过期");
+        }
+        cacheService.delete(key);
+        try {
+            Map<String, String> ticketData = objectMapper.readValue(json, new TypeReference<>() {});
+            String token = ticketData.get("token");
+            String username = ticketData.get("username");
+            String nickname = ticketData.get("nickname");
+            String role = ticketData.get("role");
+
+            // Write session Cookie
+            org.springframework.web.context.request.ServletRequestAttributes attributes = 
+                    (org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            boolean isSecure = false;
+            if (attributes != null) {
+                jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+                isSecure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
+            }
+            org.springframework.http.ResponseCookie cookie = org.springframework.http.ResponseCookie.from("Authorization", token)
+                    .httpOnly(true)
+                    .secure(isSecure || environment.acceptsProfiles(org.springframework.core.env.Profiles.of("prod")))
+                    .path("/")
+                    .maxAge(86400)
+                    .sameSite("Lax")
+                    .build();
+            response.addHeader(org.springframework.http.HttpHeaders.SET_COOKIE, cookie.toString());
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("token", token);
+            result.put("username", username);
+            result.put("nickname", nickname);
+            result.put("role", role);
+            return result;
+        } catch (Exception e) {
+            throw new BusinessException("SSO 票据校验失败");
+        }
     }
 
     private User provisionUser(String username, String nickname, String email, String source) {

@@ -2,6 +2,7 @@ package com.clouddisk.util;
 
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -39,7 +40,23 @@ public final class StoragePathHelper {
     }
 
     public static String userAvatarPath(String username) {
-        return "头像/" + sanitizeSegment(username) + ".jpg";
+        return userAvatarPath(username, "jpg");
+    }
+
+    public static String userAvatarPath(String username, String ext) {
+        String safeExt = normalizeImageExt(ext);
+        return "头像/" + sanitizeSegment(username) + "." + safeExt;
+    }
+
+    private static String normalizeImageExt(String ext) {
+        if (!StringUtils.hasText(ext)) {
+            return "jpg";
+        }
+        return switch (ext.toLowerCase(Locale.ROOT)) {
+            case "jpeg" -> "jpg";
+            case "jpg", "png", "gif", "webp" -> ext.toLowerCase(Locale.ROOT);
+            default -> "jpg";
+        };
     }
 
     public static String teamAvatarPath(String teamName, long spaceId) {

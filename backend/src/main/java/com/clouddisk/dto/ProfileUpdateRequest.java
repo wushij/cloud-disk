@@ -17,6 +17,4 @@ public class ProfileUpdateRequest {
     @Pattern(regexp = "^[0-9+\\-]{6,32}$", message = "手机号格式不正确")
     private String phone;
 
-    @Size(max = 512, message = "头像路径过长")
-    private String avatar;
 }

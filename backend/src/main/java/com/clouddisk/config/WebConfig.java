@@ -15,15 +15,18 @@ public class WebConfig implements WebMvcConfigurer {
     private final RateLimitInterceptor rateLimitInterceptor;
     private final IpRateLimitInterceptor ipRateLimitInterceptor;
     private final GlobalApiRateLimitInterceptor globalApiRateLimitInterceptor;
+    private final CsrfInterceptor csrfInterceptor;
 
     public WebConfig(CloudDiskProperties properties,
                      RateLimitInterceptor rateLimitInterceptor,
                      IpRateLimitInterceptor ipRateLimitInterceptor,
-                     GlobalApiRateLimitInterceptor globalApiRateLimitInterceptor) {
+                     GlobalApiRateLimitInterceptor globalApiRateLimitInterceptor,
+                     CsrfInterceptor csrfInterceptor) {
         this.properties = properties;
         this.rateLimitInterceptor = rateLimitInterceptor;
         this.ipRateLimitInterceptor = ipRateLimitInterceptor;
         this.globalApiRateLimitInterceptor = globalApiRateLimitInterceptor;
+        this.csrfInterceptor = csrfInterceptor;
     }
 
     @Override
@@ -44,6 +47,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(csrfInterceptor).addPathPatterns("/api/**");
         registry.addInterceptor(globalApiRateLimitInterceptor).addPathPatterns("/api/**");
         registry.addInterceptor(ipRateLimitInterceptor)
                 .addPathPatterns("/api/auth/login", "/api/auth/ldap/login", "/api/auth/register", "/share/**");

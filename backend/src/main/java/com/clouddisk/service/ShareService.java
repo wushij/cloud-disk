@@ -371,9 +371,20 @@ public class ShareService {
 
     public void verifyExtractCode(ShareRecord share, String extractCode) {
         if (share.getExtractCode() == null) return;
-        // 先检查该 IP 是否已达到频率上限（即使这次输入了正确的码也不允许通过）
+
+        String shareCode = share.getShareCode();
+        // 1. 尝试通过 Cookie 和 Cache 会话校验访问权限，规避 URL 拼接密码
+        String cookieToken = readShareAccessCookie(shareCode);
+        if (org.springframework.util.StringUtils.hasText(cookieToken)) {
+            String val = cacheService.get(shareAccessCacheKey(shareCode, cookieToken));
+            if (val != null) {
+                return; // 会话有效，校验通过
+            }
+        }
+
+        // 2. 先检查该 IP 是否已达到频率上限（即使这次输入了正确的码也不允许通过）
         String ip = clientIp();
-        String failKey = "share:fail:" + share.getShareCode() + ":" + ip;
+        String failKey = "share:fail:" + shareCode + ":" + ip;
         String failVal = cacheService.get(failKey);
         if (failVal != null) {
             long failCount = Long.parseLong(failVal);
@@ -382,9 +393,58 @@ public class ShareService {
             }
         }
         if (!share.getExtractCode().equals(extractCode)) {
-            recordExtractFailure(share.getShareCode());
+            recordExtractFailure(shareCode);
             throw new BusinessException("提取码错误");
         }
+
+        // 3. 提取码正确，生成一次性/短期会话 token 写入 Cookie
+        String newAccessToken = UUID.randomUUID().toString().replace("-", "");
+        cacheService.set(shareAccessCacheKey(shareCode, newAccessToken), "1", 86400); // 有效期 1 天
+        writeShareAccessCookie(shareCode, newAccessToken);
+    }
+
+    private String shareAccessCacheKey(String shareCode, String token) {
+        return "share:access:token:" + shareCode + ":" + token;
+    }
+
+    private String readShareAccessCookie(String shareCode) {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes = 
+                    (org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes != null) {
+                jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+                if (request != null && request.getCookies() != null) {
+                    for (jakarta.servlet.http.Cookie c : request.getCookies()) {
+                        if (("share_access_" + shareCode).equals(c.getName())) {
+                            return c.getValue();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private void writeShareAccessCookie(String shareCode, String token) {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes = 
+                    (org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes != null) {
+                jakarta.servlet.http.HttpServletResponse response = attributes.getResponse();
+                jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+                if (response != null && request != null) {
+                    boolean isSecure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
+                    org.springframework.http.ResponseCookie cookie = org.springframework.http.ResponseCookie.from("share_access_" + shareCode, token)
+                            .httpOnly(true)
+                            .secure(isSecure)
+                            .path("/")
+                            .maxAge(86400)
+                            .sameSite("Lax")
+                            .build();
+                    response.addHeader(org.springframework.http.HttpHeaders.SET_COOKIE, cookie.toString());
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     public ShareRecord getValidShare(String shareCode) {

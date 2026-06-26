@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY } from '@/api/http'
-import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken } from '@/utils/mediaToken'
-import { mediaApiUrl } from '@/utils/mediaUrl'
+import axios from 'axios'
+import http, { USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY } from '@/api/http'
+import { setSessionBearer, getSessionBearer } from '@/api/sessionAuth'
+import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken, mediaTokenRef } from '@/utils/mediaToken'
+import { mediaApiUrl, appendQueryParam } from '@/utils/mediaUrl'
 import {
   loadAvatarThumb,
   clearAvatarThumb,
@@ -21,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   const avatarVersion = ref(0)
   const avatarStoragePath = ref('')
   const avatarCachedSrc = ref('')
+  const defaultPassword = ref(false)
 
   const effectiveAvatarVersion = computed(() => {
     const fromPath = avatarVersionFromPath(avatarStoragePath.value)
@@ -28,14 +31,14 @@ export const useAuthStore = defineStore('auth', () => {
     return avatarVersion.value
   })
 
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => !!username.value)
   const isAdmin = computed(() => role.value === 'ADMIN' || role.value === 'SUPER_ADMIN')
   const isSuperAdmin = computed(() => role.value === 'SUPER_ADMIN')
 
   const avatarSrc = computed(() => {
-    if (!hasAvatar.value) return ''
+    if (!hasAvatar.value || !mediaTokenRef.value) return ''
     const v = effectiveAvatarVersion.value
-    return `${mediaApiUrl('/api/auth/avatar/view')}?v=${v}`
+    return appendQueryParam(mediaApiUrl('/api/auth/avatar/view'), 'v', v)
   })
 
   const avatarDisplaySrc = computed(() => {
@@ -51,37 +54,92 @@ export const useAuthStore = defineStore('auth', () => {
   const avatarReady = computed(() => hasAvatar.value && !!avatarSrc.value)
 
   function restoreAvatarCache() {
-    avatarCachedSrc.value = ''
-    if (!hasAvatar.value || !username.value) return
-    avatarCachedSrc.value = loadAvatarThumb(username.value, effectiveAvatarVersion.value)
+    if (!hasAvatar.value || !username.value) {
+      avatarCachedSrc.value = ''
+      return
+    }
+    const cached = loadAvatarThumb(username.value, effectiveAvatarVersion.value)
+    if (cached) {
+      avatarCachedSrc.value = cached
+    }
   }
 
   function restore() {
-    token.value = localStorage.getItem(TOKEN_KEY)
-    username.value = localStorage.getItem(USER_KEY)
-    nickname.value = localStorage.getItem(NICKNAME_KEY)
-    role.value = localStorage.getItem(ROLE_KEY)
-    avatarVersion.value = Number(localStorage.getItem(AVATAR_VERSION_KEY) || '0')
-    hasAvatar.value = localStorage.getItem(HAS_AVATAR_KEY) === 'true'
-    restoreAvatarCache()
-    if (token.value) {
-      void ensureMediaToken()
+    getSessionBearer()
+    // 仅冷启动时从 localStorage 恢复；路由切换时保留 Pinia 内头像等会话状态
+    if (!username.value) {
+      username.value = localStorage.getItem(USER_KEY)
+      nickname.value = localStorage.getItem(NICKNAME_KEY)
+      role.value = localStorage.getItem(ROLE_KEY)
+      avatarVersion.value = Number(localStorage.getItem(AVATAR_VERSION_KEY) || '0')
+    }
+    if (hasAvatar.value) {
+      restoreAvatarCache()
+    }
+  }
+
+  function isUnauthorizedError(e: unknown): boolean {
+    return axios.isAxiosError(e) && e.response?.status === 401
+  }
+
+  async function syncSessionCookie() {
+    try {
+      await http.post('/api/auth/sync-cookie', undefined, { skipErrorHandler: true })
+    } catch {
+      /* Cookie 同步失败时仍可用 Bearer 完成会话 */
     }
   }
 
   async function initAuth() {
     restore()
-    if (!token.value) return
-    await Promise.all([
-      ensureMediaToken(),
-      http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
-    ])
-    await fetchProfile().catch(() => {})
+    const path = window.location.pathname
+    const hasSsoTicket = new URLSearchParams(window.location.search).has('sso_ticket')
+
+    if (path.startsWith('/login') || path.startsWith('/share')) {
+      if (path.startsWith('/login') && !hasSsoTicket) {
+        clearClientState()
+      }
+      return
+    }
+
+    try {
+      await fetchProfile({ silent: true })
+    } catch (e) {
+      if (isUnauthorizedError(e)) {
+        clearClientState()
+      }
+      return
+    }
+
+    await syncSessionCookie()
+    try {
+      await ensureMediaToken()
+    } catch {
+      /* 媒体 token 失败不踢出登录 */
+    }
+  }
+
+  function clearClientState() {
+    setSessionBearer(null)
+    token.value = null
+    userId.value = null
+    username.value = null
+    nickname.value = null
+    role.value = null
+    hasAvatar.value = false
+    avatarVersion.value = 0
+    avatarStoragePath.value = ''
+    avatarCachedSrc.value = ''
+    defaultPassword.value = false
+    localStorage.removeItem(AVATAR_VERSION_KEY)
+    localStorage.removeItem(HAS_AVATAR_KEY)
+    clearAvatarThumb()
+    clearMediaTokenCache()
+    persist()
   }
 
   function persist() {
-    if (token.value) localStorage.setItem(TOKEN_KEY, token.value)
-    else localStorage.removeItem(TOKEN_KEY)
+    // Rely on HttpOnly Cookie. Do not persist token to localStorage
     if (username.value) localStorage.setItem(USER_KEY, username.value)
     else localStorage.removeItem(USER_KEY)
     if (nickname.value) localStorage.setItem(NICKNAME_KEY, nickname.value)
@@ -97,6 +155,7 @@ export const useAuthStore = defineStore('auth', () => {
     nickname?: string
     role?: string
     avatar?: string | null
+    defaultPassword?: boolean
   }) {
     if (data.id != null) userId.value = data.id
     if (data.username) username.value = data.username
@@ -104,12 +163,22 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = data.role || role.value || 'USER'
     avatarStoragePath.value = data.avatar || ''
     hasAvatar.value = !!data.avatar
+    if (data.defaultPassword !== undefined) defaultPassword.value = data.defaultPassword
     if (!data.avatar) {
       avatarCachedSrc.value = ''
       clearAvatarThumb()
     } else {
       restoreAvatarCache()
     }
+    persist()
+  }
+
+  function markAvatarUnavailable() {
+    if (!hasAvatar.value) return
+    hasAvatar.value = false
+    avatarStoragePath.value = ''
+    avatarCachedSrc.value = ''
+    clearAvatarThumb()
     persist()
   }
 
@@ -133,18 +202,46 @@ export const useAuthStore = defineStore('auth', () => {
     { immediate: true }
   )
 
+  async function establishSession(tokenValue: string) {
+    setSessionBearer(tokenValue)
+    token.value = tokenValue
+    await syncSessionCookie()
+  }
+
   async function login(u: string, p: string, captcha?: { captchaId?: string; captchaAnswer?: string }) {
     avatarCachedSrc.value = ''
     avatarStoragePath.value = ''
     const { data } = await http.post('/api/auth/login', { username: u, password: p, ...captcha }, { skipErrorHandler: true })
-    token.value = data.token
+    await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
+    defaultPassword.value = data.defaultPassword || false
     persist()
-    await fetchProfile()
+    await fetchProfile({ silent: true })
     await refreshMediaToken()
-    await http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
+  }
+
+  async function ldapLogin(
+    u: string,
+    p: string,
+    captcha?: { captchaId?: string; captchaAnswer?: string }
+  ) {
+    avatarCachedSrc.value = ''
+    avatarStoragePath.value = ''
+    const { data } = await http.post(
+      '/api/auth/ldap/login',
+      { username: u, password: p, ...captcha },
+      { skipErrorHandler: true }
+    )
+    await establishSession(data.token)
+    username.value = data.username
+    nickname.value = data.nickname || data.username
+    role.value = data.role || 'USER'
+    defaultPassword.value = data.defaultPassword || false
+    persist()
+    await fetchProfile({ silent: true })
+    await refreshMediaToken()
   }
 
   async function register(
@@ -161,19 +258,19 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.pending) {
       return data as { pending: true; title?: string; message?: string }
     }
-    token.value = data.token
+    await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
+    defaultPassword.value = data.defaultPassword || false
     persist()
-    await fetchProfile()
+    await fetchProfile({ silent: true })
     await refreshMediaToken()
-    await http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
     return data
   }
 
-  async function fetchProfile() {
-    const { data } = await http.get('/api/auth/me')
+  async function fetchProfile(opts?: { silent?: boolean }) {
+    const { data } = await http.get('/api/auth/me', opts?.silent ? { skipErrorHandler: true } : undefined)
     applyProfile(data)
     return data
   }
@@ -202,21 +299,28 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
-  function logout() {
-    token.value = null
-    userId.value = null
-    username.value = null
-    nickname.value = null
-    role.value = null
-    hasAvatar.value = false
-    avatarVersion.value = 0
-    avatarStoragePath.value = ''
-    avatarCachedSrc.value = ''
-    localStorage.removeItem(AVATAR_VERSION_KEY)
-    localStorage.removeItem(HAS_AVATAR_KEY)
-    clearAvatarThumb()
-    clearMediaTokenCache()
+  async function logout() {
+    try {
+      await http.post('/api/auth/logout', undefined, { skipErrorHandler: true })
+    } catch {
+      /* ignore */
+    }
+    clearClientState()
+  }
+
+  async function completeSsoSession(data: {
+    token: string
+    username?: string
+    nickname?: string
+    role?: string
+  }) {
+    await establishSession(data.token)
+    username.value = data.username || null
+    nickname.value = data.nickname || data.username || null
+    role.value = data.role || 'USER'
     persist()
+    await fetchProfile({ silent: true })
+    await refreshMediaToken()
   }
 
   return {
@@ -235,17 +339,21 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     isAdmin,
     isSuperAdmin,
+    defaultPassword,
     restore,
     initAuth,
     restoreAvatarCache,
     bumpAvatar,
     login,
+    ldapLogin,
+    completeSsoSession,
     register,
     fetchProfile,
     updateProfile,
     uploadAvatar,
     logout,
     refreshMediaToken,
-    ensureMediaToken
+    ensureMediaToken,
+    markAvatarUnavailable
   }
 })

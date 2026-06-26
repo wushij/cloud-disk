@@ -4,6 +4,7 @@ export const NICKNAME_KEY = 'cd_nickname'
 export const ROLE_KEY = 'cd_role'
 
 import { mediaTokenQuery } from '@/utils/mediaToken'
+import { useAuthStore } from '@/stores/auth'
 
 const BASE_URL = import.meta.env.VITE_API_BASE || ''
 
@@ -109,10 +110,17 @@ export function request<T>(options: RequestOptions): Promise<T> {
       success: (res) => {
         const status = res.statusCode || 0
         if (status === 401 && !options.skipAuth) {
-          uni.removeStorageSync(TOKEN_KEY)
-          uni.removeStorageSync(USER_KEY)
-          uni.removeStorageSync(NICKNAME_KEY)
-          uni.removeStorageSync(ROLE_KEY)
+          try {
+            const authStore = useAuthStore()
+            void authStore.logout()
+          } catch (e) {
+            uni.removeStorageSync(TOKEN_KEY)
+            uni.removeStorageSync(USER_KEY)
+            uni.removeStorageSync(NICKNAME_KEY)
+            uni.removeStorageSync(ROLE_KEY)
+            uni.removeStorageSync('cd_avatar_version')
+            uni.removeStorageSync('cd_has_avatar')
+          }
           const pages = getCurrentPages()
           const current = pages[pages.length - 1]
           if (!current?.route?.includes('login')) {

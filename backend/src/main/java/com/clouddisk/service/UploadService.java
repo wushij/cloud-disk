@@ -141,6 +141,29 @@ public class UploadService {
                 .collect(Collectors.toList());
         storageService.mergeParts(storagePath, parts);
 
+        long actualSize = storageService.size(storagePath);
+        if (actualSize != session.getTotalSize()) {
+            storageService.delete(storagePath);
+            throw new BusinessException("分片合并失败，文件实际大小与声明大小不符");
+        }
+
+        String actualMd5;
+        try (java.io.InputStream in = storageService.loadAsResource(storagePath).getInputStream()) {
+            actualMd5 = cn.hutool.crypto.digest.DigestUtil.md5Hex(in);
+        } catch (Exception e) {
+            storageService.delete(storagePath);
+            throw new BusinessException("分片合并失败，计算文件实际 MD5 失败");
+        }
+
+        if (!actualMd5.equalsIgnoreCase(session.getFileMd5())) {
+            storageService.delete(storagePath);
+            throw new BusinessException("分片合并失败，文件物理 MD5 校验不匹配");
+        }
+
+        try (var in = new java.io.BufferedInputStream(storageService.loadAsResource(storagePath).getInputStream())) {
+            fileValidator.validateMagicBytes(session.getFileName(), in);
+        }
+
         try (var in = storageService.loadAsResource(storagePath).getInputStream()) {
             virusScanService.scan(in, session.getFileName(), session.getTotalSize());
         }

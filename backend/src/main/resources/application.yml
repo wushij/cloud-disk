@@ -64,6 +64,9 @@ sa-token:
   is-read-header: true
   is-read-cookie: true
   is-write-cookie: true
+  cookie:
+    http-only: true
+    same-site: Lax
 
 xxl:
   job:

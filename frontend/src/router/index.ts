@@ -27,16 +27,16 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore()
   auth.restore()
-  if (!to.meta.public && auth.token) {
+  if (!to.meta.public && auth.isLoggedIn) {
     void auth.ensureMediaToken()
   }
-  if (!to.meta.public && !auth.token) {
+  if (!to.meta.public && !auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.meta.admin && auth.role !== 'ADMIN' && auth.role !== 'SUPER_ADMIN') {
     return { path: '/disk' }
   }
-  if (to.path === '/login' && auth.token) {
+  if (to.path === '/login' && auth.isLoggedIn) {
     return { path: '/disk' }
   }
 })

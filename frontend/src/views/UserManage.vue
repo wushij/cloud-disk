@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UserFilled, Coin, Lock, Check, Close, Search } from '@element-plus/icons-vue'
 import http from '@/api/http'
-import { mediaApiUrl } from '@/utils/mediaUrl'
+import { adminUserAvatarUrl } from '@/utils/mediaUrl'
 import { fmtSize } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -127,7 +127,7 @@ function userAvatarSrc(row: UserRow) {
   if (avatarBroken.value[row.id]) return ''
   if (row.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   if (!row.hasAvatar) return ''
-  return `${mediaApiUrl(`/api/admin/users/${row.id}/avatar`)}?v=${auth.avatarVersion}`
+  return adminUserAvatarUrl(row.id)
 }
 
 function onAvatarError(userId: number) {

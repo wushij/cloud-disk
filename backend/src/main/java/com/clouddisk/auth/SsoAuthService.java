@@ -97,12 +97,9 @@ public class SsoAuthService {
         }
     }
 
-    public String buildFrontendRedirectUrl(Map<String, String> tokenPayload) {
+    public String buildFrontendRedirectUrl(String ticket) {
         CloudDiskProperties.Sso sso = properties.getSso();
-        return sso.getFrontendRedirect()
-                + "?token=" + urlEncode(tokenPayload.get("token"))
-                + "&username=" + urlEncode(tokenPayload.get("username"))
-                + "&nickname=" + urlEncode(tokenPayload.getOrDefault("nickname", tokenPayload.get("username")));
+        return sso.getFrontendRedirect() + "?sso_ticket=" + urlEncode(ticket);
     }
 
     private Map<String, String> fetchUserProfile(String accessToken, CloudDiskProperties.Sso sso) throws Exception {

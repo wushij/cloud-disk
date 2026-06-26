@@ -155,7 +155,7 @@ async function loadFolderItems(folderId?: number) {
 
   const { data } = await http.get(`/share/${code}/items`, {
 
-    params: { extractCode: extractCode.value || undefined, folderId: folderId ?? undefined }
+    params: { folderId: folderId ?? undefined }
 
   })
 
@@ -213,11 +213,9 @@ async function verify() {
 
 function q(extra = '') {
 
-  const base = extractCode.value ? `?extractCode=${encodeURIComponent(extractCode.value)}` : ''
+  if (!extra) return ''
 
-  if (!extra) return base
-
-  return base ? `${base}&${extra}` : `?${extra}`
+  return `?${extra}`
 
 }
 
@@ -252,7 +250,7 @@ async function resolveSharePreviewUrl(fileId: number): Promise<string> {
   try {
 
     const { data } = await http.get(`/share/${code}/direct-url`, {
-      params: { fileId, extractCode: extractCode.value || undefined },
+      params: { fileId },
       skipErrorHandler: true
     })
 

@@ -1,6 +1,5 @@
 import { ElMessage } from 'element-plus'
 import { getApiErrorMessage } from '@/utils/error'
-import { TOKEN_KEY } from '@/api/http'
 
 /**
  * 通过 fetch + blob 下载 ZIP 文件。
@@ -8,10 +7,9 @@ import { TOKEN_KEY } from '@/api/http'
  * 避免浏览器直接展示原始 JSON 文本。
  */
 export async function downloadZip(url: string) {
-  const token = localStorage.getItem(TOKEN_KEY) || ''
   try {
     const resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
+      credentials: 'include'
     })
 
     if (!resp.ok) {

@@ -83,6 +83,14 @@ public class MinioStorageService implements StorageService {
     }
 
     @Override
+    public long size(String relativePath) throws Exception {
+        return client.statObject(StatObjectArgs.builder()
+                .bucket(bucket)
+                .object(relativePath)
+                .build()).size();
+    }
+
+    @Override
     public Path resolvePath(String relativePath) {
         throw new UnsupportedOperationException("MinIO 不支持本地路径");
     }

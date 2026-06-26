@@ -2,13 +2,15 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Cloudy, Connection, Link, Refresh } from '@element-plus/icons-vue'
+import { User, Lock, Cloudy, Connection, Link } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY } from '@/api/http'
+import AuthCaptchaField from '@/components/AuthCaptchaField.vue'
+import http from '@/api/http'
 import { getApiErrorMessage } from '@/utils/error'
 import { validateRegisterUsername } from '@/utils/username'
+import { toCaptchaDataUrl } from '@/utils/captcha'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,15 +27,15 @@ const ssoEnabled = ref(false)
 const ssoAuthorizeUrl = ref('')
 const ssoProviderName = ref('SSO')
 const captchaId = ref('')
-const captchaQuestion = ref('')
+const captchaImg = ref('')
 const captchaAnswer = ref('')
 const showCaptcha = ref(false)
 const showPassword = ref(false)
 
 async function refreshCaptcha() {
-  const { data } = await http.get('/api/auth/captcha', { skipErrorHandler: true })
+  const { data } = await http.get(`/api/auth/captcha?_=${Date.now()}`, { skipErrorHandler: true })
   captchaId.value = data.id
-  captchaQuestion.value = data.question
+  captchaImg.value = toCaptchaDataUrl(data.img)
   captchaAnswer.value = ''
 }
 
@@ -70,14 +72,20 @@ async function loadProviders() {
   }
 }
 
-function applySsoTokenFromQuery() {
-  const token = route.query.token as string
-  if (!token) return
-  localStorage.setItem(TOKEN_KEY, token)
-  localStorage.setItem(USER_KEY, (route.query.username as string) || '')
-  localStorage.setItem(NICKNAME_KEY, (route.query.nickname as string) || (route.query.username as string) || '')
-  auth.restore()
-  router.replace('/disk')
+async function applySsoTokenFromQuery() {
+  const ticket = route.query.sso_ticket as string
+  if (!ticket) return
+  loading.value = true
+  try {
+    const { data } = await http.post('/api/auth/sso/ticket', { ticket }, { skipErrorHandler: true })
+    await auth.completeSsoSession(data)
+    ElMessage.success('单点登录成功')
+    router.replace('/disk')
+  } catch (e: unknown) {
+    ElMessage.error(getApiErrorMessage(e, '单点登录授权失效，请重试'))
+  } finally {
+    loading.value = false
+  }
 }
 
 async function submit() {
@@ -131,7 +139,7 @@ async function submit() {
     }
 
     const redirect = route.query.redirect as string
-    router.replace(redirect && redirect.startsWith('/') ? redirect : '/disk')
+    router.replace(redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/disk')
   } catch (e: unknown) {
     ElMessage.error(getApiErrorMessage(e))
     await syncCaptchaState()
@@ -149,21 +157,10 @@ async function ldapLogin() {
   }
   loading.value = true
   try {
-    const { data } = await http.post(
-      '/api/auth/ldap/login',
-      {
-        username: u,
-        password: p,
-        captchaId: showCaptcha.value ? captchaId.value : undefined,
-        captchaAnswer: showCaptcha.value ? captchaAnswer.value : undefined
-      },
-      { skipErrorHandler: true }
-    )
-    localStorage.setItem(TOKEN_KEY, data.token)
-    localStorage.setItem(USER_KEY, data.username)
-    localStorage.setItem(NICKNAME_KEY, data.nickname || data.username)
-    localStorage.setItem(ROLE_KEY, data.role || 'USER')
-    auth.restore()
+    const captchaPayload = showCaptcha.value
+      ? { captchaId: captchaId.value, captchaAnswer: captchaAnswer.value }
+      : {}
+    await auth.ldapLogin(u, p, captchaPayload)
     ElMessage.success('LDAP 登录成功')
     router.replace('/disk')
   } catch (e: unknown) {
@@ -315,15 +312,12 @@ onMounted(() => {
           </el-form-item>
 
           <el-form-item v-show="showCaptcha" class="auth-captcha-item">
-            <div class="auth-captcha">
-              <div class="auth-captcha-q">
-                <span>{{ captchaQuestion }}</span>
-                <button type="button" class="auth-captcha-refresh" title="换一题" @click="refreshCaptcha">
-                  <el-icon><Refresh /></el-icon>
-                </button>
-              </div>
-              <el-input v-model="captchaAnswer" placeholder="计算结果" size="large" />
-            </div>
+            <AuthCaptchaField
+              v-model="captchaAnswer"
+              :captcha-img="captchaImg"
+              @refresh="refreshCaptcha"
+              @enter="submit"
+            />
           </el-form-item>
 
           <el-button
@@ -697,6 +691,10 @@ onMounted(() => {
   margin-bottom: 18px !important;
 }
 
+.auth-captcha-item :deep(.el-form-item__content) {
+  line-height: normal;
+}
+
 .auth-form :deep(.el-input__wrapper) {
   height: 50px;
   border-radius: var(--cd-radius-full) !important;
@@ -752,52 +750,6 @@ onMounted(() => {
 .auth-eye-btn:hover {
   color: #4b5563;
   background: rgba(148, 163, 184, 0.12);
-}
-
-.auth-captcha {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-}
-
-.auth-captcha-q {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 108px;
-  height: 50px;
-  padding: 0 12px;
-  border-radius: var(--cd-radius-full);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.08));
-  border: 1px solid rgba(59, 130, 246, 0.15);
-  font-weight: 700;
-  font-size: 15px;
-  color: #2563eb;
-  flex-shrink: 0;
-  backdrop-filter: blur(4px);
-}
-
-.auth-captcha-refresh {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.auth-captcha-refresh:hover {
-  background: rgba(59, 130, 246, 0.22);
-  transform: rotate(45deg);
-}
-
-.auth-captcha .el-input {
-  flex: 1;
 }
 
 .auth-submit {

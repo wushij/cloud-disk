@@ -169,7 +169,15 @@ export const useAuthStore = defineStore('auth', () => {
     await ensureMediaToken()
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await request({
+        url: '/api/auth/logout',
+        method: 'POST'
+      })
+    } catch {
+      /* ignore */
+    }
     token.value = null
     username.value = null
     nickname.value = null
@@ -177,11 +185,14 @@ export const useAuthStore = defineStore('auth', () => {
     hasAvatar.value = false
     avatarVersion.value = 0
     avatarCachedSrc.value = ''
+    uni.removeStorageSync(TOKEN_KEY)
+    uni.removeStorageSync(USER_KEY)
+    uni.removeStorageSync(NICKNAME_KEY)
+    uni.removeStorageSync(ROLE_KEY)
     uni.removeStorageSync('cd_avatar_version')
     uni.removeStorageSync('cd_has_avatar')
     clearAvatarThumb()
     clearMediaTokenCache()
-    persist()
   }
 
   function requireLogin() {

@@ -34,8 +34,7 @@ function shareCoverUrl(
   kind: 'thumbnail' | 'preview' = 'preview'
 ): string {
   const origin = apiOrigin()
-  const ec = extractCode ? `&extractCode=${encodeURIComponent(extractCode)}` : ''
-  return `${origin}/share/${shareCode}/${kind}?fileId=${row.id}${ec}`
+  return `${origin}/share/${shareCode}/${kind}?fileId=${row.id}`
 }
 
 /** 是否展示真实封面（图片/已有缩略图的视频），而非扩展名占位图标 */

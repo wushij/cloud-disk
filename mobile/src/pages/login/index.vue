@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { validateRegisterUsername } from '@/utils/username'
+import { toCaptchaDataUrl } from '@/utils/captcha'
 
 const auth = useAuthStore()
 
@@ -16,7 +17,7 @@ const showPass = ref(false)
 const focusField = ref('')
 
 const captchaId = ref('')
-const captchaQuestion = ref('')
+const captchaImg = ref('')
 const captchaAnswer = ref('')
 const showCaptcha = ref(false)
 
@@ -25,13 +26,13 @@ const pendingDialogTitle = ref('注册申请已提交')
 const pendingDialogMessage = ref('管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。')
 
 async function refreshCaptcha() {
-  const data = await request<{ id: string; question: string }>({
-    url: '/api/auth/captcha',
+  const data = await request<{ id: string; img: string }>({
+    url: `/api/auth/captcha?_=${Date.now()}`,
     skipAuth: true,
     skipErrorHandler: true
   })
   captchaId.value = data.id
-  captchaQuestion.value = data.question
+  captchaImg.value = toCaptchaDataUrl(data.img)
   captchaAnswer.value = ''
 }
 
@@ -63,6 +64,8 @@ onMounted(() => {
 })
 
 async function submit() {
+  if (loading.value) return
+
   const u = username.value.trim()
   const p = password.value
   const nick = nickname.value.trim()
@@ -235,33 +238,57 @@ function onPendingDialogConfirm() {
         </view>
 
         <view v-if="showCaptcha" class="captcha-row">
-          <view class="captcha-q">
-            <text class="captcha-q-text">{{ captchaQuestion }}</text>
-            <view class="captcha-refresh cd-pressable" @click="refreshCaptcha">
-              <u-icon name="reload" size="16" color="#4f7cff" />
+          <view class="field captcha-input" :class="{ focused: focusField === 'captcha' }">
+            <view class="field-prefix">
+              <svg
+                class="field-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a0aec0"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="8.5" cy="12.5" r="4.5" />
+                <path d="M12 12h9" />
+                <path d="M18 12v3" />
+                <path d="M15 12v3" />
+              </svg>
             </view>
-          </view>
-          <view class="field captcha-field" :class="{ focused: focusField === 'captcha' }">
             <input
               v-model="captchaAnswer"
               class="field-input"
-              placeholder="计算结果"
+              placeholder="请输入验证码"
               placeholder-class="ph"
+              maxlength="6"
               @focus="focusField = 'captcha'"
               @blur="focusField = ''"
               @confirm="submit"
             />
           </view>
+            <view
+            v-if="captchaImg"
+            class="captcha-img-wrap cd-pressable"
+            @click="refreshCaptcha"
+          >
+            <image
+              :src="captchaImg"
+              class="captcha-img"
+              mode="aspectFit"
+            />
+          </view>
+          <view v-else class="captcha-skeleton" />
         </view>
 
-        <button
-          class="login-btn"
-          :loading="loading"
-          :disabled="loading"
+        <view
+          class="login-btn cd-pressable"
+          :class="{ loading }"
           @click="submit"
         >
-          <text class="login-btn-text">{{ mode === 'login' ? '登 录' : '注 册' }}</text>
-        </button>
+          <text class="login-btn-text">
+            {{ loading ? (mode === 'login' ? '登录中...' : '注册中...') : (mode === 'login' ? '登 录' : '注 册') }}
+          </text>
+        </view>
       </view>
     </view>
 
@@ -371,7 +398,7 @@ function onPendingDialogConfirm() {
   align-items: center;
   height: 96rpx;
   padding: 0 28rpx;
-  border-radius: 22rpx;
+  border-radius: 999rpx;
   background: #f4f7fb;
   border: 2rpx solid #e8eef6;
   transition: all 0.2s;
@@ -396,7 +423,8 @@ function onPendingDialogConfirm() {
   padding: 8rpx;
 }
 
-.eye-icon {
+.eye-icon,
+.field-icon {
   width: 38rpx;
   height: 38rpx;
   display: block;
@@ -418,52 +446,53 @@ function onPendingDialogConfirm() {
 .captcha-row {
   display: flex;
   gap: 16rpx;
-  align-items: stretch;
-}
-
-.captcha-q {
-  min-width: 180rpx;
-  height: 96rpx;
-  padding: 0 16rpx;
-  border-radius: 22rpx;
-  background: linear-gradient(135deg, #eff6ff, #f0f9ff);
-  border: 2rpx solid #bfdbfe;
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8rpx;
-  flex-shrink: 0;
 }
 
-.captcha-q-text {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #1d4ed8;
-}
-
-.captcha-refresh {
-  width: 52rpx;
-  height: 52rpx;
-  border-radius: 12rpx;
-  background: rgba(79, 124, 255, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.captcha-field {
+.captcha-input {
   flex: 1;
   min-width: 0;
+}
+
+.captcha-img-wrap {
+  flex-shrink: 0;
+  width: 200rpx;
+  height: 96rpx;
+  border-radius: 999rpx;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.2);
+}
+
+.captcha-img {
+  width: 100%;
+  height: 100%;
+}
+
+.captcha-skeleton {
+  flex-shrink: 0;
+  width: 200rpx;
+  height: 96rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+  background-size: 200% 100%;
+  animation: captcha-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes captcha-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .login-btn {
   margin-top: 8rpx;
   width: 100%;
   height: 100rpx;
-  line-height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999rpx;
   background: #0f172a;
-  border: none;
   box-shadow:
     0 12rpx 36rpx rgba(15, 23, 42, 0.3),
     inset 0 1rpx 0 rgba(255, 255, 255, 0.1);
@@ -485,8 +514,9 @@ function onPendingDialogConfirm() {
     box-shadow: 0 6rpx 18rpx rgba(15, 23, 42, 0.25);
   }
 
-  &[disabled] {
-    opacity: 0.6;
+  &.loading {
+    opacity: 0.72;
+    pointer-events: none;
   }
 }
 

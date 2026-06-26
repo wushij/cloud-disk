@@ -14,6 +14,8 @@ public interface StorageService {
         return store(input, relativePath, size);
     }
 
+    long size(String relativePath) throws Exception;
+
     Resource loadAsResource(String relativePath);
 
     Path resolvePath(String relativePath);

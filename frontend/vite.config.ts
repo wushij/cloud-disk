@@ -27,12 +27,14 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiTarget,
           changeOrigin: true,
+          cookieDomainRewrite: '',
           timeout: 3_600_000,
           proxyTimeout: 3_600_000
         },
         '/share': {
           target: apiTarget,
           changeOrigin: true,
+          cookieDomainRewrite: '',
           bypass: (req) => {
             const url = req.url || ''
             const isApi = url.includes('/items') || 

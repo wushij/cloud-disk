@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 import http from '@/api/http'
 import { resolveFilePreviewUrl } from '@/utils/fileUrl'
-import { mediaApiUrl } from '@/utils/mediaUrl'
+import { mediaApiUrl, appendQueryParam } from '@/utils/mediaUrl'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
@@ -163,7 +163,7 @@ const teamAvatarInputRef = ref<HTMLInputElement | null>(null)
 function teamAvatarSrc(space: TeamSpace) {
   if (!space.avatar) return ''
   const v = getTeamAvatarVersion(space.id)
-  return `${mediaApiUrl(`/api/teams/${space.id}/avatar`)}?v=${v}`
+  return appendQueryParam(mediaApiUrl(`/api/teams/${space.id}/avatar`), 'v', v)
 }
 
 function openTeamAvatarPicker() {
