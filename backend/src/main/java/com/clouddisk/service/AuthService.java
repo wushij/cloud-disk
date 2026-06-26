@@ -20,10 +20,13 @@ import com.clouddisk.security.CaptchaService;
 import com.clouddisk.security.LoginProtectionService;
 import com.clouddisk.util.ClientIpUtil;
 import com.clouddisk.util.AuthHelper;
+import com.clouddisk.util.MediaResponseHeaders;
 
 import com.clouddisk.mapper.UserMapper;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 
 import lombok.RequiredArgsConstructor;
 
@@ -280,6 +283,19 @@ public class AuthService {
 
     }
 
+    /** 将当前会话 token 写入 Cookie，不调用 StpUtil.login 避免踢掉 localStorage 中的旧 token */
+    public void syncSessionCookie(HttpServletResponse response) {
+        if (!StpUtil.isLogin()) {
+            throw new BusinessException("未登录或登录已过期");
+        }
+        String tokenValue = StpUtil.getTokenValue();
+        Cookie cookie = new Cookie("Authorization", tokenValue);
+        cookie.setHttpOnly(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(86400);
+        response.addCookie(cookie);
+    }
+
 
 
     public Map<String, Object> uploadAvatar(org.springframework.web.multipart.MultipartFile file) throws Exception {
@@ -334,10 +350,8 @@ public class AuthService {
 
         var resource = storageService.loadAsResource(user.getAvatar());
 
-        return org.springframework.http.ResponseEntity.ok()
-
+        return MediaResponseHeaders.ok()
                 .contentType(resolveAvatarMediaType(user.getAvatar()))
-
                 .body(resource);
 
     }

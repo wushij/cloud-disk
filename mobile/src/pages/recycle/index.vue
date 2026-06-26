@@ -7,8 +7,9 @@ import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
-import { fmtSize, fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
+import { fmtSize, fileCoverUrl, fileHasCover, fileIsVideoCover } from '@/utils/fileCover'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
+import CachedCover from '@/components/CachedCover.vue'
 
 interface RecycleItem {
   id: number
@@ -23,6 +24,7 @@ interface RecycleItem {
 const auth = useAuthStore()
 const list = ref<RecycleItem[]>([])
 const loading = ref(false)
+const listInitialized = ref(false)
 
 const restoreDialogVisible = ref(false)
 const itemToRestore = ref<RecycleItem | null>(null)
@@ -31,12 +33,18 @@ const purgeDialogVisible = ref(false)
 const itemToPurge = ref<RecycleItem | null>(null)
 
 const clearAllDialogVisible = ref(false)
+const coverBroken = ref<Record<string, boolean>>({})
+
+function coverKey(item: RecycleItem) {
+  return `${item.type}-${item.id}`
+}
 
 async function loadList() {
   loading.value = true
   try {
     const data = await request<{ content?: RecycleItem[] } | RecycleItem[]>({ url: '/api/recycle' })
     list.value = Array.isArray(data) ? data : data.content || []
+    listInitialized.value = true
   } catch {
     /* handled */
   } finally {
@@ -46,7 +54,9 @@ async function loadList() {
 
 onShow(async () => {
   if (!auth.requireLogin()) return
-  await loadList()
+  if (!listInitialized.value) {
+    await loadList()
+  }
 })
 
 function formatDate(d?: string) {
@@ -153,25 +163,18 @@ async function handleClearAllConfirm() {
         <view v-for="item in list" :key="`${item.type}-${item.id}`" class="recycle-card">
           <!-- 封面或图标展示区域 -->
           <view class="recycle-thumb" :class="{ cover: fileHasCover(item as any), folder: item.type === 'folder' || fileTypeKind(item as any) === 'archive' }">
-            <image
-              v-if="fileHasCover(item as any) && fileCoverKind(item as any) === 'image'"
-              :src="fileCoverUrl(item as any)"
-              class="recycle-cover"
-              mode="aspectFill"
-            />
-            <view v-else-if="fileHasCover(item as any) && fileCoverKind(item as any) === 'video'" class="recycle-video-wrap">
-              <video
+            <template v-if="fileHasCover(item as any) && !coverBroken[coverKey(item)]">
+              <CachedCover
+                :file-id="item.id"
                 :src="fileCoverUrl(item as any)"
+                :has-thumbnail="item.hasThumbnail"
                 class="recycle-cover"
-                muted
-                :show-center-play-btn="false"
-                :controls="false"
-                object-fit="cover"
+                @error="coverBroken[coverKey(item)] = true"
               />
-              <view class="recycle-play-badge">
+              <view v-if="fileIsVideoCover(item as any)" class="recycle-play-badge">
                 <u-icon name="play-circle-fill" size="18" color="#fff" />
               </view>
-            </view>
+            </template>
             <view v-else class="recycle-file-icon" :class="fileTypeKind(item as any)">
               <FolderTypeIcon
                 v-if="item.type === 'folder'"
@@ -330,6 +333,7 @@ async function handleClearAllConfirm() {
 }
 
 .recycle-thumb.cover {
+  position: relative;
   box-shadow: inset 0 0 0 1rpx rgba(0, 0, 0, 0.03);
 }
 

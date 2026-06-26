@@ -2,11 +2,13 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import http from '@/api/http'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import { usePromptDialogStore } from '@/stores/promptDialog'
 import { calcFileMd5 } from '@/utils/md5'
 import { uploadFile } from '@/utils/upload'
 import { clearFolderCache, ensureFolderPath, fileRelativePath } from '@/utils/folderUpload'
+import { captureVideoCover, isVideoUpload } from '@/utils/videoCover'
+import { cacheCoverFromDataUrl } from '@/utils/coverCache'
 import axios from 'axios'
 
 export interface TransferTask {
@@ -65,10 +67,6 @@ function speedBaseline(loaded: number): Pick<TransferTask, 'speedBaseLoaded' | '
   return { speedBaseLoaded: loaded, speedBaseTime: Date.now() }
 }
 
-function tokenParam() {
-  return mediaTokenParam()
-}
-
 export const useTransferStore = defineStore('transfer', () => {
   const tasks = ref<TransferTask[]>([])
   const isCollapsed = ref(false)
@@ -94,6 +92,56 @@ export const useTransferStore = defineStore('transfer', () => {
 
   function getTask(taskId: string): TransferTask | undefined {
     return tasks.value.find((t) => t.id === taskId)
+  }
+
+  async function cacheUploadedVideoCover(file: File, fileId?: number, taskId?: string) {
+    if (!fileId || !isVideoUpload(file)) return
+    try {
+      const task = taskId ? getTask(taskId) : undefined
+      let dataUrl = task?.coverUrl
+      if (!dataUrl || !dataUrl.startsWith('data:')) {
+        dataUrl = await captureVideoCover(file)
+      }
+      cacheCoverFromDataUrl(fileId, 0, dataUrl)
+      if (taskId) patchTask(taskId, { coverUrl: dataUrl, fileId })
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function attachVideoCoverPreview(taskId: string, file: File) {
+    if (!isVideoUpload(file)) return
+    void captureVideoCover(file)
+      .then((dataUrl) => {
+        const current = getTask(taskId)
+        if (!current) return
+        patchTask(taskId, { coverUrl: dataUrl })
+        if (current.fileId) {
+          cacheCoverFromDataUrl(current.fileId, 0, dataUrl)
+        }
+      })
+      .catch(() => {})
+  }
+
+  function patchUploadResult(taskId: string, result: { instant?: boolean; fileId?: number; uploadId?: string }) {
+    let nextId = taskId
+    if (result.uploadId) {
+      patchTask(taskId, { id: result.uploadId })
+      nextId = result.uploadId
+    }
+    const patch: Partial<TransferTask> = {
+      status: result.instant ? 'instant' : 'done',
+      progress: 1,
+      speed: '已完成'
+    }
+    if (result.fileId) {
+      patch.fileId = result.fileId
+    }
+    const task = getTask(nextId)
+    if (task) {
+      patch.loaded = task.size
+    }
+    patchTask(nextId, patch)
   }
 
   function toggleCollapse(val?: boolean) {
@@ -138,12 +186,15 @@ export const useTransferStore = defineStore('transfer', () => {
     const abortController = new AbortController()
     const baseProgress = task.progress
     const resumeLoaded = task.loaded
+    // 点击继续后立即切换 UI，避免仍显示「已暂停」直到网络请求返回
     patchTask(taskId, {
       status: 'running',
+      speed: '继续传输...',
       startTime: Date.now(),
       abortController,
       ...speedBaseline(resumeLoaded)
     })
+    if (task.fileObj) attachVideoCoverPreview(taskId, task.fileObj)
 
     try {
       let md5 = task.md5 ?? null
@@ -169,7 +220,7 @@ export const useTransferStore = defineStore('transfer', () => {
         patchTask(taskId, {
           progress,
           loaded,
-          speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, current.speed)
+          speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, '继续传输...')
         })
       }
 
@@ -195,15 +246,14 @@ export const useTransferStore = defineStore('transfer', () => {
         patchTask(taskId, { id: result.uploadId })
         nextId = result.uploadId
       }
-      patchTask(nextId, {
-        status: result.instant ? 'instant' : 'done',
-        progress: 1,
-        loaded: task.size,
-        speed: '已完成'
-      })
+      patchUploadResult(nextId, result)
+      if (task.fileObj) {
+        await cacheUploadedVideoCover(task.fileObj, result.fileId, nextId)
+      }
     } catch (err: any) {
       if (axios.isCancel(err) || (err && err.name === 'CanceledError')) {
-        // 主动暂停，状态在 pauseTask 中已改
+        const current = getTask(taskId)
+        if (current?.status !== 'paused') return
       } else {
         patchTask(taskId, { status: 'error', speed: '传输失败' })
       }
@@ -239,6 +289,7 @@ export const useTransferStore = defineStore('transfer', () => {
       abortController,
       startTime: Date.now()
     })
+    attachVideoCoverPreview(taskId, file)
 
     try {
       patchTask(taskId, { status: 'running', progress: 0.01 })
@@ -285,12 +336,8 @@ export const useTransferStore = defineStore('transfer', () => {
         patchTask(taskId, { id: result.uploadId })
         taskId = result.uploadId
       }
-      patchTask(taskId, {
-        status: result.instant ? 'instant' : 'done',
-        progress: 1,
-        loaded: file.size,
-        speed: '已完成'
-      })
+      patchUploadResult(taskId, result)
+      await cacheUploadedVideoCover(file, result.fileId, taskId)
     } catch (err: any) {
       if (axios.isCancel(err) || (err && err.name === 'CanceledError')) {
         // 取消或暂停动作
@@ -341,7 +388,7 @@ export const useTransferStore = defineStore('transfer', () => {
       patchTask(taskId, { status: 'running', progress: 0.5, speed: '浏览器接管' })
 
       const a = document.createElement('a')
-      a.href = `/api/files/${fileId}/download?access_token=${tokenParam()}`
+      a.href = mediaApiUrl(`/api/files/${fileId}/download`)
       a.download = name
       a.click()
 
@@ -359,7 +406,7 @@ export const useTransferStore = defineStore('transfer', () => {
     try {
       patchTask(taskId, { status: 'running', speed: '连接中...', startTime: Date.now(), ...speedBaseline(0) })
 
-      let downloadUrl = `/api/files/${fileId}/download?access_token=${tokenParam()}`
+      let downloadUrl = mediaApiUrl(`/api/files/${fileId}/download`)
       try {
         const { data } = await http.get(`/api/files/${fileId}/direct-url`, {
           signal: abortController.signal,
@@ -378,6 +425,7 @@ export const useTransferStore = defineStore('transfer', () => {
         url: downloadUrl,
         method: 'GET',
         responseType: 'blob',
+        withCredentials: true,
         signal: abortController.signal,
         onDownloadProgress: (e) => {
           const current = getTask(taskId)

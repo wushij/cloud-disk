@@ -1,9 +1,6 @@
 import type { FileItem } from '@/stores/file'
-import { mediaTokenParam } from '@/utils/mediaToken'
-
-function accessToken(): string {
-  return mediaTokenParam()
-}
+import { mediaApiUrl } from '@/utils/mediaUrl'
+import { loadCoverThumb } from '@/utils/coverCache'
 
 function isImageMime(mime?: string | null): boolean {
   return (mime || '').toLowerCase().startsWith('image/')
@@ -16,31 +13,39 @@ function isVideoFile(mime?: string | null, name?: string): boolean {
   return ['.mp4', '.webm', '.mkv', '.avi', '.mov'].some((ext) => lowerName.endsWith(ext))
 }
 
-/** 是否展示真实封面（图片/视频），而非扩展名占位图标 */
+/** 是否展示真实封面（图片/已有缩略图的视频），而非扩展名占位图标 */
 export function fileHasCover(row: FileItem): boolean {
   if (row.type !== 'file') return false
   if (row.hasThumbnail) return true
-  return isImageMime(row.mimeType) || isVideoFile(row.mimeType, row.name)
+  if (isImageMime(row.mimeType)) return true
+  if (isVideoFile(row.mimeType, row.name) && loadCoverThumb(row.id, 0)) return true
+  return false
 }
 
-/** 封面用 img（含已生成缩略图/海报）还是 video（视频首帧） */
-export function fileCoverKind(row: FileItem): 'image' | 'video' | null {
-  if (!fileHasCover(row)) return null
-  if (row.hasThumbnail || isImageMime(row.mimeType)) return 'image'
-  if (isVideoFile(row.mimeType, row.name)) return 'video'
-  return null
+/** 封面统一用 img（含视频海报缩略图） */
+export function fileCoverKind(row: FileItem): 'image' | null {
+  return fileHasCover(row) ? 'image' : null
+}
+
+/** 视频文件且已有缩略图/海报（用于显示播放角标） */
+export function fileIsVideoCover(row: FileItem): boolean {
+  return (
+    row.type === 'file' &&
+    isVideoFile(row.mimeType, row.name) &&
+    (!!row.hasThumbnail || !!loadCoverThumb(row.id, 0))
+  )
 }
 
 export function fileCoverUrl(row: FileItem): string {
-  const token = accessToken()
   if (row.hasThumbnail) {
-    return `/api/files/${row.id}/thumbnail?access_token=${token}`
-  }
-  if (isImageMime(row.mimeType)) {
-    return `/api/files/${row.id}/preview?access_token=${token}`
+    return mediaApiUrl(`/api/files/${row.id}/thumbnail`)
   }
   if (isVideoFile(row.mimeType, row.name)) {
-    return `/api/files/${row.id}/preview?access_token=${token}`
+    const local = loadCoverThumb(row.id, 0)
+    if (local) return local
+  }
+  if (isImageMime(row.mimeType)) {
+    return mediaApiUrl(`/api/files/${row.id}/preview`)
   }
   return ''
 }

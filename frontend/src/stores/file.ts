@@ -35,6 +35,30 @@ export const useFileStore = defineStore('file', () => {
   const hasMore = ref(false)
 
   const pageSize = DEFAULT_PAGE_SIZE
+  const listInitialized = ref(false)
+  const needsRefresh = ref(false)
+
+  function markListStale() {
+    needsRefresh.value = true
+  }
+
+  /** 转码完成或进行中：按 fileId 判断是否需要立即刷新当前列表 */
+  function onTranscodeEvent(fileId?: string | number | null) {
+    const id = fileId != null ? Number(fileId) : NaN
+    if (!Number.isNaN(id) && items.value.some((item) => item.id === id)) {
+      void loadList()
+      return
+    }
+    markListStale()
+  }
+
+  function hasActiveTranscode(itemsList: FileItem[] = items.value): boolean {
+    return itemsList.some(
+      (item) =>
+        item.type === 'file' &&
+        (item.transcodeStatus === 'PENDING' || item.transcodeStatus === 'PROCESSING')
+    )
+  }
 
   async function loadList(resetPage = true) {
     loading.value = true
@@ -56,6 +80,8 @@ export const useFileStore = defineStore('file', () => {
       }
       totalElements.value = data.totalElements
       hasMore.value = items.value.length < totalElements.value
+      listInitialized.value = true
+      needsRefresh.value = false
     } finally {
       loading.value = false
     }
@@ -108,6 +134,11 @@ export const useFileStore = defineStore('file', () => {
     totalElements,
     hasMore,
     pageSize,
+    listInitialized,
+    needsRefresh,
+    markListStale,
+    onTranscodeEvent,
+    hasActiveTranscode,
     loadList,
     loadMore,
     navigateToFolder,

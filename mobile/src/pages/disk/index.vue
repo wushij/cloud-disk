@@ -18,6 +18,9 @@ import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fileApiUrl, TOKEN_KEY } from '@/api/http'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
 import { isTextFile } from '@/utils/filePreview'
+import { resolveFilePreviewUrl } from '@/utils/fileUrl'
+import { ensureMediaToken } from '@/utils/mediaToken'
+import { subscribeWs, type WsMessage } from '@/utils/ws'
 import { useH5BackGuard } from '@/composables/useH5BackGuard'
 import { downloadZip } from '@/utils/download'
 
@@ -164,11 +167,20 @@ onLoad(async (query) => {
 onShow(async () => {
   uni.hideTabBar({ animation: false }).catch(() => {})
   if (!auth.requireLogin()) return
-  await fileStore.loadList()
+  try {
+    await ensureMediaToken()
+  } catch {
+    /* 预览/封面稍后重试 */
+  }
+  if (fileStore.needsRefresh || !fileStore.listInitialized) {
+    await fileStore.loadList()
+  }
 })
 
 onMounted(() => {
   uni.$on('refresh-file-list', refreshList)
+  unsubscribeWs = subscribeWs(onWsMessage)
+  syncTranscodePoll()
 })
 
 useH5BackGuard({
@@ -176,12 +188,52 @@ useH5BackGuard({
   onAppBack: () => fileStore.goBackFolder()
 })
 
+let transcodePollTimer: ReturnType<typeof setInterval> | null = null
+let unsubscribeWs: (() => void) | null = null
+
+function onWsMessage(data: WsMessage) {
+  if (data.type === 'notification' && data.notifyType === 'TRANSCODE_DONE') {
+    fileStore.onTranscodeEvent(data.refId)
+  }
+}
+
+function stopTranscodePoll() {
+  if (transcodePollTimer) {
+    clearInterval(transcodePollTimer)
+    transcodePollTimer = null
+  }
+}
+
+function syncTranscodePoll() {
+  if (!fileStore.hasActiveTranscode(items.value)) {
+    stopTranscodePoll()
+    return
+  }
+  if (transcodePollTimer) return
+  transcodePollTimer = setInterval(() => {
+    if (!fileStore.hasActiveTranscode(items.value)) {
+      stopTranscodePoll()
+      return
+    }
+    void fileStore.loadList()
+  }, 5000)
+}
+
+watch(items, () => syncTranscodePoll(), { deep: true })
+
 onUnmounted(() => {
-  uni.$off('refresh-file-list')
+  uni.$off('refresh-file-list', refreshList)
+  unsubscribeWs?.()
+  stopTranscodePoll()
 })
 
 async function refreshList() {
-  await fileStore.loadList()
+  try {
+    fileStore.markListStale()
+    await fileStore.loadList()
+  } catch {
+    /* 请求层已提示 */
+  }
 }
 
 function onSearch() {
@@ -281,13 +333,34 @@ function openShare(row: FileItem) {
 }
 
 function previewImage(row: FileItem) {
-  const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
-  uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(row.name)}` })
+  void openImagePreview(row)
+}
+
+async function openImagePreview(row: FileItem) {
+  try {
+    await ensureMediaToken()
+    uni.navigateTo({
+      url: `/pages/preview/image?fileId=${row.id}&name=${encodeURIComponent(row.name)}`
+    })
+  } catch {
+    uni.showToast({ title: '无法预览图片', icon: 'none' })
+  }
 }
 
 function previewVideo(row: FileItem) {
-  const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
-  uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
+  void openVideoPreview(row)
+}
+
+async function openVideoPreview(row: FileItem) {
+  try {
+    await ensureMediaToken()
+    const url = await resolveFilePreviewUrl(row.id)
+    uni.navigateTo({
+      url: `/pages/preview/video?url=${encodeURIComponent(url)}&name=${encodeURIComponent(row.name)}`
+    })
+  } catch {
+    uni.showToast({ title: '无法播放视频', icon: 'none' })
+  }
 }
 
 function previewText(row: FileItem) {
@@ -405,12 +478,27 @@ async function chooseAndUpload() {
   // #ifdef H5
   uni.chooseFile({
     count: 9,
+    sourceType: ['album', 'camera'],
     success: async (res) => {
-      const files = Array.isArray(res.tempFiles) ? res.tempFiles : [res.tempFiles]
-      for (const file of files) {
-        await transferStore.addUploadTask((file as any).path, (file as any).name, (file as any).size, fileStore.currentFolderId)
+      const { normalizeH5Pick } = await import('@/utils/h5Upload')
+      const raw = Array.isArray(res.tempFiles) ? res.tempFiles : [res.tempFiles]
+      for (const item of raw) {
+        const file = normalizeH5Pick(item as File & { path?: string })
+        if (!file.size) {
+          uni.showToast({ title: '无法读取文件大小', icon: 'none' })
+          continue
+        }
+        await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId, {
+          h5File: file.file,
+          mimeType: file.mimeType
+        })
       }
       uni.showToast({ title: '已添加到上传队列', icon: 'none' })
+    },
+    fail(err) {
+      const msg = String((err as { errMsg?: string })?.errMsg || err || '')
+      if (msg.includes('cancel')) return
+      uni.showToast({ title: '选择文件失败', icon: 'none' })
     }
   })
   // #endif

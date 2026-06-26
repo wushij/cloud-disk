@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import { smartUpload } from '@/utils/chunkedUpload'
 import { fileApiUrl } from '@/api/http'
 import { createTaskId } from '@/utils/uuid'
+import { cacheCoverFromDataUrl } from '@/utils/coverCache'
+import { captureVideoCoverFromPath, isVideoUploadName } from '@/utils/videoCover'
 
 export interface TransferTask {
   id: string
@@ -69,6 +71,17 @@ export const useTransferStore = defineStore('transfer', () => {
     return task
   }
 
+  function patchTask(taskId: string, patch: Partial<TransferTask>): TransferTask | undefined {
+    const idx = tasks.value.findIndex((t) => t.id === taskId)
+    if (idx === -1) return undefined
+    const current = tasks.value[idx]
+    Object.assign(current, patch)
+    // 替换数组项以触发 uni-app 列表即时刷新
+    tasks.value[idx] = current
+    tasks.value = tasks.value.slice()
+    return current
+  }
+
   // 清理完成任务
   function clearCompleted() {
     tasks.value = tasks.value.filter(
@@ -84,8 +97,7 @@ export const useTransferStore = defineStore('transfer', () => {
     if (task.abortController) {
       task.abortController.abort()
     }
-    task.status = 'paused'
-    task.speed = '已暂停'
+    patchTask(taskId, { status: 'paused', speed: '已暂停' })
   }
 
   // 恢复上传任务（断点续传）
@@ -95,11 +107,20 @@ export const useTransferStore = defineStore('transfer', () => {
 
     const baseProgress = task.progress
     const resumeLoaded = task.loaded
-    task.status = 'running'
-    task.startTime = Date.now()
-    task.speedBaseLoaded = resumeLoaded
-    task.speedBaseTime = Date.now()
-    task.abortController = new AbortController()
+    const abortController = new AbortController()
+    patchTask(taskId, {
+      status: 'running',
+      speed: '继续传输...',
+      startTime: Date.now(),
+      speedBaseLoaded: resumeLoaded,
+      speedBaseTime: Date.now(),
+      abortController
+    })
+    if (isVideoUploadName(task.name)) {
+      void captureVideoCoverFromPath(task.filePath)
+        .then((cover) => patchTask(taskId, { coverUrl: cover }))
+        .catch(() => {})
+    }
 
     try {
       await smartUpload(
@@ -109,35 +130,44 @@ export const useTransferStore = defineStore('transfer', () => {
         task.folderId || 0,
         undefined,
         (ratio) => {
-          if (task.status !== 'running') return
-          task.progress = Math.max(baseProgress, ratio)
-          task.loaded = Math.round(task.progress * task.size)
-          task.speed = calcTransferSpeed(task.loaded, task.speedBaseLoaded, task.speedBaseTime, task.speed)
+          const current = tasks.value.find((t) => t.id === taskId)
+          if (!current || current.status !== 'running') return
+          const progress = Math.max(baseProgress, ratio)
+          const loaded = Math.round(progress * current.size)
+          patchTask(taskId, {
+            progress,
+            loaded,
+            speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, '继续传输...')
+          })
         },
-        task.abortController.signal,
+        abortController.signal,
         {
           existingUploadId: task.uploadId,
           skipMd5Check: true,
           onInit: (session) => {
-            task.uploadId = session.uploadId
-            task.chunkSize = session.chunkSize
-            task.totalChunks = session.totalChunks
+            patchTask(taskId, {
+              uploadId: session.uploadId,
+              chunkSize: session.chunkSize,
+              totalChunks: session.totalChunks
+            })
           }
         }
       )
 
-      task.status = 'done'
-      task.progress = 1
-      task.loaded = task.size
-      task.speed = '已完成'
+      patchTask(taskId, {
+        status: 'done',
+        progress: 1,
+        loaded: task.size,
+        speed: '已完成'
+      })
 
       uni.$emit('refresh-file-list')
     } catch (e: any) {
       if (e?.message === 'Canceled') {
-        // 主动暂停，状态已被修改
+        const current = tasks.value.find((t) => t.id === taskId)
+        if (current?.status !== 'paused') return
       } else {
-        task.status = 'error'
-        task.speed = '传输失败'
+        patchTask(taskId, { status: 'error', speed: '传输失败' })
       }
     }
   }
@@ -165,7 +195,13 @@ export const useTransferStore = defineStore('transfer', () => {
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']
 
   // 添加上传任务
-  async function addUploadTask(filePath: string, name: string, size: number, folderId: number) {
+  async function addUploadTask(
+    filePath: string,
+    name: string,
+    size: number,
+    folderId: number,
+    extra?: { h5File?: File; mimeType?: string }
+  ) {
     const taskId = createTaskId()
     const ext = name.split('.').pop()?.toLowerCase() || ''
     const task = pushTask({
@@ -184,12 +220,20 @@ export const useTransferStore = defineStore('transfer', () => {
       startTime: Date.now()
     })
 
+    const isVideo =
+      isVideoUploadName(name) || (extra?.mimeType || '').toLowerCase().startsWith('video/')
+    if (isVideo) {
+      void captureVideoCoverFromPath(filePath)
+        .then((cover) => patchTask(taskId, { coverUrl: cover }))
+        .catch(() => {})
+    }
+
     try {
       task.status = 'running'
       task.startTime = Date.now()
       Object.assign(task, speedBaseline(0))
 
-      await smartUpload(
+      const result = await smartUpload(
         filePath,
         name,
         size,
@@ -203,6 +247,8 @@ export const useTransferStore = defineStore('transfer', () => {
         },
         task.abortController?.signal,
         {
+          h5File: extra?.h5File,
+          mimeType: extra?.mimeType,
           onInit: (session) => {
             task.uploadId = session.uploadId
             task.chunkSize = session.chunkSize
@@ -210,6 +256,21 @@ export const useTransferStore = defineStore('transfer', () => {
           }
         }
       )
+      if (result.fileId) task.fileId = result.fileId
+
+      if (result.fileId && isVideo) {
+        try {
+          const current = tasks.value.find((t) => t.id === taskId)
+          let cover = current?.coverUrl
+          if (!cover || !cover.startsWith('data:')) {
+            cover = await captureVideoCoverFromPath(filePath)
+          }
+          cacheCoverFromDataUrl(result.fileId, 0, cover)
+          patchTask(taskId, { coverUrl: cover, fileId: result.fileId })
+        } catch {
+          /* ignore */
+        }
+      }
 
       task.status = 'done'
       task.progress = 1
@@ -224,6 +285,11 @@ export const useTransferStore = defineStore('transfer', () => {
       } else {
         task.status = 'error'
         task.speed = '传输失败'
+        const msg =
+          e instanceof Error && e.message && /[\u4e00-\u9fa5]/.test(e.message)
+            ? e.message
+            : '上传失败，请稍后重试'
+        uni.showToast({ title: msg, icon: 'none' })
       }
     }
   }

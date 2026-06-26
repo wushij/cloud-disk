@@ -26,6 +26,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 import { subscribeWs } from '@/utils/ws'
+import { useFileStore } from '@/stores/file'
 
 
 
@@ -34,6 +35,7 @@ const route = useRoute()
 const router = useRouter()
 
 const auth = useAuthStore()
+const fileStore = useFileStore()
 
 const notifyStore = useNotificationStore()
 
@@ -187,6 +189,9 @@ onMounted(async () => {
       if (data.notifyType === 'ROLE_CHANGED' || data.notifyType === 'QUOTA_RESULT') {
         auth.fetchProfile().catch(() => {})
         refreshStorageUsage()
+      }
+      if (data.notifyType === 'TRANSCODE_DONE') {
+        fileStore.onTranscodeEvent(data.refId)
       }
     }
   })
@@ -708,6 +713,7 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
               />
               <el-avatar
                 v-else
+                :key="auth.avatarSrc"
                 :size="32"
                 :src="showHeaderAvatar ? auth.avatarDisplaySrc : undefined"
                 class="cd-user-avatar"
@@ -756,14 +762,13 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
 
       <el-main class="cd-main">
 
-        <router-view v-slot="{ Component }">
-
+        <router-view v-slot="{ Component, route }">
           <transition name="fade" mode="out-in">
-
-            <component :is="Component" />
-
+            <keep-alive v-if="route.meta.keepAlive">
+              <component :is="Component" :key="route.name" />
+            </keep-alive>
+            <component v-else :is="Component" :key="route.fullPath" />
           </transition>
-
         </router-view>
 
       </el-main>

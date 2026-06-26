@@ -1,9 +1,21 @@
+import { fetchMediaBlob } from '@/utils/fetchMediaBlob'
+
 const CACHE_KEY = 'cd_avatar_thumb'
 
 interface AvatarThumbCache {
   user: string
   v: number
   data: string
+}
+
+/** 由服务端头像存储路径生成稳定版本号，避免登录后仍命中 v=0 的旧缓存 */
+export function avatarVersionFromPath(path?: string | null): number {
+  if (!path?.trim()) return 0
+  let h = 0
+  for (let i = 0; i < path.length; i++) {
+    h = (Math.imul(31, h) + path.charCodeAt(i)) | 0
+  }
+  return h >>> 0
 }
 
 function readCache(): AvatarThumbCache | null {
@@ -72,8 +84,6 @@ export async function cacheAvatarFromFile(username: string, version: number, fil
 }
 
 export async function cacheAvatarFromUrl(username: string, version: number, url: string) {
-  const res = await fetch(url, { credentials: 'include' })
-  if (!res.ok) throw new Error(`avatar fetch ${res.status}`)
-  const blob = await res.blob()
+  const blob = await fetchMediaBlob(url)
   return cacheAvatarFromBlob(username, version, blob)
 }

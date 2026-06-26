@@ -9,7 +9,10 @@ import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { globalTeamList } from '@/utils/sharedState'
-import { bumpTeamAvatarVersion, teamAvatarVersions } from '@/utils/teamAvatar'
+import { bumpTeamAvatarVersion, teamAvatarVersions, getTeamAvatarVersion } from '@/utils/teamAvatar'
+import CachedEntityAvatar from '@/components/CachedEntityAvatar.vue'
+import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
+import { cacheEntityAvatarFromPath, teamAvatarCacheKey } from '@/utils/entityAvatarCache'
 
 const auth = useAuthStore()
 
@@ -95,6 +98,11 @@ function changeTeamAvatar(team: TeamSpace) {
           name: 'file'
         }) as { avatar: string }
         bumpTeamAvatarVersion(team.id)
+        void cacheEntityAvatarFromPath(
+          teamAvatarCacheKey(team.id),
+          getTeamAvatarVersion(team.id),
+          tempFilePath
+        ).catch(() => {})
         const idx = teams.value.findIndex((t) => t.id === team.id)
         if (idx >= 0) {
           teams.value[idx] = { ...teams.value[idx], avatar: data.avatar }
@@ -299,7 +307,12 @@ async function onConfirmAction() {
         >
           <view class="team-card-left">
             <view class="team-avatar" :style="team.avatar ? {} : getAvatarStyle(team.id)">
-              <image v-if="team.avatar" :src="getTeamAvatarUrl(team.id, team.avatar)" class="team-avatar-img" mode="aspectFill" />
+              <CachedEntityAvatar
+                v-if="team.avatar"
+                :cache-key="teamAvatarCacheKey(team.id)"
+                :src="getTeamAvatarUrl(team.id, team.avatar)"
+                :version="getTeamAvatarVersion(team.id)"
+              />
               <text class="team-avatar-text" v-else>{{ team.name.charAt(0) }}</text>
             </view>
           </view>

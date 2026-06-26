@@ -104,6 +104,20 @@ public class AdminAccessService {
         return SystemRole.isUser(target.getRole());
     }
 
+    /** 是否允许重置目标用户密码（含超级管理员重置自身） */
+    public boolean canResetPassword(User actor, User target) {
+        if (actor == null || target == null) {
+            return false;
+        }
+        if (!hasPermission(actor, AdminPermission.USERS)) {
+            return false;
+        }
+        if (actor.getId() != null && actor.getId().equals(target.getId()) && isSuperAdmin(actor)) {
+            return true;
+        }
+        return canManageUser(actor, target);
+    }
+
     public boolean canAssignRole(User actor, String newRole, User target) {
         if (actor == null || target == null) {
             return false;

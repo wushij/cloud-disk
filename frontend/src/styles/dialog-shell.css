@@ -308,15 +308,25 @@
 }
 
 /* 视频预览在全屏模式下的适配 */
-.el-dialog.cd-preview-dialog:fullscreen .video-wrap {
+.el-dialog.cd-preview-dialog .cd-video-preview,
+.el-dialog.cd-preview-dialog:fullscreen .cd-video-preview {
   height: 100% !important;
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
   background-color: #090d16 !important;
+  padding: 12px 20px 16px !important;
+  box-sizing: border-box !important;
 }
 
-.el-dialog.cd-preview-dialog:fullscreen .video-js {
-  max-height: calc(100vh - 58px) !important;
-  max-width: 100% !important;
+.el-dialog.cd-preview-dialog .cd-video-preview :deep(.video-js),
+.el-dialog.cd-preview-dialog:fullscreen .cd-video-preview :deep(.video-js) {
+  max-height: calc(100% - 24px) !important;
+  height: calc(100% - 24px) !important;
+}
+
+.el-dialog.cd-preview-dialog .cd-video-preview :deep(.video-js.vjs-fullscreen),
+.el-dialog.cd-preview-dialog:fullscreen .cd-video-preview :deep(.video-js.vjs-fullscreen) {
+  max-height: 100vh !important;
+  height: 100vh !important;
 }

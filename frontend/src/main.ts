@@ -24,11 +24,15 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 const pinia = createPinia()
 app.use(pinia)
-useAuthStore(pinia).restore()
-useThemeStore(pinia).init()
-app.use(router)
-app.use(ElementPlus, { locale: zhCn })
 
-setupGlobalErrorHandlers(app, router)
+async function bootstrap() {
+  const auth = useAuthStore(pinia)
+  await auth.initAuth()
+  useThemeStore(pinia).init()
+  app.use(router)
+  app.use(ElementPlus, { locale: zhCn })
+  setupGlobalErrorHandlers(app, router)
+  app.mount('#app')
+}
 
-app.mount('#app')
+void bootstrap()

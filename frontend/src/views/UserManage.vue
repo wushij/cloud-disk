@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UserFilled, Coin, Lock, Check, Close, Search } from '@element-plus/icons-vue'
 import http from '@/api/http'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import { fmtSize } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -23,6 +23,7 @@ interface UserRow {
   createTime?: string
   hasAvatar?: boolean
   canManage?: boolean
+  canResetPassword?: boolean
   canApprove?: boolean
   canAssignRole?: boolean
 }
@@ -126,9 +127,7 @@ function userAvatarSrc(row: UserRow) {
   if (avatarBroken.value[row.id]) return ''
   if (row.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   if (!row.hasAvatar) return ''
-  const token = mediaTokenParam()
-  if (!token) return ''
-  return `/api/admin/users/${row.id}/avatar?access_token=${token}&v=${auth.avatarVersion}`
+  return `${mediaApiUrl(`/api/admin/users/${row.id}/avatar`)}?v=${auth.avatarVersion}`
 }
 
 function onAvatarError(userId: number) {
@@ -413,10 +412,6 @@ onMounted(async () => {
                   <el-icon :size="13"><Coin /></el-icon>
                   配额
                 </button>
-                <button type="button" class="cd-admin-action pwd" title="重置登录密码" @click="openPwdDialog(row)">
-                  <el-icon :size="13"><Lock /></el-icon>
-                  密码
-                </button>
                 <button
                   v-if="row.canAssignRole"
                   type="button"
@@ -436,6 +431,16 @@ onMounted(async () => {
                   {{ row.status === 1 ? '禁用' : '启用' }}
                 </button>
               </template>
+              <button
+                v-if="row.status !== 2 && row.canResetPassword"
+                type="button"
+                class="cd-admin-action pwd"
+                title="重置登录密码"
+                @click="openPwdDialog(row)"
+              >
+                <el-icon :size="13"><Lock /></el-icon>
+                密码
+              </button>
 
               <!-- 待审批状态下的管理行为 -->
               <template v-else-if="row.status === 2 && row.canApprove">

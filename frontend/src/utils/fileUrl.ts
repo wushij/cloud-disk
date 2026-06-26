@@ -1,9 +1,9 @@
 import http from '@/api/http'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 
-/** 经后端鉴权的预览地址（本地存储 / MinIO 无直链时均适用） */
+/** 经后端鉴权的预览地址（同域 Cookie，URL 稳定） */
 export function filePreviewUrl(fileId: number): string {
-  return `/api/files/${fileId}/preview?access_token=${mediaTokenParam()}`
+  return mediaApiUrl(`/api/files/${fileId}/preview`)
 }
 
 /** 优先 MinIO/CDN 直链，否则回退 preview 代理 */

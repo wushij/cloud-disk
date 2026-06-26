@@ -69,6 +69,7 @@ const currentFolderId = ref<number | null>(null)
 const shareRootFolderId = ref<number | null>(null)
 
 const previewVisible = ref(false)
+const videoPreviewRef = ref<InstanceType<typeof VideoPreview> | null>(null)
 
 const isDialogFullscreen = ref(false)
 
@@ -89,9 +90,16 @@ function handleDialogFullscreenChange() {
   isDialogFullscreen.value = document.fullscreenElement === el
 }
 
-watch(previewVisible, (visible) => {
-  if (!visible && document.fullscreenElement) {
+function onPreviewClosed() {
+  videoPreviewRef.value?.stop?.()
+  if (document.fullscreenElement) {
     document.exitFullscreen()
+  }
+}
+
+watch(previewVisible, (visible) => {
+  if (!visible) {
+    onPreviewClosed()
   }
 })
 
@@ -570,11 +578,19 @@ function getSingleShareImageUrl() {
 
     <!-- 预览弹窗 -->
 
-    <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh" class="cd-preview-dialog">
+    <el-dialog
+      v-model="previewVisible"
+      :title="previewName"
+      width="90%"
+      destroy-on-close
+      top="4vh"
+      class="cd-preview-dialog"
+      @closed="onPreviewClosed"
+    >
 
       <!-- 弹窗全屏按钮 -->
       <button
-        v-if="previewVisible"
+        v-if="previewVisible && !previewMime.startsWith('video/')"
         class="cd-dialog-fullscreen-btn"
         :title="isDialogFullscreen ? '退出全屏 (Esc)' : '全屏'"
         @click="toggleDialogFullscreen"
@@ -593,7 +609,12 @@ function getSingleShareImageUrl() {
         <img :src="previewUrl" class="cd-share-media" alt="" />
       </div>
 
-      <VideoPreview v-else-if="previewMime.startsWith('video/')" :src="previewUrl" />
+      <VideoPreview
+        v-else-if="previewMime.startsWith('video/')"
+        ref="videoPreviewRef"
+        :key="previewUrl"
+        :src="previewUrl"
+      />
 
       <PdfPreview v-else-if="previewMime.includes('pdf')" :src="previewUrl" />
 

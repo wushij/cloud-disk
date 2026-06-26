@@ -17,11 +17,14 @@ import { useH5BackGuard } from '@/composables/useH5BackGuard'
 import type { FileItem } from '@/stores/file'
 import { downloadZip } from '@/utils/download'
 import { updateUrlQueryParam } from '@/utils/navUrlHelper'
+import { ensureMediaToken } from '@/utils/mediaToken'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
 import { globalTeamList } from '@/utils/sharedState'
-import { bumpTeamAvatarVersion, teamAvatarVersions } from '@/utils/teamAvatar'
+import { bumpTeamAvatarVersion, teamAvatarVersions, getTeamAvatarVersion } from '@/utils/teamAvatar'
+import CachedEntityAvatar from '@/components/CachedEntityAvatar.vue'
+import { cacheEntityAvatarFromPath, teamAvatarCacheKey } from '@/utils/entityAvatarCache'
 
 const spaceId = ref(0)
 const spaceName = ref('')
@@ -51,6 +54,11 @@ function changeTeamAvatar() {
         
         spaceAvatar.value = data.avatar
         bumpTeamAvatarVersion(spaceId.value)
+        void cacheEntityAvatarFromPath(
+          teamAvatarCacheKey(spaceId.value),
+          getTeamAvatarVersion(spaceId.value),
+          tempFilePath
+        ).catch(() => {})
         uni.showToast({ title: '修改成功', icon: 'success' })
         
         // 同步更新全局状态中的头像
@@ -447,6 +455,17 @@ async function loadFiles() {
   }
 }
 
+async function openImagePreview(row: FileItem) {
+  try {
+    await ensureMediaToken()
+    uni.navigateTo({
+      url: `/pages/preview/image?fileId=${row.id}&name=${encodeURIComponent(row.name)}`
+    })
+  } catch {
+    uni.showToast({ title: '无法预览图片', icon: 'none' })
+  }
+}
+
 function openItem(row: FileItem) {
   if (selectMode.value) {
     toggleChecked(row)
@@ -460,8 +479,7 @@ function openItem(row: FileItem) {
     return
   }
   if (isImageFile(row)) {
-    const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
-    uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(row.name)}` })
+    void openImagePreview(row)
     return
   }
   if (isVideoFile(row)) {
@@ -523,11 +541,9 @@ function onActionSelect(item: { name: string }) {
     case '打开':
       openItem(row)
       break
-    case '预览图片': {
-      const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
-      uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(row.name)}` })
+    case '预览图片':
+      void openImagePreview(row)
       break
-    }
     case '播放视频': {
       const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
       uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
@@ -612,7 +628,12 @@ function previewOffice(row: FileItem) {
     >
       <template #left>
         <view class="team-avatar-header" :class="{ 'cd-pressable': myRole === 'OWNER' || myRole === 'ADMIN' }" :style="spaceAvatar ? {} : getAvatarStyle(spaceId)" @click="changeTeamAvatar">
-          <image v-if="spaceAvatar" :src="getTeamAvatarUrl(spaceId)" class="team-avatar-img" mode="aspectFill" />
+          <CachedEntityAvatar
+            v-if="spaceAvatar"
+            :cache-key="teamAvatarCacheKey(spaceId)"
+            :src="getTeamAvatarUrl(spaceId)"
+            :version="getTeamAvatarVersion(spaceId)"
+          />
           <text v-else class="team-avatar-header-text">{{ (spaceName || 'T').charAt(0).toUpperCase() }}</text>
         </view>
       </template>

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
-import { fileCoverUrl, fileHasCover, fileCoverKind } from '@/utils/fileCover'
+import { fileCoverUrl, fileHasCover, fileCoverKind, fileIsVideoCover } from '@/utils/fileCover'
+import CachedCover from '@/components/CachedCover.vue'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import { fmtSize } from '@/utils/fileCover'
+import { transcodeLabel } from '@/utils/fileMeta'
+import { mediaTokenRef } from '@/utils/mediaToken'
 
 function formatDate(d: string) {
   const dt = new Date(d)
@@ -13,11 +16,16 @@ function formatDate(d: string) {
   return `${dt.getFullYear()}/${m}/${day}`
 }
 
-defineProps<{
+const props = defineProps<{
   item: FileItem
   selectMode?: boolean
   checked?: boolean
 }>()
+
+const coverSrc = computed(() => {
+  void mediaTokenRef.value
+  return fileCoverUrl(props.item)
+})
 
 const emit = defineEmits<{
   (e: 'click'): void
@@ -49,22 +57,18 @@ const coverBroken = ref(false)
         [`kind-${fileTypeKind(item)}`]: item.type === 'file' && !fileHasCover(item)
       }"
     >
-      <image
-        v-if="fileHasCover(item) && fileCoverKind(item) === 'image' && !coverBroken"
-        :src="fileCoverUrl(item)"
-        class="grid-cover"
-        mode="aspectFill"
-        @error="coverBroken = true"
-      />
-      <video
-        v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video' && !coverBroken"
-        :src="fileCoverUrl(item)"
-        class="grid-cover"
-        muted
-        :show-center-play-btn="false"
-        :controls="false"
-        object-fit="cover"
-      />
+      <template v-if="fileHasCover(item) && !coverBroken">
+        <CachedCover
+          :file-id="item.id"
+          :src="coverSrc"
+          :has-thumbnail="item.hasThumbnail"
+          class="grid-cover"
+          @error="coverBroken = true"
+        />
+        <view v-if="fileIsVideoCover(item)" class="grid-play-badge">
+          <u-icon name="play-circle-fill" size="20" color="#fff" />
+        </view>
+      </template>
       <view v-else class="grid-icon" :class="fileTypeKind(item)">
         <FolderTypeIcon
           v-if="item.type === 'folder'"
@@ -84,8 +88,16 @@ const coverBroken = ref(false)
           <text class="grid-ext">{{ fileExtLabel(item) }}</text>
         </template>
       </view>
-      <view v-if="fileCoverKind(item) === 'video'" class="grid-play-badge">
-        <u-icon name="play-circle-fill" size="20" color="#fff" />
+      <view
+        v-if="item.type === 'file' && transcodeLabel(item.transcodeStatus)"
+        class="grid-transcode-badge"
+        :class="{
+          pending: !item.transcodeStatus || item.transcodeStatus === 'PENDING' || item.transcodeStatus === 'PROCESSING',
+          done: item.transcodeStatus === 'DONE',
+          failed: item.transcodeStatus === 'FAILED'
+        }"
+      >
+        <text>{{ transcodeLabel(item.transcodeStatus) }}</text>
       </view>
     </view>
 
@@ -186,6 +198,27 @@ const coverBroken = ref(false)
   justify-content: center;
   background: rgba(15, 23, 42, 0.2);
   backdrop-filter: blur(4rpx);
+}
+
+.grid-transcode-badge {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  z-index: 2;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(59, 130, 246, 0.92);
+}
+
+.grid-transcode-badge.done {
+  background: rgba(16, 185, 129, 0.92);
+}
+
+.grid-transcode-badge.failed {
+  background: rgba(239, 68, 68, 0.92);
 }
 
 .grid-info {

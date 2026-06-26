@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { Brush } from '@element-plus/icons-vue'
 import { useThemeStore } from '@/stores/theme'
 import { normalizeHex, PRESET_COLORS, type ThemePresetId } from '@/utils/theme'
 
@@ -48,7 +47,7 @@ function onHexInput(val: string) {
   >
     <template #reference>
       <el-button class="cd-header-btn theme-picker-trigger" circle title="外观主题">
-        <el-icon :size="18"><Brush /></el-icon>
+        <img src="/theme-brand-icon.png" alt="" class="theme-brand-icon" />
       </el-button>
     </template>
 
@@ -105,11 +104,24 @@ function onHexInput(val: string) {
   border: none !important;
   color: #111827 !important;
   transition: var(--cd-transition-fast);
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
 }
 
 .theme-picker-trigger:hover {
   background: var(--cd-primary-bg) !important;
   color: #111827 !important;
+}
+
+.theme-brand-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  flex-shrink: 0;
 }
 
 .theme-picker-panel {

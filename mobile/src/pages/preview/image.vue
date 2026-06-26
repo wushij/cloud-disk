@@ -1,27 +1,48 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { ensureMediaToken } from '@/utils/mediaToken'
+import { fileApiUrl } from '@/api/http'
 
 const url = ref('')
 const name = ref('')
 const scale = ref(1)
 const showUI = ref(true)
+const loading = ref(true)
+const loadError = ref('')
 
-onLoad((query) => {
-  url.value = decodeURIComponent((query?.url as string) || '')
+onLoad(async (query) => {
   name.value = decodeURIComponent((query?.name as string) || '图片预览')
+  const fileId = Number(query?.fileId || 0)
+  try {
+    await ensureMediaToken()
+    if (fileId > 0) {
+      url.value = fileApiUrl(`/api/files/${fileId}/preview`)
+    } else {
+      url.value = decodeURIComponent((query?.url as string) || '')
+    }
+  } catch {
+    loadError.value = '图片加载失败，请返回后重试'
+    loading.value = false
+  }
 })
 
 function handleDoubleClick() {
-  if (scale.value > 1) {
-    scale.value = 1
-  } else {
-    scale.value = 2.5
-  }
+  scale.value = scale.value > 1 ? 1 : 2.5
 }
 
 function toggleUI() {
   showUI.value = !showUI.value
+}
+
+function onImageLoad() {
+  loading.value = false
+  loadError.value = ''
+}
+
+function onImageError() {
+  loading.value = false
+  loadError.value = '图片加载失败，请检查网络后重试'
 }
 </script>
 
@@ -31,7 +52,13 @@ function toggleUI() {
       <text class="title">{{ name }}</text>
     </view>
     <view class="preview-container">
-      <movable-area class="movable-area" scale-area>
+      <view v-if="loading && !loadError" class="loading-tip">
+        <text>加载中...</text>
+      </view>
+      <view v-if="loadError" class="error-tip">
+        <text>{{ loadError }}</text>
+      </view>
+      <movable-area v-if="url && !loadError" class="movable-area" scale-area>
         <movable-view
           class="movable-view"
           direction="all"
@@ -46,6 +73,8 @@ function toggleUI() {
             class="preview-image"
             mode="aspectFit"
             @click="toggleUI"
+            @load="onImageLoad"
+            @error="onImageError"
           />
         </movable-view>
       </movable-area>
@@ -115,5 +144,19 @@ function toggleUI() {
 .preview-image {
   width: 100%;
   height: 100%;
+}
+
+.loading-tip,
+.error-tip {
+  position: absolute;
+  left: 48rpx;
+  right: 48rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.error-tip {
+  color: #fecaca;
 }
 </style>

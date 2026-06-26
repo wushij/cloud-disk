@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTransferStore, type TransferTask } from '@/stores/transfer'
 import { fileApiUrl, tokenQuery } from '@/api/http'
+import { loadCoverThumb } from '@/utils/coverCache'
 import EmptyState from '@/components/EmptyState.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 
@@ -11,6 +12,7 @@ const { tasks } = storeToRefs(transferStore)
 
 const activeTab = ref<'transferring' | 'completed'>('transferring')
 const coverFallback = ref<Record<string, boolean>>({})
+const coverFailed = ref<Record<string, boolean>>({})
 
 const clearAllDialogVisible = ref(false)
 const cancelTaskDialogVisible = ref(false)
@@ -115,23 +117,36 @@ function isVideoName(name: string): boolean {
 }
 
 function taskHasCover(t: TransferTask): boolean {
-  return !!t.coverUrl || (!!t.fileId && (isImageName(t.name) || isVideoName(t.name)))
+  if (t.coverUrl) return true
+  if (!t.fileId) return false
+  if (isImageName(t.name)) return true
+  if (isVideoName(t.name)) return !!loadCoverThumb(t.fileId, 0)
+  return false
+}
+
+function showCover(t: TransferTask): boolean {
+  return taskHasCover(t) && !coverFailed.value[t.id]
 }
 
 function coverSrc(t: TransferTask): string {
   if (t.coverUrl) return t.coverUrl
   if (!t.fileId) return ''
+  if (isVideoName(t.name)) {
+    return loadCoverThumb(t.fileId, 0) || ''
+  }
   const param = `access_token=${tokenQuery()}`
-  if (isVideoName(t.name) || coverFallback.value[t.id]) {
+  if (coverFallback.value[t.id]) {
     return fileApiUrl(`/api/files/${t.fileId}/preview?${param}`)
   }
   return fileApiUrl(`/api/files/${t.fileId}/thumbnail?${param}`)
 }
 
 function onCoverError(t: TransferTask) {
-  if (t.fileId && !coverFallback.value[t.id]) {
+  if (t.fileId && isImageName(t.name) && !coverFallback.value[t.id]) {
     coverFallback.value[t.id] = true
+    return
   }
+  coverFailed.value[t.id] = true
 }
 </script>
 
@@ -206,11 +221,11 @@ function onCoverError(t: TransferTask) {
           <view class="task-icon-area">
             <view
               class="task-icon-box"
-              :class="{ 'has-cover': taskHasCover(t) }"
+              :class="{ 'has-cover': showCover(t) }"
               :style="{ background: getFileIconInfo(t.name).bg }"
             >
               <image
-                v-if="taskHasCover(t)"
+                v-if="showCover(t)"
                 :src="coverSrc(t)"
                 class="task-cover-media"
                 mode="aspectFill"
@@ -301,11 +316,11 @@ function onCoverError(t: TransferTask) {
           <view class="task-icon-area">
             <view
               class="task-icon-box small"
-              :class="{ 'has-cover': t.status !== 'error' && taskHasCover(t) }"
+              :class="{ 'has-cover': t.status !== 'error' && showCover(t) }"
               :style="{ background: t.status === 'error' ? 'rgba(239,68,68,0.08)' : getFileIconInfo(t.name).bg }"
             >
               <image
-                v-if="t.status !== 'error' && taskHasCover(t)"
+                v-if="t.status !== 'error' && showCover(t)"
                 :src="coverSrc(t)"
                 class="task-cover-media"
                 mode="aspectFill"

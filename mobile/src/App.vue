@@ -50,10 +50,7 @@ onLaunch(() => {
 onShow(() => {
   const auth = useAuthStore()
   if (auth.isLoggedIn) {
-    Promise.all([
-      auth.ensureMediaToken().catch(() => {}),
-      auth.fetchProfile().catch(() => {})
-    ])
+    void auth.ensureMediaToken().catch(() => {})
   }
   setupNotifications()
 })

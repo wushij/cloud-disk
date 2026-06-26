@@ -2,9 +2,12 @@
 import { ref, computed } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
-import { fileCoverUrl, fileHasCover, fileCoverKind, type FileCoverContext } from '@/utils/fileCover'
+import { fileCoverUrl, fileHasCover, fileCoverKind, fileIsVideoCover, type FileCoverContext } from '@/utils/fileCover'
+import CachedCover from '@/components/CachedCover.vue'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import { fmtSize } from '@/utils/fileCover'
+import { transcodeLabel } from '@/utils/fileMeta'
+import { mediaTokenRef } from '@/utils/mediaToken'
 
 function formatDate(d: string) {
   const dt = new Date(d)
@@ -26,6 +29,7 @@ const coverCtx = computed<FileCoverContext | undefined>(() =>
 )
 
 function coverUrl() {
+  void mediaTokenRef.value
   return fileCoverUrl(props.item, coverCtx.value)
 }
 
@@ -66,26 +70,19 @@ function onMoreClick() {
         [`kind-${fileTypeKind(item)}`]: item.type === 'file' && !fileHasCover(item)
       }"
     >
-      <image
-        v-if="fileHasCover(item) && fileCoverKind(item) === 'image' && !coverBroken"
-        :src="coverUrl()"
-        class="file-cover"
-        mode="aspectFill"
-        @error="coverBroken = true"
-      />
-      <view v-else-if="fileHasCover(item) && fileCoverKind(item) === 'video' && !coverBroken" class="file-video-wrap">
-        <video
+      <template v-if="fileHasCover(item) && !coverBroken">
+        <CachedCover
+          v-if="fileCoverKind(item) === 'image'"
+          :file-id="item.id"
           :src="coverUrl()"
+          :has-thumbnail="item.hasThumbnail"
           class="file-cover"
-          muted
-          :show-center-play-btn="false"
-          :controls="false"
-          object-fit="cover"
+          @error="coverBroken = true"
         />
-        <view class="file-play-badge">
+        <view v-if="fileIsVideoCover(item)" class="file-play-badge">
           <u-icon name="play-circle-fill" size="22" color="#fff" />
         </view>
-      </view>
+      </template>
       <view v-else class="file-icon" :class="fileTypeKind(item)">
         <FolderTypeIcon
           v-if="item.type === 'folder'"
@@ -104,6 +101,17 @@ function onMoreClick() {
           />
           <text class="file-ext">{{ fileExtLabel(item) }}</text>
         </template>
+      </view>
+      <view
+        v-if="item.type === 'file' && transcodeLabel(item.transcodeStatus)"
+        class="file-transcode-badge"
+        :class="{
+          pending: !item.transcodeStatus || item.transcodeStatus === 'PENDING' || item.transcodeStatus === 'PROCESSING',
+          done: item.transcodeStatus === 'DONE',
+          failed: item.transcodeStatus === 'FAILED'
+        }"
+      >
+        <text>{{ transcodeLabel(item.transcodeStatus) }}</text>
       </view>
     </view>
 
@@ -146,6 +154,7 @@ function onMoreClick() {
 }
 
 .file-thumb {
+  position: relative;
   width: 88rpx;
   height: 88rpx;
   border-radius: var(--cd-radius);
@@ -216,6 +225,27 @@ function onMoreClick() {
   justify-content: center;
   background: rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(2rpx);
+}
+
+.file-transcode-badge {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  z-index: 2;
+  padding: 2rpx 8rpx;
+  border-radius: 999rpx;
+  font-size: 16rpx;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(59, 130, 246, 0.92);
+}
+
+.file-transcode-badge.done {
+  background: rgba(16, 185, 129, 0.92);
+}
+
+.file-transcode-badge.failed {
+  background: rgba(239, 68, 68, 0.92);
 }
 
 .file-icon {

@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Notebook, Files } from '@element-plus/icons-vue'
 import http from '@/api/http'
 import { buildPublicShareUrl } from '@/utils/shareUrl'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
@@ -81,8 +81,7 @@ function isImageShare(row: ShareRow) {
 }
 
 function getShareImageUrl(row: ShareRow) {
-  const token = mediaTokenParam()
-  return `/api/files/${row.fileId}/preview?access_token=${token}`
+  return mediaApiUrl(`/api/files/${row.fileId}/preview`)
 }
 
 function isFolder(row: ShareRow) {

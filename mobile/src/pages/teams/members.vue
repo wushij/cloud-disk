@@ -6,7 +6,10 @@ import { request, fileApiUrl } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
-import { teamAvatarVersions } from '@/utils/teamAvatar'
+import { teamAvatarVersions, getTeamAvatarVersion } from '@/utils/teamAvatar'
+import CachedEntityAvatar from '@/components/CachedEntityAvatar.vue'
+import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
+import { teamAvatarCacheKey } from '@/utils/entityAvatarCache'
 
 const auth = useAuthStore()
 
@@ -220,11 +223,11 @@ async function confirmRemove() {
       <template #extra>
         <view class="team-hero">
           <view class="team-avatar" :style="spaceAvatar ? {} : teamAvatarStyle">
-            <image
+            <CachedEntityAvatar
               v-if="spaceAvatar"
+              :cache-key="teamAvatarCacheKey(spaceId)"
               :src="getTeamAvatarUrl(spaceId)"
-              class="team-avatar-img"
-              mode="aspectFill"
+              :version="getTeamAvatarVersion(spaceId)"
             />
             <text v-else class="team-avatar-text">{{ teamInitial }}</text>
           </view>
@@ -244,12 +247,11 @@ async function confirmRemove() {
         <view v-for="member in members" :key="member.userId" class="member-item">
           <view class="member-info">
             <view class="member-avatar">
-              <image
-                v-if="memberAvatarSrc(member)"
-                :src="memberAvatarSrc(member)"
-                class="member-avatar-img"
-                mode="aspectFill"
-                @error="onMemberAvatarError(member.userId)"
+              <MemberCachedAvatar
+                v-if="(member.hasAvatar ?? !!member.avatar) && !avatarBroken[member.userId]"
+                :team-id="spaceId"
+                :member="member"
+                @error="onMemberAvatarError"
               />
               <text v-else class="member-avatar-text">{{ memberInitial(member) }}</text>
             </view>

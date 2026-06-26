@@ -26,6 +26,29 @@ export const useFileStore = defineStore('file', () => {
   const items = ref<FileItem[]>([])
   const loading = ref(false)
   const keyword = ref('')
+  const listInitialized = ref(false)
+  const needsRefresh = ref(false)
+
+  function markListStale() {
+    needsRefresh.value = true
+  }
+
+  function onTranscodeEvent(fileId?: string | number | null) {
+    const id = fileId != null ? Number(fileId) : NaN
+    if (!Number.isNaN(id) && items.value.some((item) => item.id === id)) {
+      void loadList()
+      return
+    }
+    markListStale()
+  }
+
+  function hasActiveTranscode(itemsList: FileItem[] = items.value): boolean {
+    return itemsList.some(
+      (item) =>
+        item.type === 'file' &&
+        (item.transcodeStatus === 'PENDING' || item.transcodeStatus === 'PROCESSING')
+    )
+  }
 
   async function loadList() {
     loading.value = true
@@ -40,6 +63,8 @@ export const useFileStore = defineStore('file', () => {
         }
       })
       items.value = data.content || []
+      listInitialized.value = true
+      needsRefresh.value = false
     } finally {
       loading.value = false
     }
@@ -111,6 +136,11 @@ export const useFileStore = defineStore('file', () => {
     items,
     loading,
     keyword,
+    listInitialized,
+    needsRefresh,
+    markListStale,
+    onTranscodeEvent,
+    hasActiveTranscode,
     loadList,
     loadBreadcrumbs,
     enterFolder,

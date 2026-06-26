@@ -15,7 +15,7 @@ import {
   ArrowRight
 } from '@element-plus/icons-vue'
 import http from '@/api/http'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
@@ -225,10 +225,7 @@ function userAvatarSrc(user: UserStorageStat) {
   if (!user.userId || avatarBroken.value[user.userId]) return ''
   if (user.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   if (!user.hasAvatar) return ''
-  const token = mediaTokenParam()
-  if (!token) return ''
-  const base = import.meta.env.VITE_API_BASE || ''
-  return `${base}/api/admin/users/${user.userId}/avatar?access_token=${token}&v=${auth.avatarVersion}`
+  return `${mediaApiUrl(`/api/admin/users/${user.userId}/avatar`)}?v=${auth.avatarVersion}`
 }
 
 function onAvatarError(userId: number) {

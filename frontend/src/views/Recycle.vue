@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete, Document, Folder, RefreshLeft, CaretRight } from '@element-plus/icons-vue'
 import http from '@/api/http'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { fmtSize } from '@/utils/md5'
 import PageHeader from '@/components/PageHeader.vue'
-import { fileHasCover, fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
+import { fileHasCover, fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover'
+import CachedCover from '@/components/CachedCover.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+
+defineOptions({ name: 'Recycle' })
 
 interface RecycleItem {
   id: number
@@ -21,6 +24,7 @@ interface RecycleItem {
 
 const items = ref<RecycleItem[]>([])
 const loading = ref(false)
+const listInitialized = ref(false)
 const confirmDialog = useConfirmDialogStore()
 
 async function load() {
@@ -28,6 +32,7 @@ async function load() {
   try {
     const { data } = await http.get('/api/recycle')
     items.value = data
+    listInitialized.value = true
   } catch {
     /* global toast */
   } finally {
@@ -115,7 +120,9 @@ const isArchive = (row: RecycleItem) => {
   return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
 }
 
-onMounted(load)
+onMounted(() => {
+  if (!listInitialized.value) load()
+})
 </script>
 
 <template>
@@ -159,19 +166,14 @@ onMounted(load)
               <div class="recycle-name-cell">
                 <div class="recycle-thumb" :class="[row.type, { cover: fileHasCover(row as any) }]">
                   <template v-if="fileHasCover(row as any)">
-                    <img
-                      v-if="fileCoverKind(row as any) === 'image'"
-                      :src="fileCoverUrl(row as any)"
-                      class="recycle-cover"
-                      alt=""
-                    />
-                    <div v-else-if="fileCoverKind(row as any) === 'video'" class="recycle-video-wrap">
-                      <video
+                    <div v-if="fileCoverKind(row as any) === 'image'" class="recycle-cover-wrap">
+                      <CachedCover
+                        :file-id="row.id"
                         :src="fileCoverUrl(row as any)"
-                        class="recycle-cover"
-                        muted
+                        :has-thumbnail="row.hasThumbnail"
+                        img-class="recycle-cover"
                       />
-                      <div class="recycle-play-badge">
+                      <div v-if="fileIsVideoCover(row as any)" class="recycle-play-badge">
                         <el-icon><CaretRight /></el-icon>
                       </div>
                     </div>
@@ -502,7 +504,13 @@ onMounted(load)
   overflow: hidden;
 }
 
-.recycle-cover {
+.recycle-cover-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.recycle-cover-wrap .recycle-cover {
   width: 100%;
   height: 100%;
   object-fit: cover;

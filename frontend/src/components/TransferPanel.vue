@@ -3,7 +3,10 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTransferStore, type TransferTask } from '@/stores/transfer'
 import { fmtSize } from '@/utils/fileMeta'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import {
+  taskHasCover,
+  taskCoverSrc
+} from '@/utils/transferCover'
 import { ElMessage } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
@@ -12,6 +15,7 @@ const confirmDialog = useConfirmDialogStore()
 const { tasks, isCollapsed, runningCount } = storeToRefs(transferStore)
 const activeTab = ref<'transferring' | 'completed'>('transferring')
 const coverFallback = ref<Record<string, boolean>>({})
+const coverFailed = ref<Record<string, boolean>>({})
 
 const transferringTasks = computed(() =>
   tasks.value.filter((t) => t.status !== 'done' && t.status !== 'instant' && t.status !== 'error')
@@ -59,37 +63,20 @@ function getFileIconInfo(name: string): FileIconInfo {
   return { icon: '📁', bg: 'rgba(100,116,139,0.1)' }
 }
 
-function tokenParam() {
-  return mediaTokenParam()
-}
-
-function taskCoverKind(t: TransferTask): 'image' | 'video' | null {
-  if (t.coverUrl) return 'image'
-  if (t.fileObj?.type.startsWith('image/')) return 'image'
-  if (!t.fileId) return null
-  if (isVideoName(t.name)) return 'video'
-  if (isImageName(t.name)) return 'image'
-  return null
-}
-
-function taskHasCover(t: TransferTask): boolean {
-  return taskCoverKind(t) !== null
-}
-
 function coverSrc(t: TransferTask): string {
-  if (t.coverUrl) return t.coverUrl
-  if (!t.fileId) return ''
-  const kind = taskCoverKind(t)
-  if (kind === 'video' || coverFallback.value[t.id]) {
-    return `/api/files/${t.fileId}/preview?access_token=${tokenParam()}`
-  }
-  return `/api/files/${t.fileId}/thumbnail?access_token=${tokenParam()}`
+  return taskCoverSrc(t, coverFallback.value[t.id])
+}
+
+function showCover(t: TransferTask): boolean {
+  return taskHasCover(t) && !coverFailed.value[t.id]
 }
 
 function onCoverError(t: TransferTask) {
-  if (t.fileId && !coverFallback.value[t.id]) {
+  if (t.fileId && isImageName(t.name) && !coverFallback.value[t.id]) {
     coverFallback.value[t.id] = true
+    return
   }
+  coverFailed.value[t.id] = true
 }
 
 function formatPercent(progress: number): string {
@@ -222,22 +209,15 @@ async function handleClearCompleted() {
             <div class="task-icon-area">
               <div
                 class="task-icon-box"
-                :class="{ 'has-cover': taskHasCover(t) }"
+                :class="{ 'has-cover': showCover(t) }"
                 :style="{ background: getFileIconInfo(t.name).bg }"
               >
                 <img
-                  v-if="taskCoverKind(t) === 'image'"
+                  v-if="showCover(t)"
                   :src="coverSrc(t)"
                   class="task-cover-media"
                   alt=""
                   @error="onCoverError(t)"
-                />
-                <video
-                  v-else-if="taskCoverKind(t) === 'video'"
-                  :src="coverSrc(t)"
-                  class="task-cover-media"
-                  muted
-                  preload="metadata"
                 />
                 <span v-else class="task-emoji">{{ getFileIconInfo(t.name).icon }}</span>
               </div>
@@ -316,24 +296,17 @@ async function handleClearCompleted() {
             <div class="task-icon-area">
               <div
                 class="task-icon-box small"
-                :class="{ 'has-cover': t.status !== 'error' && taskHasCover(t) }"
+                :class="{ 'has-cover': t.status !== 'error' && showCover(t) }"
                 :style="{
                   background: t.status === 'error' ? 'rgba(239,68,68,0.08)' : getFileIconInfo(t.name).bg
                 }"
               >
                 <img
-                  v-if="t.status !== 'error' && taskCoverKind(t) === 'image'"
+                  v-if="t.status !== 'error' && showCover(t)"
                   :src="coverSrc(t)"
                   class="task-cover-media"
                   alt=""
                   @error="onCoverError(t)"
-                />
-                <video
-                  v-else-if="t.status !== 'error' && taskCoverKind(t) === 'video'"
-                  :src="coverSrc(t)"
-                  class="task-cover-media"
-                  muted
-                  preload="metadata"
                 />
                 <span v-else class="task-emoji">{{ t.status === 'error' ? '❌' : getFileIconInfo(t.name).icon }}</span>
               </div>

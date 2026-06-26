@@ -20,6 +20,7 @@ interface UserRow {
   createTime?: string
   hasAvatar?: boolean
   canManage?: boolean
+  canResetPassword?: boolean
   canApprove?: boolean
   canAssignRole?: boolean
 }
@@ -466,13 +467,6 @@ function statusClass(status: number) {
               <text class="action-val">{{ selectedUser.storageQuota ? fmtSize(selectedUser.storageQuota) : '不限' }}</text>
             </view>
 
-            <view class="action-item cd-pressable" @click="resetPassword">
-              <view class="action-icon-box violet">
-                <u-icon name="lock" size="18" color="#7c3aed" bold />
-              </view>
-              <text class="action-text">重置登录密码</text>
-            </view>
-
             <view v-if="selectedUser.canAssignRole" class="action-item cd-pressable" @click="toggleRole">
               <view class="action-icon-box sky">
                 <u-icon name="account" size="18" color="#0ea5e9" bold />
@@ -496,6 +490,17 @@ function statusClass(status: number) {
               </block>
             </view>
           </block>
+
+          <view
+            v-if="selectedUser.status !== 2 && selectedUser.canResetPassword"
+            class="action-item cd-pressable"
+            @click="resetPassword"
+          >
+            <view class="action-icon-box violet">
+              <u-icon name="lock" size="18" color="#7c3aed" bold />
+            </view>
+            <text class="action-text">重置登录密码</text>
+          </view>
         </view>
 
         <view class="drawer-footer cd-pressable" @click="closeActions">

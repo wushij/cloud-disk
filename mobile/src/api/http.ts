@@ -36,7 +36,7 @@ export class ApiError extends Error {
   }
 }
 
-function buildUrl(url: string) {
+export function buildUrl(url: string) {
   if (/^https?:\/\//.test(url)) return url
   const path = url.startsWith('/') ? url : `/${url}`
   const origin = apiOrigin()

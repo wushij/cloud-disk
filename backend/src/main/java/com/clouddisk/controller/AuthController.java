@@ -137,6 +137,13 @@ public class AuthController {
         return Map.of("message", "已退出");
     }
 
+    /** 将当前 Bearer 会话写入 httpOnly Cookie，供 img/video 等同域资源鉴权 */
+    @PostMapping("/sync-cookie")
+    public Map<String, String> syncCookie(jakarta.servlet.http.HttpServletResponse response) {
+        authService.syncSessionCookie(response);
+        return Map.of("message", "ok");
+    }
+
     @PostMapping("/avatar")
     public Map<String, Object> uploadAvatar(@RequestParam("file") org.springframework.web.multipart.MultipartFile file)
             throws Exception {

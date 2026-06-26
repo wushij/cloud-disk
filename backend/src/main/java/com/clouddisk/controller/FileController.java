@@ -11,6 +11,7 @@ import com.clouddisk.service.AuthService;
 import com.clouddisk.search.FileSearchService;
 import com.clouddisk.util.AuthHelper;
 import com.clouddisk.util.FileTypeUtils;
+import com.clouddisk.util.MediaResponseHeaders;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -190,14 +191,18 @@ public class FileController {
         }
         Resource resource = fileService.download(id, userId);
         MediaType mediaType = resolveMediaType(file.getFileType(), file.getFileName());
-        return ResponseEntity.ok().contentType(mediaType).body(resource);
+        return MediaResponseHeaders.ok()
+                .contentType(mediaType)
+                .body(resource);
     }
 
     @GetMapping("/{id}/thumbnail")
     public ResponseEntity<Resource> thumbnail(@PathVariable Long id, HttpServletRequest request) {
         long userId = authHelper.requireUserId(request);
         Resource resource = fileService.loadThumbnail(id, userId);
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(resource);
+        return MediaResponseHeaders.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .body(resource);
     }
 
     /** MinIO 预签名直链（设计文档 CDN/对象存储加速） */

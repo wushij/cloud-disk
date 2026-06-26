@@ -11,11 +11,11 @@ const router = createRouter({
       component: () => import('@/layouts/MainLayout.vue'),
       children: [
         { path: '', redirect: '/disk' },
-        { path: 'disk', component: () => import('@/views/Disk.vue') },
+        { path: 'disk', component: () => import('@/views/Disk.vue'), meta: { keepAlive: true } },
         { path: 'office/:id', component: () => import('@/views/OfficeEditor.vue') },
         { path: 'shares', component: () => import('@/views/Shares.vue') },
         { path: 'teams', component: () => import('@/views/TeamSpace.vue') },
-        { path: 'recycle', component: () => import('@/views/Recycle.vue') },
+        { path: 'recycle', component: () => import('@/views/Recycle.vue'), meta: { keepAlive: true } },
         { path: 'profile', component: () => import('@/views/Profile.vue') },
         { path: 'admin', component: () => import('@/views/Admin.vue'), meta: { admin: true } },
         { path: 'admin/users', component: () => import('@/views/UserManage.vue'), meta: { admin: true } }

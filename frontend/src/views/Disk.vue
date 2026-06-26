@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import http from '@/api/http'
@@ -7,21 +7,24 @@ import { resolveFilePreviewUrl } from '@/utils/fileUrl'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePromptDialogStore } from '@/stores/promptDialog'
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
-import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
+import { fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover'
 import { useFileStore, type FileItem } from '@/stores/file'
 import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import ShareDialog from '@/components/ShareDialog.vue'
 import MoveCopyDialog from '@/components/MoveCopyDialog.vue'
 import FolderTree from '@/components/FolderTree.vue'
 import FileGridView from '@/components/FileGridView.vue'
+import CachedCover from '@/components/CachedCover.vue'
 import OnlyOfficeEditor from '@/components/OnlyOfficeEditor.vue'
 import PdfPreview from '@/components/PdfPreview.vue'
 import VideoPreview from '@/components/VideoPreview.vue'
 import TextPreview from '@/components/TextPreview.vue'
 import { isTextFile } from '@/utils/filePreview'
-import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
+import { connectUploadWs, disconnectUploadWs, type WsMessage } from '@/utils/ws'
 import { downloadZip } from '@/utils/download'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+
+defineOptions({ name: 'Disk' })
 
 const fileStore = useFileStore()
 const transferStore = useTransferStore()
@@ -38,6 +41,7 @@ const moveCopyVisible = ref(false)
 const moveCopyMode = ref<'move' | 'copy'>('move')
 const moveCopyItem = ref<FileItem | null>(null)
 const previewVisible = ref(false)
+const videoPreviewRef = ref<InstanceType<typeof VideoPreview> | null>(null)
 const previewUrl = ref('')
 const previewType = ref('')
 const previewName = ref('')
@@ -118,6 +122,7 @@ async function handleBatchDelete() {
 
 async function refreshAfterChange() {
   folderTreeRef.value?.reload()
+  fileStore.markListStale()
   await fileStore.loadList()
 }
 
@@ -263,21 +268,44 @@ async function deleteItem(row: FileItem) {
   }
 }
 
-function onWsProgress(data: {
-  type?: string
-  taskId?: string
-  progress?: number
-  status?: string
-  content?: string
-  title?: string
-}) {
+function onWsProgress(data: WsMessage) {
   if (data.type === 'notification') {
+    if (data.notifyType === 'TRANSCODE_DONE') {
+      fileStore.onTranscodeEvent(data.refId)
+      return
+    }
     ElMessage.info(data.content || data.title || '新通知')
     return
   }
   if (!data.taskId) return
   transferStore.updateProgress(data.taskId, data.progress ?? 0, data.status)
 }
+
+let transcodePollTimer: ReturnType<typeof setInterval> | null = null
+
+function stopTranscodePoll() {
+  if (transcodePollTimer) {
+    clearInterval(transcodePollTimer)
+    transcodePollTimer = null
+  }
+}
+
+function syncTranscodePoll() {
+  if (!fileStore.hasActiveTranscode(items.value)) {
+    stopTranscodePoll()
+    return
+  }
+  if (transcodePollTimer) return
+  transcodePollTimer = setInterval(() => {
+    if (!fileStore.hasActiveTranscode(items.value)) {
+      stopTranscodePoll()
+      return
+    }
+    void fileStore.loadList()
+  }, 5000)
+}
+
+watch(items, () => syncTranscodePoll(), { deep: true })
 
 const isImage = computed(() => previewType.value.startsWith('image/'))
 const isVideo = computed(() => previewType.value.startsWith('video/'))
@@ -312,19 +340,42 @@ function handleDialogFullscreenChange() {
   isDialogFullscreen.value = document.fullscreenElement === el
 }
 
-watch(previewVisible, (visible) => {
-  if (!visible && document.fullscreenElement) {
+function onPreviewClosed() {
+  videoPreviewRef.value?.stop?.()
+  if (document.fullscreenElement) {
     document.exitFullscreen()
+  }
+}
+
+watch(previewVisible, (visible) => {
+  if (!visible) {
+    onPreviewClosed()
   }
 })
 
 onMounted(() => {
-  fileStore.loadList()
+  if (!fileStore.listInitialized) {
+    fileStore.loadList().then(() => syncTranscodePoll())
+  } else {
+    syncTranscodePoll()
+  }
   connectUploadWs(onWsProgress)
   document.addEventListener('fullscreenchange', handleDialogFullscreenChange)
 })
 
+onActivated(() => {
+  if (fileStore.needsRefresh) {
+    fileStore.loadList()
+  }
+  syncTranscodePoll()
+})
+
+onDeactivated(() => {
+  stopTranscodePoll()
+})
+
 onUnmounted(() => {
+  stopTranscodePoll()
   disconnectUploadWs()
   document.removeEventListener('fullscreenchange', handleDialogFullscreenChange)
 })
@@ -542,21 +593,15 @@ onUnmounted(() => {
             <el-table-column label="名称" min-width="320" header-align="center">
               <template #default="{ row }">
                 <div class="cd-name-cell">
-                  <img
-                    v-if="fileCoverKind(row) === 'image'"
-                    :src="fileCoverUrl(row)"
-                    class="cd-thumb"
-                    alt=""
-                    loading="lazy"
-                  />
-                  <video
-                    v-else-if="fileCoverKind(row) === 'video'"
-                    :src="fileCoverUrl(row)"
-                    class="cd-thumb cd-list-thumb-video"
-                    muted
-                    preload="metadata"
-                    playsinline
-                  />
+                  <div v-if="fileCoverKind(row) === 'image'" class="cd-thumb-wrap">
+                    <CachedCover
+                      :file-id="row.id"
+                      :src="fileCoverUrl(row)"
+                      :has-thumbnail="row.hasThumbnail"
+                      img-class="cd-thumb"
+                    />
+                    <span v-if="fileIsVideoCover(row)" class="cd-thumb-play">▶</span>
+                  </div>
                   <div v-else class="cd-file-icon" :style="{ color: fileIconColor(row) }">
                     <FolderTypeIcon v-if="row.type === 'folder'" :size="24" />
                     <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="24" />
@@ -668,10 +713,18 @@ onUnmounted(() => {
         @done="refreshAfterChange"
       />
 
-      <el-dialog v-model="previewVisible" :title="previewName" width="90%" destroy-on-close top="4vh" class="cd-preview-dialog">
+      <el-dialog
+        v-model="previewVisible"
+        :title="previewName"
+        width="90%"
+        destroy-on-close
+        top="4vh"
+        class="cd-preview-dialog"
+        @closed="onPreviewClosed"
+      >
         <!-- 弹窗全屏按钮 -->
         <button
-          v-if="previewVisible"
+          v-if="previewVisible && !isVideo"
           class="cd-dialog-fullscreen-btn"
           :title="isDialogFullscreen ? '退出全屏 (Esc)' : '全屏'"
           @click="toggleDialogFullscreen"
@@ -692,7 +745,12 @@ onUnmounted(() => {
         <div v-else-if="isImage" class="cd-preview-image-wrap">
           <img :src="previewUrl" class="cd-preview-media" alt="preview" />
         </div>
-        <VideoPreview v-else-if="isVideo" :src="previewUrl" />
+        <VideoPreview
+          v-else-if="isVideo"
+          ref="videoPreviewRef"
+          :key="previewUrl"
+          :src="previewUrl"
+        />
         <PdfPreview v-else-if="isPdf" :src="previewUrl" />
         <TextPreview v-else-if="isText" :src="previewUrl" />
         <el-empty v-else description="暂不支持该类型预览" />
@@ -1218,6 +1276,29 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.cd-thumb-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.cd-thumb-play {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 8px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
 .cd-thumb {

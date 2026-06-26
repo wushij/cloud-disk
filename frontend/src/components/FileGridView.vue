@@ -3,7 +3,8 @@
 import { computed } from 'vue'
 
 import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
-import { fileCoverKind, fileCoverUrl } from '@/utils/fileCover'
+import { fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover'
+import CachedCover from '@/components/CachedCover.vue'
 import type { FileItem } from '@/stores/file'
 import FolderTypeIcon from './FolderTypeIcon.vue'
 
@@ -153,21 +154,15 @@ function formatDate(value?: string) {
 
         <div class="cd-grid-thumb">
 
-          <img
-            v-if="fileCoverKind(row) === 'image'"
-            :src="fileCoverUrl(row)"
-            class="cd-grid-thumb-img"
-            alt=""
-            loading="lazy"
-          />
-          <video
-            v-else-if="fileCoverKind(row) === 'video'"
-            :src="fileCoverUrl(row)"
-            class="cd-grid-thumb-img cd-grid-thumb-video"
-            muted
-            preload="metadata"
-            playsinline
-          />
+          <div v-if="fileCoverKind(row) === 'image'" class="cd-grid-thumb-cover">
+            <CachedCover
+              :file-id="row.id"
+              :src="fileCoverUrl(row)"
+              :has-thumbnail="row.hasThumbnail"
+              img-class="cd-grid-thumb-img"
+            />
+            <span v-if="fileIsVideoCover(row)" class="cd-grid-play-badge">▶</span>
+          </div>
           <div v-else class="cd-grid-icon" :style="{ color: fileIconColor(row) }">
             <FolderTypeIcon v-if="row.type === 'folder'" :size="48" />
             <FolderTypeIcon v-else-if="isArchive(row)" :archive="true" :size="48" />
@@ -556,6 +551,28 @@ function formatDate(value?: string) {
 
   background: #000;
 
+}
+
+.cd-grid-thumb-cover {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.cd-grid-play-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
 

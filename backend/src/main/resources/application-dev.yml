@@ -35,6 +35,7 @@ clouddisk:
       - http://172.*:*
   ffmpeg:
     enabled: true
+    # Windows 示例: C:/ffmpeg/bin/ffmpeg.exe
     path: ffmpeg
 
 sa-token:

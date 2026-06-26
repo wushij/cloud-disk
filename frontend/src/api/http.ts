@@ -9,7 +9,8 @@ const AVATAR_VERSION_KEY = 'cd_avatar_v'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
-  timeout: 0
+  timeout: 0,
+  withCredentials: true
 })
 
 function clearAuth() {

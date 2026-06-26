@@ -125,6 +125,7 @@ public class AdminService {
             row.put("role", u.getRole() != null ? u.getRole() : SystemRole.USER);
             row.put("canManage", adminAccessService.canManageUser(actor, u)
                     && adminAccessService.hasPermission(actor, AdminPermission.USERS));
+            row.put("canResetPassword", adminAccessService.canResetPassword(actor, u));
             row.put("canApprove", adminAccessService.canManageUser(actor, u)
                     && adminAccessService.hasPermission(actor, AdminPermission.REGISTER));
             row.put("canAssignRole", adminAccessService.isSuperAdmin(actor)
@@ -334,13 +335,15 @@ public class AdminService {
     public void resetUserPassword(Long userId, String newPassword) {
         User actor = actor();
         adminAccessService.requirePermission(actor, AdminPermission.USERS);
-        adminAccessService.requireManageableTarget(actor, userId);
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new BusinessException("密码不能为空");
-        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
+        }
+        if (!adminAccessService.canResetPassword(actor, user)) {
+            throw new BusinessException("无权管理该用户");
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException("密码不能为空");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userMapper.updateById(user);

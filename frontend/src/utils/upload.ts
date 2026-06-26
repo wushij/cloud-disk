@@ -90,8 +90,8 @@ export async function uploadFile(
   }
 
   if (file.size <= SIMPLE_MAX) {
-    await withRetry(() =>
-      http.post('/api/files/simple', (() => {
+    const { data } = await withRetry(() =>
+      http.post<{ id?: number }>('/api/files/simple', (() => {
         const fd = new FormData()
         fd.append('file', file)
         fd.append('folderId', String(folderId))
@@ -104,7 +104,7 @@ export async function uploadFile(
       })
     )
     onProgress(1)
-    return {}
+    return { fileId: data?.id }
   }
 
   let uploadId: string
@@ -158,9 +158,9 @@ export async function uploadFile(
     (r) => onProgress(0.05 + r * 0.9)
   )
 
-  await withRetry(() =>
-    http.post('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal })
+  const { data: record } = await withRetry(() =>
+    http.post<{ id?: number }>('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal })
   )
   onProgress(1)
-  return { uploadId }
+  return { uploadId, fileId: record?.id }
 }

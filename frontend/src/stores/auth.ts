@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import http, { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY } from '@/api/http'
-import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken, mediaTokenRef } from '@/utils/mediaToken'
+import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import {
   loadAvatarThumb,
   clearAvatarThumb,
   cacheAvatarFromFile,
-  cacheAvatarFromUrl
+  cacheAvatarFromUrl,
+  avatarVersionFromPath
 } from '@/utils/avatarCache'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -17,7 +19,14 @@ export const useAuthStore = defineStore('auth', () => {
   const role = ref<string | null>(null)
   const hasAvatar = ref(false)
   const avatarVersion = ref(0)
+  const avatarStoragePath = ref('')
   const avatarCachedSrc = ref('')
+
+  const effectiveAvatarVersion = computed(() => {
+    const fromPath = avatarVersionFromPath(avatarStoragePath.value)
+    if (fromPath) return fromPath
+    return avatarVersion.value
+  })
 
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => role.value === 'ADMIN' || role.value === 'SUPER_ADMIN')
@@ -25,13 +34,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   const avatarSrc = computed(() => {
     if (!hasAvatar.value) return ''
-    const t = mediaTokenRef.value
-    if (!t) return ''
-    const base = import.meta.env.VITE_API_BASE || ''
-    return `${base}/api/auth/avatar/view?access_token=${encodeURIComponent(t)}&v=${avatarVersion.value}`
+    const v = effectiveAvatarVersion.value
+    return `${mediaApiUrl('/api/auth/avatar/view')}?v=${v}`
   })
 
-  const avatarDisplaySrc = computed(() => avatarSrc.value || avatarCachedSrc.value)
+  const avatarDisplaySrc = computed(() => {
+    if (!hasAvatar.value) return ''
+    if (avatarSrc.value) return avatarSrc.value
+    return avatarCachedSrc.value
+  })
 
   const avatarInitial = computed(() =>
     (nickname.value || username.value || 'U').charAt(0).toUpperCase()
@@ -42,7 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
   function restoreAvatarCache() {
     avatarCachedSrc.value = ''
     if (!hasAvatar.value || !username.value) return
-    avatarCachedSrc.value = loadAvatarThumb(username.value, avatarVersion.value)
+    avatarCachedSrc.value = loadAvatarThumb(username.value, effectiveAvatarVersion.value)
   }
 
   function restore() {
@@ -54,8 +65,18 @@ export const useAuthStore = defineStore('auth', () => {
     hasAvatar.value = localStorage.getItem(HAS_AVATAR_KEY) === 'true'
     restoreAvatarCache()
     if (token.value) {
-      void refreshMediaToken()
+      void ensureMediaToken()
     }
+  }
+
+  async function initAuth() {
+    restore()
+    if (!token.value) return
+    await Promise.all([
+      ensureMediaToken(),
+      http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
+    ])
+    await fetchProfile().catch(() => {})
   }
 
   function persist() {
@@ -81,6 +102,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.username) username.value = data.username
     nickname.value = data.nickname || data.username || nickname.value
     role.value = data.role || role.value || 'USER'
+    avatarStoragePath.value = data.avatar || ''
     hasAvatar.value = !!data.avatar
     if (!data.avatar) {
       avatarCachedSrc.value = ''
@@ -98,16 +120,22 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
   }
 
-  watch(avatarSrc, (url) => {
-    if (!url || !username.value) return
-    void cacheAvatarFromUrl(username.value, avatarVersion.value, url)
-      .then((data) => {
-        avatarCachedSrc.value = data
-      })
-      .catch(() => {})
-  })
+  watch(
+    avatarSrc,
+    (url) => {
+      if (!url || !username.value) return
+      void cacheAvatarFromUrl(username.value, effectiveAvatarVersion.value, url)
+        .then((data) => {
+          avatarCachedSrc.value = data
+        })
+        .catch(() => {})
+    },
+    { immediate: true }
+  )
 
   async function login(u: string, p: string, captcha?: { captchaId?: string; captchaAnswer?: string }) {
+    avatarCachedSrc.value = ''
+    avatarStoragePath.value = ''
     const { data } = await http.post('/api/auth/login', { username: u, password: p, ...captcha }, { skipErrorHandler: true })
     token.value = data.token
     username.value = data.username
@@ -116,6 +144,7 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
     await fetchProfile()
     await refreshMediaToken()
+    await http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
   }
 
   async function register(
@@ -139,6 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
     await fetchProfile()
     await refreshMediaToken()
+    await http.post('/api/auth/sync-cookie', null, { skipErrorHandler: true }).catch(() => {})
     return data
   }
 
@@ -163,7 +193,7 @@ export const useAuthStore = defineStore('auth', () => {
     applyProfile(data)
     if (u) {
       try {
-        avatarCachedSrc.value = await cacheAvatarFromFile(u, avatarVersion.value, file)
+        avatarCachedSrc.value = await cacheAvatarFromFile(u, effectiveAvatarVersion.value, file)
       } catch {
         /* ignore */
       }
@@ -180,6 +210,7 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = null
     hasAvatar.value = false
     avatarVersion.value = 0
+    avatarStoragePath.value = ''
     avatarCachedSrc.value = ''
     localStorage.removeItem(AVATAR_VERSION_KEY)
     localStorage.removeItem(HAS_AVATAR_KEY)
@@ -205,6 +236,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isSuperAdmin,
     restore,
+    initAuth,
     restoreAvatarCache,
     bumpAvatar,
     login,

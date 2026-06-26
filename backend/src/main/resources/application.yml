@@ -62,7 +62,8 @@ sa-token:
   is-concurrent: true
   is-share: false
   is-read-header: true
-  is-read-cookie: false
+  is-read-cookie: true
+  is-write-cookie: true
 
 xxl:
   job:

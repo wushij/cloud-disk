@@ -129,6 +129,7 @@ async function save() {
             />
             <el-avatar
               v-else
+              :key="auth.avatarSrc"
               :size="96"
               :src="auth.avatarDisplaySrc && !avatarLoadFailed ? auth.avatarDisplaySrc : undefined"
               class="profile-avatar"

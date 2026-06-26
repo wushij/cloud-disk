@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 import http from '@/api/http'
 import { resolveFilePreviewUrl } from '@/utils/fileUrl'
-import { mediaTokenParam } from '@/utils/mediaToken'
+import { mediaApiUrl } from '@/utils/mediaUrl'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import PageHeader from '@/components/PageHeader.vue'
@@ -18,6 +18,12 @@ import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
 import { bumpTeamAvatarVersion, getTeamAvatarVersion } from '@/utils/teamAvatar'
 import { downloadZip } from '@/utils/download'
+import CachedEntityAvatar from '@/components/CachedEntityAvatar.vue'
+import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
+import {
+  cacheEntityAvatarFromFile,
+  teamAvatarCacheKey
+} from '@/utils/entityAvatarCache'
 
 const auth = useAuthStore()
 const transferStore = useTransferStore()
@@ -156,10 +162,8 @@ const teamAvatarInputRef = ref<HTMLInputElement | null>(null)
 
 function teamAvatarSrc(space: TeamSpace) {
   if (!space.avatar) return ''
-  const token = mediaTokenParam()
-  if (!token) return ''
   const v = getTeamAvatarVersion(space.id)
-  return `/api/teams/${space.id}/avatar?access_token=${token}&v=${v}`
+  return `${mediaApiUrl(`/api/teams/${space.id}/avatar`)}?v=${v}`
 }
 
 function openTeamAvatarPicker() {
@@ -191,6 +195,8 @@ async function onTeamAvatarSelected(e: Event) {
     })
     ElMessage.success('团队头像已更新')
     bumpTeamAvatarVersion(currentSpace.value.id)
+    const v = getTeamAvatarVersion(currentSpace.value.id)
+    void cacheEntityAvatarFromFile(teamAvatarCacheKey(currentSpace.value.id), v, file).catch(() => {})
     currentSpace.value = { ...currentSpace.value, avatar: data.avatar }
     
     const idx = spaces.value.findIndex(s => s.id === currentSpace.value?.id)
@@ -208,6 +214,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
 const dragOver = ref(false)
 const previewVisible = ref(false)
+const videoPreviewRef = ref<InstanceType<typeof VideoPreview> | null>(null)
 const previewUrl = ref('')
 const previewType = ref('')
 const previewName = ref('')
@@ -231,9 +238,16 @@ function handleDialogFullscreenChange() {
   isDialogFullscreen.value = document.fullscreenElement === el
 }
 
-watch(previewVisible, (visible) => {
-  if (!visible && document.fullscreenElement) {
+function onPreviewClosed() {
+  videoPreviewRef.value?.stop?.()
+  if (document.fullscreenElement) {
     document.exitFullscreen()
+  }
+}
+
+watch(previewVisible, (visible) => {
+  if (!visible) {
+    onPreviewClosed()
   }
 })
 
@@ -254,10 +268,6 @@ const isImage = computed(() => previewType.value.startsWith('image/'))
 const isVideo = computed(() => previewType.value.startsWith('video/'))
 const isPdf = computed(() => previewType.value.includes('pdf'))
 const isText = computed(() => isTextFile(previewType.value, previewName.value))
-
-function tokenParam() {
-  return mediaTokenParam()
-}
 
 function teamAvatarStyle(teamId: number) {
   return { background: teamGradients[teamId % teamGradients.length] }
@@ -302,10 +312,9 @@ function memberAvatarSrc(member: TeamMember) {
   if (member.username === auth.username && auth.avatarDisplaySrc) return auth.avatarDisplaySrc
   const hasAvatar = member.hasAvatar ?? !!member.avatar
   if (!hasAvatar) return ''
-  const token = mediaTokenParam()
   const ctx = membersContext.value
-  if (!token || !ctx) return ''
-  return `/api/teams/${ctx.id}/members/${member.userId}/avatar?access_token=${token}`
+  if (!ctx) return ''
+  return mediaApiUrl(`/api/teams/${ctx.id}/members/${member.userId}/avatar`)
 }
 
 function onMemberAvatarError(userId: number) {
@@ -840,7 +849,13 @@ onUnmounted(() => {
             @click="enterSpace(space)"
           >
             <div class="cd-team-avatar" :style="space.avatar ? {} : teamAvatarStyle(space.id)">
-              <img v-if="space.avatar" :src="teamAvatarSrc(space)" class="cd-team-avatar-img" />
+              <CachedEntityAvatar
+                v-if="space.avatar"
+                :cache-key="teamAvatarCacheKey(space.id)"
+                :src="teamAvatarSrc(space)"
+                :version="getTeamAvatarVersion(space.id)"
+                img-class="cd-team-avatar-img"
+              />
               <span v-else>{{ space.name.charAt(0).toUpperCase() }}</span>
             </div>
             <div class="cd-team-info">
@@ -891,7 +906,13 @@ onUnmounted(() => {
       <div class="cd-team-detail-head">
         <div class="cd-team-detail-left">
           <div v-if="!canManageMembers" class="cd-team-avatar cd-team-avatar--detail" :style="currentSpace.avatar ? {} : teamAvatarStyle(currentSpace.id)">
-            <img v-if="currentSpace.avatar" :src="teamAvatarSrc(currentSpace)" class="cd-team-avatar-img" />
+            <CachedEntityAvatar
+              v-if="currentSpace.avatar"
+              :cache-key="teamAvatarCacheKey(currentSpace.id)"
+              :src="teamAvatarSrc(currentSpace)"
+              :version="getTeamAvatarVersion(currentSpace.id)"
+              img-class="cd-team-avatar-img"
+            />
             <span v-else>{{ currentSpace.name.charAt(0).toUpperCase() }}</span>
           </div>
           <button
@@ -904,7 +925,13 @@ onUnmounted(() => {
             @click="openTeamAvatarPicker"
           >
             <div class="cd-team-avatar cd-team-avatar--detail" :style="currentSpace.avatar ? {} : teamAvatarStyle(currentSpace.id)">
-              <img v-if="currentSpace.avatar" :src="teamAvatarSrc(currentSpace)" class="cd-team-avatar-img" />
+              <CachedEntityAvatar
+              v-if="currentSpace.avatar"
+              :cache-key="teamAvatarCacheKey(currentSpace.id)"
+              :src="teamAvatarSrc(currentSpace)"
+              :version="getTeamAvatarVersion(currentSpace.id)"
+              img-class="cd-team-avatar-img"
+            />
               <span v-else>{{ currentSpace.name.charAt(0).toUpperCase() }}</span>
             </div>
             <span class="cd-team-avatar-mask">
@@ -1092,10 +1119,11 @@ onUnmounted(() => {
       destroy-on-close
       top="4vh"
       class="cd-preview-dialog"
+      @closed="onPreviewClosed"
     >
       <!-- 弹窗全屏按钮 -->
       <button
-        v-if="previewVisible"
+        v-if="previewVisible && !isVideo"
         class="cd-dialog-fullscreen-btn"
         :title="isDialogFullscreen ? '退出全屏 (Esc)' : '全屏'"
         @click="toggleDialogFullscreen"
@@ -1110,7 +1138,12 @@ onUnmounted(() => {
       <div v-if="isImage" class="cd-preview-image-wrap">
         <img :src="previewUrl" class="cd-preview-media" alt="preview" />
       </div>
-      <VideoPreview v-else-if="isVideo" :src="previewUrl" />
+      <VideoPreview
+        v-else-if="isVideo"
+        ref="videoPreviewRef"
+        :key="previewUrl"
+        :src="previewUrl"
+      />
       <PdfPreview v-else-if="isPdf" :src="previewUrl" />
       <TextPreview v-else-if="isText" :src="previewUrl" />
       <el-empty v-else description="暂不支持该类型预览" />
@@ -1183,11 +1216,12 @@ onUnmounted(() => {
               class="cd-member-team-avatar"
               :style="membersContext.avatar ? {} : teamAvatarStyle(membersContext.id)"
             >
-              <img
+              <CachedEntityAvatar
                 v-if="membersContext.avatar"
+                :cache-key="teamAvatarCacheKey(membersContext.id)"
                 :src="teamAvatarSrc(membersContext)"
-                class="cd-team-avatar-img"
-                alt=""
+                :version="getTeamAvatarVersion(membersContext.id)"
+                img-class="cd-team-avatar-img"
               />
               <template v-else>{{ membersContext.name.charAt(0).toUpperCase() }}</template>
             </div>
@@ -1214,14 +1248,12 @@ onUnmounted(() => {
           <el-empty v-if="!membersLoading && !members.length" description="暂无成员" :image-size="72" />
           <div v-for="member in members" :key="member.userId" class="cd-member-card">
             <div class="cd-member-main">
-              <el-avatar
-                :size="48"
-                :src="memberAvatarSrc(member) || undefined"
-                class="cd-member-avatar"
-                @error="onMemberAvatarError(member.userId)"
-              >
-                {{ memberInitial(member) }}
-              </el-avatar>
+              <MemberCachedAvatar
+                :team-id="membersContext?.id || 0"
+                :member="member"
+                :initial="memberInitial(member)"
+                @error="onMemberAvatarError"
+              />
               <div class="cd-member-text">
                 <div class="cd-member-name">{{ memberDisplayName(member) }}</div>
                 <div class="cd-member-time">

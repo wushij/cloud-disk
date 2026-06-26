@@ -4,7 +4,6 @@ import com.clouddisk.config.CloudDiskProperties;
 import com.clouddisk.entity.FileRecord;
 import com.clouddisk.mapper.FileMapper;
 import com.clouddisk.service.NotificationDispatcher;
-import com.clouddisk.service.ThumbnailService;
 import com.clouddisk.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +22,6 @@ public class VideoProcessService {
     private final FileMapper fileMapper;
     private final StorageService storageService;
     private final FfmpegService ffmpegService;
-    private final ThumbnailService thumbnailService;
     private final CloudDiskProperties properties;
     private final NotificationDispatcher notificationDispatcher;
 
@@ -37,10 +35,12 @@ public class VideoProcessService {
         if (file == null || !MediaProcessService.isVideo(file)) return;
         if (!ffmpegService.isAvailable()) {
             log.warn("FFmpeg 不可用，跳过视频处理 fileId={}", fileId);
-            thumbnailService.generateAsync(fileId);
+            file.setTranscodeStatus(TranscodeStatus.NONE);
+            fileMapper.updateById(file);
             return;
         }
         Path workDir = null;
+        boolean posterSaved = false;
         try {
             file.setTranscodeStatus(TranscodeStatus.PROCESSING);
             fileMapper.updateById(file);
@@ -59,6 +59,8 @@ public class VideoProcessService {
             }
             file.setPosterPath(posterPath);
             file.setThumbnailPath(posterPath);
+            fileMapper.updateById(file);
+            posterSaved = true;
 
             Path output = workDir.resolve("output.mp4");
             ffmpegService.transcodeToMp4(input, output);
@@ -77,12 +79,10 @@ public class VideoProcessService {
                     "视频转码完成", file.getFileName() + " 已转码完成", String.valueOf(fileId));
         } catch (Exception e) {
             log.error("视频处理失败 fileId={}: {}", fileId, e.getMessage());
-            // 复用已加载的 file 记录，避免重复查询
             if (file != null) {
-                file.setTranscodeStatus(TranscodeStatus.FAILED);
+                file.setTranscodeStatus(posterSaved ? TranscodeStatus.FAILED : TranscodeStatus.NONE);
                 fileMapper.updateById(file);
             }
-            thumbnailService.generateAsync(fileId);
         } finally {
             if (workDir != null) {
                 try {
