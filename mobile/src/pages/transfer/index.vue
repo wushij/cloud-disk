@@ -54,11 +54,11 @@ async function handleClearCompletedConfirm() {
 }
 
 const transferringTasks = computed(() =>
-  tasks.value.filter((t) => t.status !== 'done' && t.status !== 'instant' && t.status !== 'error')
+  tasks.value.filter((t) => t.status !== 'done' && t.status !== 'instant')
 )
 
 const completedTasks = computed(() =>
-  tasks.value.filter((t) => t.status === 'done' || t.status === 'instant' || t.status === 'error')
+  tasks.value.filter((t) => t.status === 'done' || t.status === 'instant')
 )
 
 function fmtSize(bytes?: number): string {
@@ -271,6 +271,7 @@ function onCoverError(t: TransferTask) {
               </view>
               <text class="meta-speed" :class="{ error: t.status === 'error' }">{{ t.speed }}</text>
             </view>
+            <text v-if="t.status === 'error' && t.errorMessage" class="error-reason">{{ t.errorMessage }}</text>
           </view>
 
           <!-- 操作区 -->
@@ -348,6 +349,7 @@ function onCoverError(t: TransferTask) {
                 <text v-else>失败</text>
               </view>
             </view>
+            <text v-if="t.status === 'error' && t.errorMessage" class="error-reason">{{ t.errorMessage }}</text>
           </view>
 
           <view class="done-remove-btn" @click="triggerCancelTask(t)">
@@ -823,6 +825,15 @@ function onCoverError(t: TransferTask) {
   &.error {
     color: #ef4444;
   }
+}
+
+.error-reason {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #ef4444;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 /* 状态标签 */

@@ -952,13 +952,15 @@ onUnmounted(() => {
               <span class="cd-team-detail-sep">/</span>
               <h2>{{ currentSpace.name }}</h2>
             </div>
-            <span class="cd-team-detail-count">共 {{ files.length }} 项</span>
-            <span v-if="teamAccess?.maxSize" class="cd-team-detail-count">
-              · 已用 {{ teamAccess.usedFormatted }} / {{ teamAccess.maxSizeFormatted }}
-            </span>
-            <span v-else-if="teamAccess?.usedBytes" class="cd-team-detail-count">
-              · 已用 {{ teamAccess.usedFormatted }}
-            </span>
+            <div class="cd-team-detail-meta">
+              <span class="cd-team-detail-count">共 {{ files.length }} 项</span>
+              <span v-if="teamAccess?.maxSize" class="cd-team-detail-count">
+                · 已用 {{ teamAccess.usedFormatted }} / {{ teamAccess.maxSizeFormatted }}
+              </span>
+              <span v-else-if="teamAccess?.usedBytes" class="cd-team-detail-count">
+                · 已用 {{ teamAccess.usedFormatted }}
+              </span>
+            </div>
           </div>
         </div>
         <div class="cd-team-detail-actions">
@@ -1514,11 +1516,20 @@ onUnmounted(() => {
   color: var(--cd-text-primary);
 }
 
-.cd-team-detail-count {
-  display: block;
+.cd-team-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: 4px;
+}
+
+.cd-team-detail-count {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   color: var(--cd-text-secondary);
+  white-space: nowrap;
 }
 
 .cd-team-detail-actions {

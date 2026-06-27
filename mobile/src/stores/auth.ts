@@ -174,15 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     await ensureMediaToken()
   }
 
-  async function logout() {
-    try {
-      await request({
-        url: '/api/auth/logout',
-        method: 'POST'
-      })
-    } catch {
-      /* ignore */
-    }
+  function clearSessionLocal() {
     token.value = null
     username.value = null
     nickname.value = null
@@ -199,6 +191,22 @@ export const useAuthStore = defineStore('auth', () => {
     uni.removeStorageSync('cd_has_avatar')
     clearAvatarThumb()
     clearMediaTokenCache()
+  }
+
+  async function logout() {
+    const hadToken = !!getSessionBearer()
+    if (hadToken) {
+      try {
+        await request({
+          url: '/api/auth/logout',
+          method: 'POST',
+          skipErrorHandler: true
+        })
+      } catch {
+        /* 会话已过期时 logout 接口也会 401，忽略即可 */
+      }
+    }
+    clearSessionLocal()
   }
 
   function requireLogin() {
@@ -232,6 +240,7 @@ export const useAuthStore = defineStore('auth', () => {
     fetchProfile,
     uploadAvatar,
     logout,
+    clearSessionLocal,
     requireLogin,
     ensureMediaToken,
     refreshMediaToken

@@ -65,7 +65,7 @@
   padding: 3px 10px;
   background: color-mix(in srgb, var(--theme-bg) 60%, #fff);
   border: 1px solid var(--cd-border-light);
-  border-radius: var(--cd-radius-sm);
+  border-radius: var(--cd-radius-full);
   color: var(--cd-text-primary);
   font-weight: 600;
 }

@@ -37,6 +37,7 @@ class UploadServiceTest {
     @Mock private FileValidator fileValidator;
     @Mock private UploadProgressHandler progressHandler;
     @Mock private VirusScanService virusScanService;
+    @Mock private StorageQuotaService quotaService;
     @InjectMocks private UploadService uploadService;
 
     private CloudDiskProperties properties;
@@ -50,7 +51,7 @@ class UploadServiceTest {
         properties.getChunk().setSessionExpireHours(24);
         uploadService = new UploadService(
                 sessionMapper, chunkMapper, fileService, storageService,
-                properties, fileValidator, progressHandler, virusScanService);
+                properties, fileValidator, progressHandler, virusScanService, quotaService);
     }
 
     @Test

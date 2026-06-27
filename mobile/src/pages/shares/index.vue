@@ -123,6 +123,7 @@ const activeTab = ref<'active' | 'expired'>('active')
 
 const removeShareVisible = ref(false)
 const shareToRemove = ref<ShareItem | null>(null)
+const clearAllVisible = ref(false)
 
 const removeShareDialogTitle = computed(() =>
   shareToRemove.value && isExpired(shareToRemove.value) ? '彻底删除' : '取消分享'
@@ -190,6 +191,20 @@ function removeShare(item: ShareItem) {
   removeShareVisible.value = true
 }
 
+function confirmClearAllExpired() {
+  clearAllVisible.value = true
+}
+
+async function handleClearAllExpiredConfirm() {
+  try {
+    await request({ url: '/api/share/expired/clear', method: 'DELETE' })
+    list.value = list.value.filter((item) => !isExpired(item))
+    uni.showToast({ title: '已清空', icon: 'success' })
+  } catch {
+    /* handled */
+  }
+}
+
 async function handleRemoveShareConfirm() {
   const item = shareToRemove.value
   if (!item) return
@@ -221,7 +236,21 @@ async function handleRemoveShareConfirm() {
       :subtitle="`进行中 ${activeList.length} · 已失效 ${expiredList.length}`" 
       gradient 
       icon-type="share" 
-    />
+    >
+      <template #right>
+        <view
+          v-if="activeTab === 'expired' && expiredList.length"
+          class="header-action-btn danger cd-pressable"
+          @click="confirmClearAllExpired"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          <text class="header-action-text">清空</text>
+        </view>
+      </template>
+    </MobileHeader>
 
     <!-- 分类 Tab 切换栏 -->
     <view class="tab-bar-container">
@@ -332,6 +361,15 @@ async function handleRemoveShareConfirm() {
       :confirm-text="removeShareConfirmText"
       danger
       @confirm="handleRemoveShareConfirm"
+    />
+
+    <MobileConfirmDialog
+      v-model:show="clearAllVisible"
+      title="清空失效分享"
+      :message="`确定要清空全部 ${expiredList.length} 条失效分享吗？此操作无法撤销！`"
+      confirm-text="清空"
+      danger
+      @confirm="handleClearAllExpiredConfirm"
     />
   </view>
 </template>
@@ -581,5 +619,40 @@ async function handleRemoveShareConfirm() {
   padding: 120rpx 0;
   display: flex;
   justify-content: center;
+}
+
+.header-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 10rpx 20rpx;
+  border-radius: var(--cd-radius-full);
+  background: rgba(79, 124, 255, 0.05);
+  border: 1rpx solid rgba(79, 124, 255, 0.12);
+  transition: all var(--cd-transition-fast);
+
+  &.danger {
+    background: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.12);
+
+    .header-action-text,
+    svg {
+      color: #ef4444;
+    }
+
+    &:active {
+      background: rgba(239, 68, 68, 0.12);
+    }
+  }
+
+  &:active {
+    opacity: 0.85;
+  }
+}
+
+.header-action-text {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #ef4444;
 }
 </style>

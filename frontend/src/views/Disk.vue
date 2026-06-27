@@ -10,6 +10,7 @@ import { fmtSize, fileIconColor, transcodeLabel } from '@/utils/fileMeta'
 import { fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover'
 import { useFileStore, type FileItem } from '@/stores/file'
 import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
+import { useStorageStore } from '@/stores/storage'
 import ShareDialog from '@/components/ShareDialog.vue'
 import MoveCopyDialog from '@/components/MoveCopyDialog.vue'
 import FolderTree from '@/components/FolderTree.vue'
@@ -125,6 +126,7 @@ async function refreshAfterChange() {
   folderTreeRef.value?.reload()
   fileStore.markListStale()
   await fileStore.loadList()
+  void useStorageStore().refresh()
 }
 
 async function createFolder() {
@@ -365,9 +367,7 @@ onMounted(() => {
 })
 
 onActivated(() => {
-  if (fileStore.needsRefresh) {
-    fileStore.loadList()
-  }
+  fileStore.loadList()
   syncTranscodePoll()
 })
 
@@ -1288,8 +1288,9 @@ onUnmounted(() => {
 
 .cd-thumb-play {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   font-size: 8px;
   color: #fff;
   background: rgba(0, 0, 0, 0.55);

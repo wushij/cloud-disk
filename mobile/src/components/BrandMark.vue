@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { brandIconSrc } from '@/utils/brandIconCache'
 
 const props = withDefaults(
   defineProps<{
@@ -17,7 +18,7 @@ const style = computed(() => ({
 <template>
   <image
     class="brand-mark"
-    src="/static/theme-brand-icon-transparent.png"
+    :src="brandIconSrc"
     mode="aspectFit"
     :style="style"
   />

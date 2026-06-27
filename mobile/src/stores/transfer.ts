@@ -1,10 +1,12 @@
 import { ref, reactive, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { smartUpload } from '@/utils/chunkedUpload'
-import { fileApiUrl } from '@/api/http'
+import { calcFileMd5 } from '@/utils/md5'
+import { fileApiUrl, resolveBearer, resolveErrorMessage } from '@/api/http'
 import { createTaskId } from '@/utils/uuid'
-import { cacheCoverFromDataUrl } from '@/utils/coverCache'
+import { persistVideoCover } from '@/utils/coverCache'
 import { captureVideoCoverFromPath, isVideoUploadName } from '@/utils/videoCover'
+import { useFileStore } from '@/stores/file'
 
 export interface TransferTask {
   id: string
@@ -18,9 +20,13 @@ export interface TransferTask {
   // 上传/下载专有参数
   filePath?: string
   folderId?: number
+  /** H5 原生 File，用于分片 slice / MD5（与 PC fileObj 一致） */
+  h5File?: File
+  md5?: string
   fileId?: number
-  /** 本地图片预览地址（上传图片时使用 filePath） */
+  /** 本地图片/视频预览 */
   coverUrl?: string
+  errorMessage?: string
   // 控制句柄
   abortController?: AbortController // 上传使用
   downloadTask?: UniApp.DownloadTask // 原生下载使用
@@ -82,6 +88,25 @@ export const useTransferStore = defineStore('transfer', () => {
     return current
   }
 
+  async function cacheUploadedVideoCover(
+    fileId: number,
+    filePath: string,
+    taskId: string,
+    h5File?: File
+  ) {
+    try {
+      const current = tasks.value.find((t) => t.id === taskId)
+      let cover = current?.coverUrl
+      if (!cover || !cover.startsWith('data:')) {
+        cover = await captureVideoCoverFromPath(filePath, 1, h5File)
+      }
+      await persistVideoCover(fileId, cover)
+      patchTask(taskId, { coverUrl: cover, fileId })
+    } catch {
+      /* ignore */
+    }
+  }
+
   // 清理完成任务
   function clearCompleted() {
     tasks.value = tasks.value.filter(
@@ -117,22 +142,22 @@ export const useTransferStore = defineStore('transfer', () => {
       abortController
     })
     if (isVideoUploadName(task.name)) {
-      void captureVideoCoverFromPath(task.filePath)
+      void captureVideoCoverFromPath(task.filePath, 1, task.h5File)
         .then((cover) => patchTask(taskId, { coverUrl: cover }))
         .catch(() => {})
     }
 
     try {
-      await smartUpload(
+      const result = await smartUpload(
         task.filePath,
         task.name,
         task.size,
         task.folderId || 0,
-        undefined,
+        task.md5,
         (ratio) => {
           const current = tasks.value.find((t) => t.id === taskId)
           if (!current || current.status !== 'running') return
-          const progress = Math.max(baseProgress, ratio)
+          const progress = Math.max(baseProgress, task.md5 ? 0.15 + ratio * 0.85 : ratio)
           const loaded = Math.round(progress * current.size)
           patchTask(taskId, {
             progress,
@@ -144,6 +169,7 @@ export const useTransferStore = defineStore('transfer', () => {
         {
           existingUploadId: task.uploadId,
           skipMd5Check: true,
+          h5File: task.h5File,
           onInit: (session) => {
             patchTask(taskId, {
               uploadId: session.uploadId,
@@ -154,20 +180,27 @@ export const useTransferStore = defineStore('transfer', () => {
         }
       )
 
+      if (result.fileId && isVideoUploadName(task.name)) {
+        await cacheUploadedVideoCover(result.fileId, task.filePath, taskId, task.h5File)
+      }
+
       patchTask(taskId, {
         status: 'done',
         progress: 1,
         loaded: task.size,
-        speed: '已完成'
+        speed: '已完成',
+        fileId: result.fileId
       })
 
       uni.$emit('refresh-file-list')
-    } catch (e: any) {
-      if (e?.message === 'Canceled') {
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'Canceled') {
         const current = tasks.value.find((t) => t.id === taskId)
         if (current?.status !== 'paused') return
       } else {
-        patchTask(taskId, { status: 'error', speed: '传输失败' })
+        const msg = resolveErrorMessage(e, '上传失败，请稍后重试')
+        patchTask(taskId, { status: 'error', speed: '传输失败', errorMessage: msg })
+        uni.showToast({ title: msg, icon: 'none' })
       }
     }
   }
@@ -202,6 +235,23 @@ export const useTransferStore = defineStore('transfer', () => {
     folderId: number,
     extra?: { h5File?: File; mimeType?: string }
   ) {
+    if (!resolveBearer()) {
+      uni.showToast({ title: '请先登录后再上传', icon: 'none' })
+      uni.reLaunch({ url: '/pages/login/index' })
+      return
+    }
+
+    const fileStore = useFileStore()
+    if (fileStore.currentFolderId === folderId) {
+      const duplicate = fileStore.items.some(
+        (item) => item.type === 'file' && item.name === name
+      )
+      if (duplicate) {
+        uni.showToast({ title: '同名文件已存在', icon: 'none' })
+        return
+      }
+    }
+
     const taskId = createTaskId()
     const ext = name.split('.').pop()?.toLowerCase() || ''
     const task = pushTask({
@@ -215,6 +265,7 @@ export const useTransferStore = defineStore('transfer', () => {
       status: 'waiting',
       filePath,
       folderId,
+      h5File: extra?.h5File,
       coverUrl: imageExts.includes(ext) ? filePath : undefined,
       abortController: new AbortController(),
       startTime: Date.now()
@@ -223,7 +274,7 @@ export const useTransferStore = defineStore('transfer', () => {
     const isVideo =
       isVideoUploadName(name) || (extra?.mimeType || '').toLowerCase().startsWith('video/')
     if (isVideo) {
-      void captureVideoCoverFromPath(filePath)
+      void captureVideoCoverFromPath(filePath, 1, extra?.h5File)
         .then((cover) => patchTask(taskId, { coverUrl: cover }))
         .catch(() => {})
     }
@@ -233,16 +284,30 @@ export const useTransferStore = defineStore('transfer', () => {
       task.startTime = Date.now()
       Object.assign(task, speedBaseline(0))
 
+      let fileMd5: string | undefined
+      if (extra?.h5File) {
+        task.speed = '校验 MD5...'
+        fileMd5 = await calcFileMd5(extra.h5File, (r) => {
+          if (task.status !== 'running') return
+          task.progress = r * 0.15
+          task.loaded = Math.round(task.progress * size)
+          task.speed = '校验 MD5...'
+        })
+        task.md5 = fileMd5
+        Object.assign(task, speedBaseline(Math.round(size * 0.15)))
+      }
+
       const result = await smartUpload(
         filePath,
         name,
         size,
         folderId,
-        undefined,
+        fileMd5,
         (ratio) => {
           if (task.status !== 'running') return
-          task.progress = ratio
-          task.loaded = Math.round(ratio * size)
+          const progress = fileMd5 ? 0.15 + ratio * 0.85 : ratio
+          task.progress = progress
+          task.loaded = Math.round(progress * size)
           task.speed = calcTransferSpeed(task.loaded, task.speedBaseLoaded, task.speedBaseTime, task.speed)
         },
         task.abortController?.signal,
@@ -259,17 +324,7 @@ export const useTransferStore = defineStore('transfer', () => {
       if (result.fileId) task.fileId = result.fileId
 
       if (result.fileId && isVideo) {
-        try {
-          const current = tasks.value.find((t) => t.id === taskId)
-          let cover = current?.coverUrl
-          if (!cover || !cover.startsWith('data:')) {
-            cover = await captureVideoCoverFromPath(filePath)
-          }
-          cacheCoverFromDataUrl(result.fileId, 0, cover)
-          patchTask(taskId, { coverUrl: cover, fileId: result.fileId })
-        } catch {
-          /* ignore */
-        }
+        await cacheUploadedVideoCover(result.fileId, filePath, taskId, extra?.h5File)
       }
 
       task.status = 'done'
@@ -279,16 +334,21 @@ export const useTransferStore = defineStore('transfer', () => {
       
       // 触发页面刷新事件
       uni.$emit('refresh-file-list')
-    } catch (e: any) {
-      if (e?.message === 'Canceled') {
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'Canceled') {
         // 主动取消或暂停
       } else {
+        const msg = resolveErrorMessage(e, '上传失败，请稍后重试')
+
+        if (msg.includes('同名文件已存在')) {
+          cancelTask(taskId)
+          uni.showToast({ title: '同名文件已存在', icon: 'none' })
+          return
+        }
+
         task.status = 'error'
         task.speed = '传输失败'
-        const msg =
-          e instanceof Error && e.message && /[\u4e00-\u9fa5]/.test(e.message)
-            ? e.message
-            : '上传失败，请稍后重试'
+        task.errorMessage = msg
         uni.showToast({ title: msg, icon: 'none' })
       }
     }

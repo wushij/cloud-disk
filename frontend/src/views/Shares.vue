@@ -117,6 +117,23 @@ function copyLink(row: ShareRow) {
   navigator.clipboard.writeText(url).then(() => ElMessage.success('链接已复制'))
 }
 
+async function clearAllExpired() {
+  const ok = await confirmDialog.open({
+    title: '清空失效分享',
+    message: `确定要清空全部 ${expiredList.value.length} 条失效分享吗？此操作无法撤销！`,
+    confirmText: '清空',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    await http.delete('/api/share/expired/clear')
+    rows.value = rows.value.filter((r) => !isExpired(r))
+    ElMessage.success('已清空')
+  } catch {
+    /* global toast */
+  }
+}
+
 async function cancel(row: ShareRow) {
   const expired = isExpired(row)
   const ok = await confirmDialog.open({
@@ -157,7 +174,19 @@ onMounted(load)
         :icon="Share"
         :count="activeList.length"
         count-label="条活跃分享"
-      />
+      >
+        <template #actions>
+          <el-button
+            v-if="activeTab === 'expired' && expiredList.length"
+            class="shares-clear-btn"
+            plain
+            @click="clearAllExpired"
+          >
+            <el-icon><Close /></el-icon>
+            清空失效分享
+          </el-button>
+        </template>
+      </PageHeader>
       <el-tabs v-model="activeTab" class="cd-shares-tabs">
         <el-tab-pane label="进行中" name="active">
           <template #label>
@@ -362,7 +391,7 @@ onMounted(load)
   padding: 3px 8px;
   background: color-mix(in srgb, var(--cd-primary) 5%, transparent) !important;
   border: 1px solid color-mix(in srgb, var(--cd-primary) 12%, transparent) !important;
-  border-radius: var(--cd-radius-xs);
+  border-radius: var(--cd-radius-full);
   color: var(--cd-primary) !important;
   font-size: 12px;
   font-weight: 600;
@@ -554,6 +583,27 @@ onMounted(load)
 }
 
 .cd-action-pill.danger:active {
+  transform: translateY(0) !important;
+}
+
+.shares-clear-btn {
+  border-radius: var(--cd-radius-full) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444 !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 600 !important;
+}
+
+.shares-clear-btn:hover {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+.shares-clear-btn:active {
   transform: translateY(0) !important;
 }
 </style>

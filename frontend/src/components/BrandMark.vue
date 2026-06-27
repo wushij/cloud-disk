@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { brandIconSrc } from '@/utils/brandIconCache'
 
 const props = withDefaults(
   defineProps<{
@@ -18,10 +19,12 @@ const style = computed(() => {
 <template>
   <img
     class="brand-mark"
-    src="/theme-brand-icon-transparent.png"
+    :src="brandIconSrc"
     alt="CloudDisk Pro"
     :style="style"
     draggable="false"
+    fetchpriority="high"
+    decoding="sync"
   />
 </template>
 

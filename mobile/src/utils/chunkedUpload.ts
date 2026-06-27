@@ -1,11 +1,10 @@
-import { request, uploadFile, buildUrl } from '@/api/http'
-import { getSessionBearer } from '@/api/sessionAuth'
+import { request, uploadFile, buildUrl, resolveBearer } from '@/api/http'
+import { pickChunkSize } from '@/utils/md5'
 
 const MB = 1024 * 1024
 const SIMPLE_MAX = 8 * MB
-const CHUNK_SIZE = 4 * MB
-const CONCURRENCY = 2
-const isH5 = import.meta.env.UNI_PLATFORM === 'h5'
+const CONCURRENCY = 4
+const RETRIES = 3
 
 interface UploadResult {
   instant?: boolean
@@ -21,100 +20,43 @@ export interface ChunkedUploadOptions {
   onInit?: (session: { uploadId: string; chunkSize: number; totalChunks: number }) => void
 }
 
-interface FileInfo {
-  filePath: string
-  size: number
-  name: string
+function parseXhrErrorMessage(xhr: XMLHttpRequest, fallback: string): string {
+  try {
+    const parsed = JSON.parse(xhr.responseText) as { error?: string; message?: string }
+    const msg = parsed.error || parsed.message
+    if (msg) return msg
+  } catch {
+    /* ignore */
+  }
+  if (xhr.status === 401) return '未登录或登录已过期，请重新登录'
+  if (xhr.status === 413) return '上传文件过大'
+  return fallback
 }
 
-/**
- * 获取文件信息
- */
-function getFileInfo(filePath: string, fileSizeHint?: number): Promise<FileInfo> {
-  return new Promise((resolve, reject) => {
-    if (isH5) {
-      const name = filePath.split('/').pop() || 'file'
-      resolve({ filePath, size: fileSizeHint || 0, name })
-      return
-    }
-    uni.getFileInfo({
-      filePath,
-      success: (res) => {
-        const name = filePath.split('/').pop() || 'file'
-        resolve({ filePath, size: res.size, name })
-      },
-      fail: reject
-    })
-  })
+function retryableStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504 || status === 0
 }
 
-async function resolveH5Blob(filePath: string, h5File?: File, cached?: Blob | null): Promise<Blob> {
-  if (h5File) return h5File
-  if (cached) return cached
-  const res = await fetch(filePath)
-  if (!res.ok) throw new Error('读取本地文件失败')
-  return res.blob()
+function extractErrorStatus(e: unknown): number {
+  if (!(e instanceof Error)) return 0
+  const matched = e.message.match(/\((\d+)\)/)
+  return matched ? Number(matched[1]) : 0
 }
 
-function uploadSimpleFileH5(
-  filePath: string,
-  fileName: string,
-  fileSize: number,
-  folderId: number,
-  onProgress?: (ratio: number) => void,
-  signal?: AbortSignal,
-  options?: ChunkedUploadOptions
-): Promise<UploadResult> {
-  return new Promise(async (resolve, reject) => {
+async function withRetry<T>(fn: () => Promise<T>, times = RETRIES): Promise<T> {
+  let last: unknown
+  for (let i = 0; i < times; i++) {
     try {
-      const source = await resolveH5Blob(filePath, options?.h5File)
-      const file =
-        source instanceof File && source.name
-          ? source
-          : new File([source], fileName, { type: options?.mimeType || source.type || 'application/octet-stream' })
-      const fd = new FormData()
-      fd.append('file', file, file.name)
-      fd.append('folderId', String(folderId))
-
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', buildUrl('/api/files/simple'))
-      const token = getSessionBearer()
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-      const onAbort = () => {
-        xhr.abort()
-        reject(new Error('Canceled'))
-      }
-      if (signal) signal.addEventListener('abort', onAbort)
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) {
-          onProgress(e.loaded / (e.total || fileSize || e.loaded))
-        }
-      }
-      xhr.onload = () => {
-        if (signal) signal.removeEventListener('abort', onAbort)
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText) as { id?: number }
-            onProgress?.(1)
-            resolve({ fileId: data?.id })
-          } catch {
-            reject(new Error('上传响应解析失败'))
-          }
-          return
-        }
-        reject(new Error(`上传失败 (${xhr.status})`))
-      }
-      xhr.onerror = () => {
-        if (signal) signal.removeEventListener('abort', onAbort)
-        reject(new Error('上传网络错误'))
-      }
-      xhr.send(fd)
-    } catch (err) {
-      reject(err)
+      return await fn()
+    } catch (e) {
+      last = e
+      const status = extractErrorStatus(e)
+      const retryable = status === 0 || retryableStatus(status)
+      if (!retryable || i === times - 1) throw e
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)))
     }
-  })
+  }
+  throw last
 }
 
 function uploadChunkXHR(
@@ -128,7 +70,7 @@ function uploadChunkXHR(
     fd.append('uploadId', uploadId)
     fd.append('chunkIndex', String(index))
     fd.append('file', slice, `part-${index}`)
-    const token = getSessionBearer()
+    const token = resolveBearer()
     const xhr = new XMLHttpRequest()
     xhr.open('POST', buildUrl('/api/upload/chunk'))
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
@@ -142,7 +84,7 @@ function uploadChunkXHR(
     xhr.onload = () => {
       if (signal) signal.removeEventListener('abort', onAbort)
       if (xhr.status >= 200 && xhr.status < 300) resolve()
-      else reject(new Error(`分片 ${index} 上传失败`))
+      else reject(new Error(parseXhrErrorMessage(xhr, `分片 ${index} 上传失败 (${xhr.status})`)))
     }
     xhr.onerror = () => {
       if (signal) signal.removeEventListener('abort', onAbort)
@@ -152,15 +94,145 @@ function uploadChunkXHR(
   })
 }
 
-/**
- * 分片上传文件（支持秒传 + 断点续传）
- *
- * 流程：
- * 1. 检查 MD5 → 秒传
- * 2. 初始化分片上传 → 获取 uploadId + 已上传分片
- * 3. 并发上传剩余分片
- * 4. 合并分片
- */
+/** merge 走 XHR 且不设 timeout，与 PC 端 axios timeout:0 一致 */
+function mergeUploadXHR(
+  uploadId: string,
+  mimeType?: string,
+  signal?: AbortSignal
+): Promise<{ id?: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', buildUrl('/api/upload/merge'))
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    const token = resolveBearer()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+    const onAbort = () => {
+      xhr.abort()
+      reject(new Error('Canceled'))
+    }
+    if (signal) signal.addEventListener('abort', onAbort)
+
+    xhr.onload = () => {
+      if (signal) signal.removeEventListener('abort', onAbort)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as { id?: number })
+        } catch {
+          reject(new Error('合并响应解析失败'))
+        }
+        return
+      }
+      reject(new Error(parseXhrErrorMessage(xhr, `合并失败 (${xhr.status})`)))
+    }
+    xhr.onerror = () => {
+      if (signal) signal.removeEventListener('abort', onAbort)
+      reject(new Error('合并网络错误，大文件合并时间较长请稍候重试'))
+    }
+    xhr.send(JSON.stringify({ uploadId, mimeType: mimeType || undefined }))
+  })
+}
+
+// #ifdef H5
+async function loadH5Blob(filePath: string, h5File?: File): Promise<Blob> {
+  if (h5File instanceof Blob) return h5File
+  const res = await fetch(filePath)
+  if (!res.ok) throw new Error('读取本地文件失败')
+  return res.blob()
+}
+
+async function resolveUploadSize(
+  filePath: string,
+  declaredSize: number,
+  options?: ChunkedUploadOptions
+): Promise<number> {
+  if (options?.h5File instanceof Blob && options.h5File.size > 0) {
+    return options.h5File.size
+  }
+  if (declaredSize > SIMPLE_MAX) return declaredSize
+  try {
+    const blob = await loadH5Blob(filePath, options?.h5File)
+    if (blob.size > 0) return blob.size
+  } catch {
+    /* ignore */
+  }
+  return declaredSize
+}
+
+async function getH5UploadSource(
+  filePath: string,
+  options?: ChunkedUploadOptions
+): Promise<Blob> {
+  if (options?.h5File instanceof Blob) return options.h5File
+  return loadH5Blob(filePath, options?.h5File)
+}
+
+function uploadSimpleFileH5(
+  filePath: string,
+  fileName: string,
+  fileSize: number,
+  folderId: number,
+  onProgress?: (ratio: number) => void,
+  signal?: AbortSignal,
+  options?: ChunkedUploadOptions
+): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    void (async () => {
+      try {
+        const source = await getH5UploadSource(filePath, options)
+        const file =
+          source instanceof File && source.name
+            ? source
+            : new File([source], fileName, {
+                type: options?.mimeType || source.type || 'application/octet-stream'
+              })
+        const fd = new FormData()
+        fd.append('file', file, file.name)
+        fd.append('folderId', String(folderId))
+
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', buildUrl('/api/files/simple'))
+        const token = resolveBearer()
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+        const onAbort = () => {
+          xhr.abort()
+          reject(new Error('Canceled'))
+        }
+        if (signal) signal.addEventListener('abort', onAbort)
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(e.loaded / (e.total || fileSize || e.loaded))
+          }
+        }
+        xhr.onload = () => {
+          if (signal) signal.removeEventListener('abort', onAbort)
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText) as { id?: number }
+              onProgress?.(1)
+              resolve({ fileId: data?.id })
+            } catch {
+              reject(new Error('上传响应解析失败'))
+            }
+            return
+          }
+          reject(new Error(parseXhrErrorMessage(xhr, `上传失败 (${xhr.status})`)))
+        }
+        xhr.onerror = () => {
+          if (signal) signal.removeEventListener('abort', onAbort)
+          reject(new Error('上传网络错误'))
+        }
+        xhr.send(fd)
+      } catch (err) {
+        reject(err)
+      }
+    })()
+  })
+}
+// #endif
+
 export async function uploadChunkedFile(
   filePath: string,
   fileName: string,
@@ -172,32 +244,22 @@ export async function uploadChunkedFile(
   options?: ChunkedUploadOptions
 ): Promise<UploadResult> {
   const isResume = !!options?.existingUploadId
-
-  if (!isResume) {
-    onProgress?.(0)
-  }
-
+  if (!isResume) onProgress?.(0)
   if (signal?.aborted) throw new Error('Canceled')
 
-  // 步骤 1: 秒传检查
   if (fileMd5 && !options?.skipMd5Check) {
     try {
       const check = await request<{ exists: boolean; instant: boolean; fileId: number }>({
         url: '/api/upload/check-md5',
         method: 'POST',
-        data: {
-          fileMd5,
-          fileName,
-          fileSize,
-          folderId
-        }
+        data: { fileMd5, fileName, fileSize, folderId }
       })
       if (check.exists && check.instant) {
         onProgress?.(1)
         return { instant: true, fileId: check.fileId }
       }
     } catch {
-      // 秒传检查失败，继续普通上传
+      /* 秒传失败则继续普通上传 */
     }
   }
 
@@ -226,7 +288,7 @@ export async function uploadChunkedFile(
       onProgress?.(0.05 + (uploadedSet.size / totalChunks) * 0.9)
     }
   } else {
-    // 步骤 2: 初始化分片上传
+    const chunkSize = pickChunkSize(fileSize)
     const init = await request<{
       uploadId: string
       chunkSize: number
@@ -238,12 +300,11 @@ export async function uploadChunkedFile(
       data: {
         fileName,
         totalSize: fileSize,
-        chunkSize: CHUNK_SIZE,
+        chunkSize,
         fileMd5: fileMd5 || undefined,
         folderId
       }
     })
-
     uploadId = init.uploadId
     serverChunkSize = init.chunkSize
     totalChunks = init.totalChunks
@@ -251,12 +312,11 @@ export async function uploadChunkedFile(
     options?.onInit?.({ uploadId, chunkSize: serverChunkSize, totalChunks })
   }
 
-  // 步骤 3: 并发上传分片
-  let done = 0
-  let h5BlobCache: Blob | null = null
-  if (isH5) {
-    h5BlobCache = await resolveH5Blob(filePath, options?.h5File)
-  }
+  let done = uploadedSet.size
+
+  // #ifdef H5
+  const h5Source = await getH5UploadSource(filePath, options)
+  // #endif
 
   const uploadChunk = async (index: number): Promise<void> => {
     if (uploadedSet.has(index)) return
@@ -265,55 +325,48 @@ export async function uploadChunkedFile(
     const start = index * serverChunkSize
     const end = Math.min(start + serverChunkSize, fileSize)
 
-    if (isH5) {
-      const source = h5BlobCache || (await resolveH5Blob(filePath, options?.h5File))
-      h5BlobCache = source
-      const slice = source.slice(start, end)
-      await uploadChunkXHR(uploadId, index, slice, signal)
-    } else {
-      const fs = uni.getFileSystemManager()
-      const tempPath = `${(uni as any).env?.USER_DATA_PATH || uni.getStorageSync('temp_path') || '/tmp'}/chunk_${uploadId}_${index}`
-      let activeTask: UniApp.UploadTask | null = null
-      const onAbort = () => {
-        activeTask?.abort()
-      }
-      if (signal) signal.addEventListener('abort', onAbort)
+    // #ifdef H5
+    const slice = h5Source.slice(start, end)
+    await withRetry(() => uploadChunkXHR(uploadId, index, slice, signal))
+    // #endif
 
+    // #ifndef H5
+    const fs = uni.getFileSystemManager()
+    const tempPath = `${(uni as any).env?.USER_DATA_PATH || uni.getStorageSync('temp_path') || '/tmp'}/chunk_${uploadId}_${index}`
+    let activeTask: UniApp.UploadTask | null = null
+    const onAbort = () => activeTask?.abort()
+    if (signal) signal.addEventListener('abort', onAbort)
+    try {
+      const buffer = fs.readFileSync(filePath, 'binary', start, end - start) as unknown as ArrayBuffer
+      fs.writeFileSync(tempPath, buffer, 'binary')
+      await uploadFile({
+        url: '/api/upload/chunk',
+        filePath: tempPath,
+        name: 'file',
+        formData: { uploadId, chunkIndex: String(index) },
+        onTaskCreated: (t) => {
+          activeTask = t
+          if (signal?.aborted) t.abort()
+        }
+      })
       try {
-        const buffer = fs.readFileSync(filePath, 'binary', start, end - start) as unknown as ArrayBuffer
-        fs.writeFileSync(tempPath, buffer, 'binary')
-        await uploadFile({
-          url: '/api/upload/chunk',
-          filePath: tempPath,
-          name: 'file',
-          formData: {
-            uploadId,
-            chunkIndex: String(index)
-          },
-          onTaskCreated: (t) => {
-            activeTask = t
-            if (signal?.aborted) t.abort()
-          }
-        })
-        try {
-          fs.unlinkSync(tempPath)
-        } catch {
-          /* ignore */
-        }
-      } catch (e) {
-        try {
-          fs.unlinkSync(tempPath)
-        } catch {
-          /* ignore */
-        }
-        throw e
-      } finally {
-        if (signal) signal.removeEventListener('abort', onAbort)
+        fs.unlinkSync(tempPath)
+      } catch {
+        /* ignore */
       }
+    } catch (e) {
+      try {
+        fs.unlinkSync(tempPath)
+      } catch {
+        /* ignore */
+      }
+      throw e
+    } finally {
+      if (signal) signal.removeEventListener('abort', onAbort)
     }
+    // #endif
   }
 
-  // 并发控制
   let next = 0
   const worker = async () => {
     for (;;) {
@@ -326,26 +379,20 @@ export async function uploadChunkedFile(
       onProgress?.(0.05 + (done / totalChunks) * 0.9)
     }
   }
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, totalChunks) }, () => worker())
-  )
+
+  const workers = Math.min(CONCURRENCY, Math.max(1, totalChunks - uploadedSet.size))
+  await Promise.all(Array.from({ length: workers }, () => worker()))
 
   if (signal?.aborted) throw new Error('Canceled')
 
-  // 步骤 4: 合并分片
-  const record = await request<{ id?: number }>({
-    url: '/api/upload/merge',
-    method: 'POST',
-    data: { uploadId, mimeType: options?.mimeType || undefined }
-  })
+  const record = await withRetry(() =>
+    mergeUploadXHR(uploadId, options?.mimeType, signal)
+  )
 
   onProgress?.(1)
   return { uploadId, fileId: record?.id }
 }
 
-/**
- * 智能上传：根据文件大小自动选择简单上传或分片上传
- */
 export async function smartUpload(
   filePath: string,
   fileName: string,
@@ -356,18 +403,25 @@ export async function smartUpload(
   signal?: AbortSignal,
   options?: ChunkedUploadOptions
 ): Promise<UploadResult> {
-  if (!fileSize || fileSize <= 0) {
+  let actualSize = fileSize
+  // #ifdef H5
+  actualSize = await resolveUploadSize(filePath, fileSize, options)
+  // #endif
+
+  if (!actualSize || actualSize <= 0) {
     throw new Error('文件大小无效，请重新选择')
   }
-  if (fileSize <= SIMPLE_MAX) {
-    if (isH5) {
-      return uploadSimpleFileH5(filePath, fileName, fileSize, folderId, onProgress, signal, options)
-    }
+
+  if (actualSize <= SIMPLE_MAX) {
+    // #ifdef H5
+    return uploadSimpleFileH5(filePath, fileName, actualSize, folderId, onProgress, signal, options)
+    // #endif
+    // #ifndef H5
     let activeTask: UniApp.UploadTask | null = null
     const onAbort = () => activeTask?.abort()
-    if (signal) signal.addEventListener('abort', onAbort)
+    signal?.addEventListener('abort', onAbort)
     try {
-      const data = await uploadFile({
+      const data = (await uploadFile({
         url: '/api/files/simple',
         filePath,
         name: 'file',
@@ -377,12 +431,22 @@ export async function smartUpload(
           activeTask = t
           if (signal?.aborted) t.abort()
         }
-      }) as { id?: number }
+      })) as { id?: number }
       return { fileId: data?.id }
     } finally {
-      if (signal) signal.removeEventListener('abort', onAbort)
+      signal?.removeEventListener('abort', onAbort)
     }
+    // #endif
   }
-  // 大文件使用分片上传
-  return uploadChunkedFile(filePath, fileName, fileSize, folderId, fileMd5, onProgress, signal, options)
+
+  return uploadChunkedFile(
+    filePath,
+    fileName,
+    actualSize,
+    folderId,
+    fileMd5,
+    onProgress,
+    signal,
+    options
+  )
 }

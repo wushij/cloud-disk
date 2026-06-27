@@ -1,6 +1,8 @@
 import { getSessionBearer } from '@/api/sessionAuth'
 import { ensureMediaToken } from '@/utils/mediaToken'
 
+import { request } from '@/api/http'
+
 const MEMORY = new Map<number, string>()
 const STORAGE_KEY = 'cd_cover_thumbs'
 const MAX_ENTRIES = 100
@@ -139,6 +141,18 @@ export function cacheCoverFromUrl(fileId: number, version: number, url: string):
 
 export function cacheCoverFromDataUrl(fileId: number, version: number, dataUrl: string): string {
   return saveCoverThumb(fileId, version, dataUrl)
+}
+
+/** 与 PC 端一致：本地缓存 + 上传封面到服务端，供其他端读取 hasThumbnail */
+export async function persistVideoCover(fileId: number, dataUrl: string): Promise<void> {
+  cacheCoverFromDataUrl(fileId, 0, dataUrl)
+  cacheCoverFromDataUrl(fileId, 1, dataUrl)
+  await request({
+    url: `/api/files/${fileId}/poster`,
+    method: 'POST',
+    data: { dataUrl },
+    skipErrorHandler: true
+  })
 }
 
 function saveCoverThumb(fileId: number, version: number, data: string): string {

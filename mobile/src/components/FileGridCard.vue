@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import type { FileItem } from '@/stores/file'
 import { fileCoverUrl, fileHasCover, fileCoverKind, fileIsVideoCover } from '@/utils/fileCover'
@@ -34,14 +34,73 @@ const emit = defineEmits<{
 }>()
 
 const coverBroken = ref(false)
+
+let touchTimer: ReturnType<typeof setTimeout> | null = null
+let startX = 0
+let startY = 0
+let isLongPress = false
+
+function onTouchStart(e: TouchEvent) {
+  if (e.touches.length !== 1) return
+  const touch = e.touches[0]
+  startX = touch.clientX
+  startY = touch.clientY
+  isLongPress = false
+
+  if (touchTimer) clearTimeout(touchTimer)
+  touchTimer = setTimeout(() => {
+    isLongPress = true
+    emit('longpress')
+  }, 600)
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (!touchTimer) return
+  const touch = e.touches[0]
+  const deltaX = Math.abs(touch.clientX - startX)
+  const deltaY = Math.abs(touch.clientY - startY)
+  if (deltaX > 10 || deltaY > 10) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onTouchEnd() {
+  if (touchTimer) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onTouchCancel() {
+  if (touchTimer) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onItemClick() {
+  if (isLongPress) {
+    isLongPress = false
+    return
+  }
+  emit('click')
+}
+
+onUnmounted(() => {
+  if (touchTimer) clearTimeout(touchTimer)
+})
 </script>
 
 <template>
   <view
     class="grid-card cd-pressable"
     :class="{ folder: item.type === 'folder', 'is-selected': checked }"
-    @click="$emit('click')"
-    @longpress="$emit('longpress')"
+    @touchstart="onTouchStart"
+    @touchmove="onTouchMove"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchCancel"
+    @click="onItemClick"
   >
     <!-- 选择勾选框 -->
     <view v-if="selectMode" class="grid-checkbox-wrap" @click.stop="emit('check-change', !checked)">

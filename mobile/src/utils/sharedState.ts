@@ -17,3 +17,13 @@ export function updateStorageUsage(data: { usedBytes?: number; quotaBytes?: numb
     uni.removeStorageSync('cd_storage_usage')
   }
 }
+
+export async function refreshStorageUsageFromApi() {
+  try {
+    const { request } = await import('@/api/http')
+    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    updateStorageUsage(data)
+  } catch {
+    /* ignore */
+  }
+}

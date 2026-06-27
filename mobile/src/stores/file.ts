@@ -26,6 +26,7 @@ export const useFileStore = defineStore('file', () => {
   const items = ref<FileItem[]>([])
   const loading = ref(false)
   const keyword = ref('')
+  const fileType = ref('')
   const listInitialized = ref(false)
   const needsRefresh = ref(false)
 
@@ -59,7 +60,8 @@ export const useFileStore = defineStore('file', () => {
           folderId: currentFolderId.value,
           page: 0,
           size: 200,
-          q: keyword.value.trim() || undefined
+          q: keyword.value.trim() || undefined,
+          fileType: fileType.value || undefined
         }
       })
       items.value = data.content || []
@@ -92,6 +94,7 @@ export const useFileStore = defineStore('file', () => {
     breadcrumb.value.push({ id: row.id, name: row.name })
     currentFolderId.value = row.id
     keyword.value = ''
+    fileType.value = ''
     updateUrlQueryParam({ folderId: row.id })
     return loadList()
   }
@@ -100,6 +103,7 @@ export const useFileStore = defineStore('file', () => {
     const target = breadcrumb.value[idx]
     breadcrumb.value = breadcrumb.value.slice(0, idx + 1)
     currentFolderId.value = target.id
+    fileType.value = ''
     updateUrlQueryParam({ folderId: target.id === 0 ? null : target.id })
     return loadList()
   }
@@ -136,6 +140,7 @@ export const useFileStore = defineStore('file', () => {
     items,
     loading,
     keyword,
+    fileType,
     listInitialized,
     needsRefresh,
     markListStale,

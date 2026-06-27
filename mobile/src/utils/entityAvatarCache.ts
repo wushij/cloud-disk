@@ -71,7 +71,31 @@ function saveEntityAvatarThumb(key: string, version: number | string, data: stri
   writeEntries(entries)
 }
 
-export function cacheEntityAvatarFromUrl(
+async function fetchAvatarBlobH5(url: string): Promise<Blob> {
+  const res = await fetch(url, { credentials: 'include' })
+  if (!res.ok) {
+    throw new Error(`avatar download ${res.status}`)
+  }
+  return res.blob()
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const data = String(reader.result || '')
+      if (!data) {
+        reject(new Error('empty avatar'))
+        return
+      }
+      resolve(data)
+    }
+    reader.onerror = () => reject(new Error('read failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function cacheEntityAvatarFromUrlNative(
   key: string,
   version: number | string,
   url: string
@@ -84,7 +108,12 @@ export function cacheEntityAvatarFromUrl(
           reject(new Error(`avatar download ${res.statusCode}`))
           return
         }
-        uni.getFileSystemManager().readFile({
+        const fs = uni.getFileSystemManager?.()
+        if (!fs) {
+          reject(new Error('file system unavailable'))
+          return
+        }
+        fs.readFile({
           filePath: res.tempFilePath,
           encoding: 'base64',
           success: (fileRes) => {
@@ -98,6 +127,22 @@ export function cacheEntityAvatarFromUrl(
       fail: reject
     })
   })
+}
+
+export function cacheEntityAvatarFromUrl(
+  key: string,
+  version: number | string,
+  url: string
+): Promise<string> {
+  if (typeof uni.getFileSystemManager === 'function') {
+    return cacheEntityAvatarFromUrlNative(key, version, url)
+  }
+  return fetchAvatarBlobH5(url)
+    .then((blob) => blobToDataUrl(blob))
+    .then((data) => {
+      saveEntityAvatarThumb(key, version, data)
+      return data
+    })
 }
 
 export async function cacheEntityAvatarFromPath(

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { request, fileApiUrl, uploadFile } from '@/api/http'
@@ -266,6 +266,65 @@ async function onConfirmAction() {
     /* handled */
   }
 }
+
+let touchTimer: ReturnType<typeof setTimeout> | null = null
+let startX = 0
+let startY = 0
+let isLongPress = false
+let longPressActiveTeamId: number | null = null
+
+function onTeamTouchStart(e: TouchEvent, team: TeamSpace) {
+  if (e.touches.length !== 1) return
+  const touch = e.touches[0]
+  startX = touch.clientX
+  startY = touch.clientY
+  isLongPress = false
+  longPressActiveTeamId = team.id
+
+  if (touchTimer) clearTimeout(touchTimer)
+  touchTimer = setTimeout(() => {
+    isLongPress = true
+    showTeamActions(team)
+  }, 600)
+}
+
+function onTeamTouchMove(e: TouchEvent) {
+  if (!touchTimer) return
+  const touch = e.touches[0]
+  const deltaX = Math.abs(touch.clientX - startX)
+  const deltaY = Math.abs(touch.clientY - startY)
+  if (deltaX > 10 || deltaY > 10) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onTeamTouchEnd() {
+  if (touchTimer) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onTeamTouchCancel() {
+  if (touchTimer) {
+    clearTimeout(touchTimer)
+    touchTimer = null
+  }
+}
+
+function onTeamClick(team: TeamSpace) {
+  if (isLongPress && longPressActiveTeamId === team.id) {
+    isLongPress = false
+    longPressActiveTeamId = null
+    return
+  }
+  enterTeam(team)
+}
+
+onUnmounted(() => {
+  if (touchTimer) clearTimeout(touchTimer)
+})
 </script>
 
 <template>
@@ -302,8 +361,11 @@ async function onConfirmAction() {
           v-for="team in teams"
           :key="team.id"
           class="team-card cd-pressable"
-          @click="enterTeam(team)"
-          @longpress="showTeamActions(team)"
+          @touchstart="onTeamTouchStart($event, team)"
+          @touchmove="onTeamTouchMove"
+          @touchend="onTeamTouchEnd"
+          @touchcancel="onTeamTouchCancel"
+          @click="onTeamClick(team)"
         >
           <view class="team-card-left">
             <view class="team-avatar" :style="team.avatar ? {} : getAvatarStyle(team.id)">

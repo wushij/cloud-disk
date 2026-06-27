@@ -9,6 +9,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { fileHasCover, fileCoverKind, fileCoverUrl, fileIsVideoCover } from '@/utils/fileCover'
 import CachedCover from '@/components/CachedCover.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+import { useStorageStore } from '@/stores/storage'
 
 defineOptions({ name: 'Recycle' })
 
@@ -38,6 +39,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  void useStorageStore().refresh()
 }
 
 function fmtTime(iso?: string) {

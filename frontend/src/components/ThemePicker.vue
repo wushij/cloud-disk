@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { useThemeStore } from '@/stores/theme'
 import { normalizeHex, PRESET_COLORS, type ThemePresetId } from '@/utils/theme'
 
@@ -47,7 +48,7 @@ function onHexInput(val: string) {
   >
     <template #reference>
       <el-button class="cd-header-btn theme-picker-trigger" title="外观主题">
-        <img src="/theme-brand-icon-transparent.png" alt="" class="theme-brand-icon" />
+        <BrandMark :size="18" class="theme-brand-icon" />
       </el-button>
     </template>
 

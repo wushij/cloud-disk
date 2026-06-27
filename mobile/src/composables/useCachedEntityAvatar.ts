@@ -11,8 +11,13 @@ export function useCachedEntityAvatar(
   watch(
     () => [toValue(cacheKey), toValue(src), toValue(version)] as const,
     ([key, url, v]) => {
-      if (!key || !url) {
+      if (!url) {
         displaySrc.value = ''
+        return
+      }
+      // 当前登录用户头像走 auth 缓存，无需 entity 缓存 key
+      if (!key) {
+        displaySrc.value = url
         return
       }
       const cached = loadEntityAvatarThumb(key, v)

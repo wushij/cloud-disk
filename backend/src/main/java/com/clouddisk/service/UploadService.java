@@ -17,6 +17,7 @@ import com.clouddisk.util.FileValidator;
 import com.clouddisk.websocket.UploadProgressHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
@@ -36,6 +37,7 @@ public class UploadService {
     private final FileValidator fileValidator;
     private final UploadProgressHandler progressHandler;
     private final VirusScanService virusScanService;
+    private final StorageQuotaService quotaService;
 
     public Map<String, Object> checkMd5(Md5CheckRequest req) {
         long userId = AuthService.currentUserId();
@@ -65,6 +67,7 @@ public class UploadService {
             throw new BusinessException("参数不完整");
         }
         fileValidator.validate(req.getFileName(), req.getTotalSize());
+        quotaService.checkQuota(userId, req.getTotalSize());
 
         int chunkSize = req.getChunkSize() != null ? req.getChunkSize() : properties.getChunk().getDefaultSize();
         chunkSize = Math.min(chunkSize, properties.getChunk().getMaxSize());
@@ -155,10 +158,13 @@ public class UploadService {
             throw new BusinessException("分片合并失败，计算文件实际 MD5 失败");
         }
 
-        if (!actualMd5.equalsIgnoreCase(session.getFileMd5())) {
+        if (StringUtils.hasText(session.getFileMd5())
+                && !actualMd5.equalsIgnoreCase(session.getFileMd5())) {
             storageService.delete(storagePath);
             throw new BusinessException("分片合并失败，文件物理 MD5 校验不匹配");
         }
+
+        String recordMd5 = StringUtils.hasText(session.getFileMd5()) ? session.getFileMd5() : actualMd5;
 
         try (var in = new java.io.BufferedInputStream(storageService.loadAsResource(storagePath).getInputStream())) {
             fileValidator.validateMagicBytes(session.getFileName(), in);
@@ -170,7 +176,7 @@ public class UploadService {
 
         FileRecord record = fileService.createRecord(
                 userId, session.getFolderId(), session.getFileName(),
-                session.getTotalSize(), mimeType, session.getFileMd5(), storagePath);
+                session.getTotalSize(), mimeType, recordMd5, storagePath);
 
         session.setStatus("MERGED");
         sessionMapper.updateById(session);

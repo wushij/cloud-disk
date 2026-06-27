@@ -125,6 +125,30 @@ const shareFileId = ref<number | null>(null)
 const shareFolderId = ref<number | null>(null)
 const shareItemName = ref('')
 
+const filterVisible = ref(false)
+const filterActions = computed(() => [
+  { name: '全部文件', value: '', color: !fileStore.fileType ? 'var(--cd-primary)' : undefined, fontSize: '15' },
+  { name: '图片', value: 'image', color: fileStore.fileType === 'image' ? 'var(--cd-primary)' : undefined, fontSize: '15' },
+  { name: '视频', value: 'video', color: fileStore.fileType === 'video' ? 'var(--cd-primary)' : undefined, fontSize: '15' },
+  { name: '文档', value: 'document', color: fileStore.fileType === 'document' ? 'var(--cd-primary)' : undefined, fontSize: '15' },
+  { name: '压缩包', value: 'archive', color: fileStore.fileType === 'archive' ? 'var(--cd-primary)' : undefined, fontSize: '15' }
+])
+
+const activeFileTypeLabel = computed(() => {
+  const found = filterActions.value.find((a) => a.value === fileStore.fileType)
+  return found ? found.name : ''
+})
+
+function showFilterMenu() {
+  filterVisible.value = true
+}
+
+function onFilterSelect(item: { name: string; value: string }) {
+  filterVisible.value = false
+  fileStore.fileType = item.value
+  fileStore.loadList()
+}
+
 function goTransfer() {
   uni.navigateTo({ url: '/pages/transfer/index' })
 }
@@ -476,6 +500,7 @@ async function submitCreateFolder(name: string) {
 }
 
 async function chooseAndUpload() {
+  if (!auth.requireLogin()) return
   // #ifdef H5
   uni.chooseFile({
     count: 9,
@@ -484,14 +509,14 @@ async function chooseAndUpload() {
       const { normalizeH5Pick } = await import('@/utils/h5Upload')
       const raw = Array.isArray(res.tempFiles) ? res.tempFiles : [res.tempFiles]
       for (const item of raw) {
-        const file = normalizeH5Pick(item as File & { path?: string })
+        const file = normalizeH5Pick(item)
         if (!file.size) {
           uni.showToast({ title: '无法读取文件大小', icon: 'none' })
           continue
         }
         await transferStore.addUploadTask(file.path, file.name, file.size, fileStore.currentFolderId, {
           h5File: file.file,
-          mimeType: file.mimeType
+          mimeType: file.mimeType || undefined
         })
       }
       uni.showToast({ title: '已添加到上传队列', icon: 'none' })
@@ -559,19 +584,33 @@ async function chooseAndUpload() {
       </template>
       <template #extra>
         <BreadcrumbBar :crumbs="breadcrumb" @select="fileStore.gotoCrumb" />
-        <view class="search-wrap">
-          <u-search
-            v-model="keyword"
-            placeholder="搜索文件名"
-            bg-color="#f4f7fb"
-            color="#0f172a"
-            placeholder-color="#b0bdc9"
-            :show-action="false"
-            shape="round"
-            height="38"
-            @search="onSearch"
-            @clear="onSearch"
-          />
+        <view class="search-row">
+          <view class="search-input-box">
+            <u-search
+              v-model="keyword"
+              placeholder="搜索文件名"
+              bg-color="#f4f7fb"
+              color="#0f172a"
+              placeholder-color="#b0bdc9"
+              :show-action="false"
+              shape="round"
+              height="38"
+              @search="onSearch"
+              @clear="onSearch"
+            />
+          </view>
+          <view
+            class="filter-trigger-btn cd-pressable"
+            :class="{ 'is-active': fileStore.fileType }"
+            @click="showFilterMenu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: block; flex-shrink: 0;">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+              <line x1="11" y1="18" x2="13" y2="18" />
+            </svg>
+            <text class="filter-btn-text" v-if="fileStore.fileType">{{ activeFileTypeLabel }}</text>
+          </view>
         </view>
       </template>
     </MobileHeader>
@@ -664,6 +703,16 @@ async function chooseAndUpload() {
       round="16"
       @close="actionVisible = false"
       @select="onSheetSelect"
+    />
+
+    <u-action-sheet
+      :show="filterVisible"
+      :actions="filterActions"
+      title="选择类型过滤"
+      cancel-text="取消"
+      round="16"
+      @close="filterVisible = false"
+      @select="onFilterSelect"
     />
 
     <MobilePromptDialog
@@ -1026,6 +1075,47 @@ async function chooseAndUpload() {
 
 .btn-text {
   font-size: 19rpx;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 6rpx;
+}
+
+.search-input-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-trigger-btn {
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #f4f7fb;
+  border: 1rpx solid transparent;
+  color: #64748b;
+  transition: all var(--cd-transition-fast);
+
+  &.is-active {
+    background: rgba(79, 124, 255, 0.08);
+    border: 1rpx solid rgba(79, 124, 255, 0.15);
+    color: var(--cd-primary);
+  }
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.filter-btn-text {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: var(--cd-primary);
 }
 </style>
 

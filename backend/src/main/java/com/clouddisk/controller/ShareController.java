@@ -36,6 +36,12 @@ public class ShareController {
         return shareService.listMine();
     }
 
+    @DeleteMapping("/api/share/expired/clear")
+    public Map<String, String> clearExpired() {
+        shareService.clearExpired();
+        return Map.of("message", "已清空失效分享");
+    }
+
     @DeleteMapping("/api/share/{id}")
     public Map<String, String> cancel(@PathVariable Long id) {
         shareService.cancel(id);

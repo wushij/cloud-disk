@@ -50,4 +50,22 @@ class FileValidatorTest {
     void validate_acceptsFileWithoutExtension() {
         assertDoesNotThrow(() -> validator.validate("README", 100));
     }
+
+    @Test
+    void validateMagicBytes_acceptsPngContentWithJpgExtension() throws Exception {
+        // PNG magic bytes, .jpg extension — common with wallpaper downloads
+        byte[] pngHeader = new byte[]{
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+                0x00, 0x00, 0x00, 0x00
+        };
+        assertDoesNotThrow(() -> validator.validateMagicBytes("wallpaper.jpg",
+                new java.io.ByteArrayInputStream(pngHeader)));
+    }
+
+    @Test
+    void validateMagicBytes_rejectsNonImageWithJpgExtension() {
+        byte[] fake = "not-an-image".getBytes();
+        assertThrows(BusinessException.class, () -> validator.validateMagicBytes("fake.jpg",
+                new java.io.ByteArrayInputStream(fake)));
+    }
 }

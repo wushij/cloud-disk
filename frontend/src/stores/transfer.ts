@@ -10,6 +10,8 @@ import { clearFolderCache, ensureFolderPath, fileRelativePath } from '@/utils/fo
 import { captureVideoCover, isVideoUpload } from '@/utils/videoCover'
 import { cacheCoverFromDataUrl } from '@/utils/coverCache'
 import axios from 'axios'
+import { useStorageStore } from '@/stores/storage'
+import { useFileStore } from '@/stores/file'
 
 export interface TransferTask {
   id: string
@@ -103,6 +105,7 @@ export const useTransferStore = defineStore('transfer', () => {
         dataUrl = await captureVideoCover(file)
       }
       cacheCoverFromDataUrl(fileId, 0, dataUrl)
+      await http.post(`/api/files/${fileId}/poster`, { dataUrl })
       if (taskId) patchTask(taskId, { coverUrl: dataUrl, fileId })
     } catch {
       /* ignore */
@@ -142,6 +145,8 @@ export const useTransferStore = defineStore('transfer', () => {
       patch.loaded = task.size
     }
     patchTask(nextId, patch)
+    useFileStore().markListStale()
+    void useStorageStore().refresh()
   }
 
   function toggleCollapse(val?: boolean) {

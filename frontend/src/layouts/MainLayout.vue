@@ -28,6 +28,7 @@ import { useConfirmDialogStore } from '@/stores/confirmDialog'
 
 import { subscribeWs } from '@/utils/ws'
 import { useFileStore } from '@/stores/file'
+import { useStorageStore } from '@/stores/storage'
 
 
 
@@ -37,6 +38,7 @@ const router = useRouter()
 
 const auth = useAuthStore()
 const fileStore = useFileStore()
+const storageStore = useStorageStore()
 
 const notifyStore = useNotificationStore()
 
@@ -44,6 +46,7 @@ const transferStore = useTransferStore()
 const confirmDialog = useConfirmDialogStore()
 
 const { runningCount: runningTransfersCount } = storeToRefs(transferStore)
+const { usage: storageUsage } = storeToRefs(storageStore)
 
 const storageLabel = ref('')
 
@@ -54,26 +57,6 @@ function toggleTransferList() {
   }
   transferStore.toggleCollapse()
 }
-
-
-
-interface StorageUsage {
-
-  usedBytes: number
-
-  quotaBytes: number
-
-  usedPercent: number
-
-  usedFormatted: string
-
-  quotaFormatted: string
-
-}
-
-const storageUsage = ref<StorageUsage | null>(null)
-
-
 
 const notifyVisible = ref(false)
 
@@ -156,17 +139,7 @@ onMounted(async () => {
 
   }
 
-  try {
-
-    const { data } = await http.get('/api/storage/usage')
-
-    storageUsage.value = data
-
-  } catch {
-
-    /* ignore */
-
-  }
+  await storageStore.refresh()
 
   try {
 
@@ -498,12 +471,7 @@ function isQuotaPending(status?: string) {
 }
 
 async function refreshStorageUsage() {
-  try {
-    const { data } = await http.get('/api/storage/usage')
-    storageUsage.value = data
-  } catch {
-    /* ignore */
-  }
+  await storageStore.refresh()
 }
 
 async function approveQuota(item: { id: string; refId?: string; content?: string }) {

@@ -87,6 +87,18 @@ public class ShareService {
         }
     }
 
+    public void clearExpired() {
+        long userId = AuthService.currentUserId();
+        List<ShareRecord> shares = shareMapper.selectList(new LambdaQueryWrapper<ShareRecord>()
+                .eq(ShareRecord::getUserId, userId));
+        for (ShareRecord share : shares) {
+            if (isShareExpired(share)) {
+                cacheService.delete(shareCacheKey(share.getShareCode()));
+                shareMapper.deleteById(share.getId());
+            }
+        }
+    }
+
     private boolean isShareExpired(ShareRecord share) {
         if (share.getStatus() != null && share.getStatus() == 0) {
             return true;

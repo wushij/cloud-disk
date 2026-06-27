@@ -24,6 +24,8 @@ interface RequestOptions {
   header?: Record<string, string>
   skipAuth?: boolean
   skipErrorHandler?: boolean
+  /** 毫秒；大文件 merge 等长耗时接口需显式加长 */
+  timeout?: number
 }
 
 export class ApiError extends Error {
@@ -82,6 +84,25 @@ function translateMessage(msg: string, status?: number): string {
   return text
 }
 
+/** 从各类异常对象提取可读上传/请求错误文案 */
+export function resolveErrorMessage(e: unknown, fallback = '操作失败'): string {
+  if (e instanceof ApiError && e.message) return e.message
+  if (e instanceof Error) {
+    if (!e.message || e.message === 'Canceled') return fallback
+    if (/[\u4e00-\u9fa5]/.test(e.message)) return e.message
+    return translateMessage(e.message, e instanceof ApiError ? e.statusCode : undefined)
+  }
+  if (e && typeof e === 'object') {
+    const errMsg = String((e as { errMsg?: string }).errMsg || '')
+    if (errMsg) {
+      if (/timeout/i.test(errMsg)) return '请求超时，大文件处理时间较长，请稍后重试'
+      if (/request:fail/i.test(errMsg)) return '网络请求失败，请检查网络与后端服务'
+      return translateMessage(errMsg)
+    }
+  }
+  return fallback
+}
+
 function getMessage(data: unknown, fallback: string, status?: number) {
   if (data && typeof data === 'object') {
     const body = data as { error?: string; message?: string }
@@ -91,8 +112,48 @@ function getMessage(data: unknown, fallback: string, status?: number) {
   return translateMessage(fallback, status)
 }
 
+/** 优先 sessionStorage，回退 Pinia，避免 HMR/多标签页导致 Bearer 丢失 */
+export function resolveBearer(): string | null {
+  const cached = getSessionBearer()
+  if (cached) return cached
+  try {
+    const auth = useAuthStore()
+    const fromStore = auth.token?.trim()
+    if (fromStore) {
+      setSessionBearer(fromStore)
+      return fromStore
+    }
+  } catch {
+    /* Pinia 尚未就绪 */
+  }
+  return null
+}
+
+function clearSessionOnUnauthorized(hadToken: boolean) {
+  if (!hadToken) return
+  try {
+    useAuthStore().clearSessionLocal()
+  } catch {
+    setSessionBearer(null)
+    clearLegacyToken()
+    uni.removeStorageSync(USER_KEY)
+    uni.removeStorageSync(NICKNAME_KEY)
+    uni.removeStorageSync(ROLE_KEY)
+    uni.removeStorageSync('cd_avatar_version')
+    uni.removeStorageSync('cd_has_avatar')
+  }
+}
+
+function redirectToLoginIfNeeded() {
+  const pages = getCurrentPages()
+  const current = pages[pages.length - 1]
+  if (!current?.route?.includes('login')) {
+    uni.reLaunch({ url: '/pages/login/index' })
+  }
+}
+
 export function request<T>(options: RequestOptions): Promise<T> {
-  const token = getSessionBearer()
+  const token = options.skipAuth ? null : resolveBearer()
   const header: Record<string, string> = {
     'Content-Type': 'application/json',
     ...options.header
@@ -107,26 +168,12 @@ export function request<T>(options: RequestOptions): Promise<T> {
       method: options.method || 'GET',
       data: options.data as UniApp.RequestOptions['data'],
       header,
+      timeout: options.timeout,
       success: (res) => {
         const status = res.statusCode || 0
         if (status === 401 && !options.skipAuth) {
-          try {
-            const authStore = useAuthStore()
-            void authStore.logout()
-          } catch (e) {
-            setSessionBearer(null)
-            clearLegacyToken()
-            uni.removeStorageSync(USER_KEY)
-            uni.removeStorageSync(NICKNAME_KEY)
-            uni.removeStorageSync(ROLE_KEY)
-            uni.removeStorageSync('cd_avatar_version')
-            uni.removeStorageSync('cd_has_avatar')
-          }
-          const pages = getCurrentPages()
-          const current = pages[pages.length - 1]
-          if (!current?.route?.includes('login')) {
-            uni.reLaunch({ url: '/pages/login/index' })
-          }
+          clearSessionOnUnauthorized(!!token)
+          redirectToLoginIfNeeded()
         }
         if (status >= 200 && status < 300) {
           resolve(res.data as T)
@@ -139,10 +186,11 @@ export function request<T>(options: RequestOptions): Promise<T> {
         reject(new ApiError(message, status, res.data))
       },
       fail: (err) => {
+        const message = resolveErrorMessage(err, '网络异常，请稍后重试')
         if (!options.skipErrorHandler) {
-          uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
+          uni.showToast({ title: message, icon: 'none' })
         }
-        reject(err)
+        reject(new ApiError(message, 0, err))
       }
     })
   })
@@ -156,7 +204,7 @@ export function uploadFile(options: {
   onProgress?: (ratio: number) => void
   onTaskCreated?: (task: UniApp.UploadTask) => void
 }): Promise<unknown> {
-  const token = getSessionBearer()
+  const token = resolveBearer()
   return new Promise((resolve, reject) => {
     const task = uni.uploadFile({
       url: buildUrl(options.url),
@@ -208,6 +256,10 @@ export function fileApiUrl(path: string): string {
     return buildUrl(path)
   }
   const token = mediaTokenQuery()
+  if (!token) {
+    // 媒体 token 未就绪时不拼空的 access_token=，避免后端 400
+    return buildUrl(path)
+  }
   const join = path.includes('?') ? '&' : '?'
   return `${buildUrl(path)}${join}access_token=${token}`
 }

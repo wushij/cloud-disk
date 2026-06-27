@@ -1,6 +1,12 @@
 /** H5 从本地视频截取首帧，上传后即时展示封面 */
-export async function captureVideoCoverFromPath(filePath: string, timeSec = 1): Promise<string> {
+export async function captureVideoCoverFromPath(
+  filePath: string,
+  timeSec = 1,
+  h5File?: File | Blob
+): Promise<string> {
   // #ifdef H5
+  let objectUrl = ''
+  const src = h5File instanceof Blob ? (objectUrl = URL.createObjectURL(h5File)) : filePath
   return new Promise((resolve, reject) => {
     const video = document.createElement('video')
     video.preload = 'auto'
@@ -11,6 +17,7 @@ export async function captureVideoCoverFromPath(filePath: string, timeSec = 1): 
     const cleanup = () => {
       video.removeAttribute('src')
       video.load()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
 
     video.onerror = () => {
@@ -53,7 +60,7 @@ export async function captureVideoCoverFromPath(filePath: string, timeSec = 1): 
       }
     }
 
-    video.src = filePath
+    video.src = src
   })
   // #endif
   // #ifndef H5

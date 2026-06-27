@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -308,6 +309,41 @@ public class FileService {
             fileSearchService.indexFile(file);
         }
         return file;
+    }
+
+    public void saveVideoPoster(Long id, String dataUrl) {
+        long userId = AuthService.currentUserId();
+        FileRecord file = getOwnedOrShared(id, userId);
+        if (!MediaProcessService.isVideo(file)) {
+            throw new BusinessException("仅视频文件支持设置封面");
+        }
+        if (!StringUtils.hasText(dataUrl) || !dataUrl.startsWith("data:image/")) {
+            throw new BusinessException("封面数据无效");
+        }
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0) {
+            throw new BusinessException("封面数据格式错误");
+        }
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1));
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("封面数据解码失败");
+        }
+        if (bytes.length == 0) {
+            throw new BusinessException("封面内容为空");
+        }
+        fileValidator.validateImageContent(new ByteArrayInputStream(bytes));
+        String posterPath = "posters/" + file.getUserId() + "/" + file.getId() + ".jpg";
+        try {
+            storageService.store(new ByteArrayInputStream(bytes), posterPath, bytes.length, "image/jpeg");
+        } catch (Exception e) {
+            throw new BusinessException("封面保存失败");
+        }
+        file.setPosterPath(posterPath);
+        file.setThumbnailPath(posterPath);
+        fileMapper.updateById(file);
+        fileCacheService.evict(file.getId());
     }
 
     public FileRecord copy(Long id, MoveRequest req) {

@@ -80,7 +80,7 @@ public class StorageQuotaService {
     public void addUsage(long userId, long bytes) {
         userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
-                .setSql("storage_used = storage_used + " + bytes));
+                .setSql("storage_used = COALESCE(storage_used, 0) + " + bytes));
         evictUsageCache(userId);
     }
 
@@ -90,7 +90,7 @@ public class StorageQuotaService {
     public void subtractUsage(long userId, long bytes) {
         userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
-                .setSql("storage_used = GREATEST(0, storage_used - " + bytes + ")"));
+                .setSql("storage_used = GREATEST(0, COALESCE(storage_used, 0) - " + bytes + ")"));
         evictUsageCache(userId);
     }
 
@@ -136,11 +136,29 @@ public class StorageQuotaService {
             } catch (NumberFormatException ignored) {
             }
         }
-        // 从 DB 查询
+        long used = sumActiveFileBytes(userId);
         User user = userMapper.selectById(userId);
-        long used = user != null && user.getStorageUsed() != null ? user.getStorageUsed() : 0;
+        if (user != null) {
+            Long stored = user.getStorageUsed();
+            if (stored == null || stored != used) {
+                userMapper.update(null, new LambdaUpdateWrapper<User>()
+                        .eq(User::getId, userId)
+                        .set(User::getStorageUsed, used));
+            }
+        }
         cacheService.set(cacheKey, String.valueOf(used), QUOTA_CACHE_TTL);
         return used;
+    }
+
+    private long sumActiveFileBytes(long userId) {
+        return fileMapper.selectList(
+                        new LambdaQueryWrapper<FileRecord>()
+                                .select(FileRecord::getFileSize)
+                                .eq(FileRecord::getUserId, userId)
+                                .eq(FileRecord::getStatus, 1))
+                .stream()
+                .mapToLong(f -> f.getFileSize() != null ? f.getFileSize() : 0)
+                .sum();
     }
 
     private void evictUsageCache(long userId) {

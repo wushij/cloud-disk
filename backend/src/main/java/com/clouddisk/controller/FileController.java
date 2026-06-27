@@ -10,6 +10,7 @@ import com.clouddisk.service.FileService;
 import com.clouddisk.service.AuthService;
 import com.clouddisk.search.FileSearchService;
 import com.clouddisk.util.AuthHelper;
+import com.clouddisk.util.DownloadResponseHelper;
 import com.clouddisk.util.FileTypeUtils;
 import com.clouddisk.util.MediaResponseHeaders;
 import jakarta.servlet.http.HttpServletRequest;
@@ -90,15 +91,11 @@ public class FileController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> download(@PathVariable Long id, HttpServletRequest request) {
+    public ResponseEntity<?> download(@PathVariable Long id, HttpServletRequest request) throws IOException {
         long userId = authHelper.requireUserId(request);
         FileRecord file = fileService.getOwnedOrShared(id, userId);
         Resource resource = fileService.download(id, userId);
-        String encoded = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(resource);
+        return DownloadResponseHelper.build(file.getFileName(), resource, request.getHeader(HttpHeaders.RANGE));
     }
 
     @GetMapping("/download/zip")
@@ -203,6 +200,12 @@ public class FileController {
         return MediaResponseHeaders.ok()
                 .contentType(MediaType.IMAGE_JPEG)
                 .body(resource);
+    }
+
+    @PostMapping("/{id}/poster")
+    public Map<String, String> savePoster(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        fileService.saveVideoPoster(id, body.get("dataUrl"));
+        return Map.of("message", "封面已保存");
     }
 
     /** MinIO 预签名直链（设计文档 CDN/对象存储加速） */

@@ -75,7 +75,7 @@ function selectRate(rate: number) {
 .sheet-root {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 10100;
   display: flex;
   align-items: flex-end;
   justify-content: center;

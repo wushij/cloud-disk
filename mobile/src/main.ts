@@ -1,3 +1,7 @@
+import { warmBrandIconCache } from '@/utils/brandIconCache'
+
+void warmBrandIconCache()
+
 import { createSSRApp } from 'vue'
 import { createPinia } from 'pinia'
 import uviewPlus from 'uview-plus'

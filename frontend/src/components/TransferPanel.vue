@@ -9,6 +9,7 @@ import {
 } from '@/utils/transferCover'
 import { ElMessage } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
+import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 const transferStore = useTransferStore()
 const confirmDialog = useConfirmDialogStore()
@@ -32,6 +33,7 @@ interface FileIconInfo {
 
 const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']
 const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'flv', 'webm']
+const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz']
 
 function fileExt(name: string): string {
   return name.split('.').pop()?.toLowerCase() || ''
@@ -43,6 +45,10 @@ function isImageName(name: string): boolean {
 
 function isVideoName(name: string): boolean {
   return videoExts.includes(fileExt(name))
+}
+
+function isArchiveName(name: string): boolean {
+  return archiveExts.includes(fileExt(name))
 }
 
 function getFileIconInfo(name: string): FileIconInfo {
@@ -209,7 +215,7 @@ async function handleClearCompleted() {
             <div class="task-icon-area">
               <div
                 class="task-icon-box"
-                :class="{ 'has-cover': showCover(t) }"
+              :class="{ 'has-cover': showCover(t), archive: isArchiveName(t.name) }"
                 :style="{ background: getFileIconInfo(t.name).bg }"
               >
                 <img
@@ -219,6 +225,11 @@ async function handleClearCompleted() {
                   alt=""
                   @error="onCoverError(t)"
                 />
+              <FolderTypeIcon
+                v-else-if="isArchiveName(t.name)"
+                archive
+                :size="52"
+              />
                 <span v-else class="task-emoji">{{ getFileIconInfo(t.name).icon }}</span>
               </div>
               <span class="task-type-badge" :class="t.type" :title="t.type === 'upload' ? '上传' : '下载'">
@@ -296,7 +307,7 @@ async function handleClearCompleted() {
             <div class="task-icon-area">
               <div
                 class="task-icon-box small"
-                :class="{ 'has-cover': t.status !== 'error' && showCover(t) }"
+                :class="{ 'has-cover': t.status !== 'error' && showCover(t), archive: isArchiveName(t.name) }"
                 :style="{
                   background: t.status === 'error' ? 'rgba(239,68,68,0.08)' : getFileIconInfo(t.name).bg
                 }"
@@ -307,6 +318,11 @@ async function handleClearCompleted() {
                   class="task-cover-media"
                   alt=""
                   @error="onCoverError(t)"
+                />
+                <FolderTypeIcon
+                  v-else-if="t.status !== 'error' && isArchiveName(t.name)"
+                  archive
+                  :size="44"
                 />
                 <span v-else class="task-emoji">{{ t.status === 'error' ? '❌' : getFileIconInfo(t.name).icon }}</span>
               </div>
@@ -676,6 +692,11 @@ async function handleClearCompleted() {
 .task-icon-box.has-cover {
   background: transparent !important;
   border: 1px solid var(--cd-border-light, #e2e8f0);
+}
+
+.task-icon-box.archive {
+  background: transparent !important;
+  border: none;
 }
 
 .task-cover-media {

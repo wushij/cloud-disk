@@ -112,6 +112,20 @@ public class FileValidator {
         return sb.toString();
     }
 
+    private static boolean isImageExtension(String ext) {
+        return "jpg".equals(ext) || "jpeg".equals(ext) || "png".equals(ext)
+                || "gif".equals(ext) || "webp".equals(ext);
+    }
+
+  // 二进制媒体不做 HTML 脚本扫描，避免误伤视频/音频
+  private static boolean isBinaryMediaExtension(String ext) {
+        return Set.of(
+                "mp4", "mkv", "avi", "mov", "flv", "webm", "wmv",
+                "mp3", "wav", "flac", "aac", "ogg", "m4a",
+                "zip", "rar", "7z", "tar", "gz"
+        ).contains(ext);
+    }
+
     public void validateMagicBytes(String fileName, java.io.InputStream in) {
         if (in == null) {
             return;
@@ -156,24 +170,19 @@ public class FileValidator {
             }
         }
 
-        // 2. 强类型后缀魔数精准校验
-        if ("png".equals(ext) && !hex.startsWith("89504E47")) {
-            throw new BusinessException("文件内容与后缀不符，不是合法的 PNG 图片");
-        }
-        if (("jpg".equals(ext) || "jpeg".equals(ext)) && !hex.startsWith("FFD8FF")) {
-            throw new BusinessException("文件内容与后缀不符，不是合法的 JPEG 图片");
-        }
-        if ("gif".equals(ext) && !hex.startsWith("47494638")) {
-            throw new BusinessException("文件内容与后缀不符，不是合法的 GIF 图片");
-        }
-        if ("pdf".equals(ext) && !hex.startsWith("25504446")) {
+        // 2. 图片：按魔数识别真实格式，允许后缀与内容不一致（壁纸站常把 PNG/WebP 存为 .jpg）
+        if (isImageExtension(ext)) {
+            detectImageExtension(bis);
+        } else if ("pdf".equals(ext) && !hex.startsWith("25504446")) {
             throw new BusinessException("文件内容与后缀不符，不是合法的 PDF 文档");
-        }
-        if ("zip".equals(ext) && !hex.startsWith("504B0304")) {
+        } else if ("zip".equals(ext) && !hex.startsWith("504B0304")) {
             throw new BusinessException("文件内容与后缀不符，不是合法的 ZIP 压缩包");
         }
 
         // 3. 静态非脚本格式防 HTML/JS 脚本内容注入（防存储型 XSS）
+        if (isBinaryMediaExtension(ext)) {
+            return;
+        }
         String contentHeader = new String(header, 0, Math.min(read, 8)).toLowerCase(Locale.ROOT);
         if (contentHeader.contains("<h") || contentHeader.contains("<s") || contentHeader.contains("<!") || contentHeader.contains("<?")) {
             try {

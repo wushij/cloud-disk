@@ -1,6 +1,9 @@
 server:
   port: ${SERVER_PORT:8055}
   shutdown: graceful
+  tomcat:
+    # 大文件分片合并 + MD5 校验可能超过默认 20s
+    connection-timeout: 3600000
 
 spring:
   application:
