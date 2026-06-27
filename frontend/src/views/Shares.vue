@@ -10,6 +10,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 
 const activeTab = ref<'active' | 'expired'>('active')
+const brokenCoverIds = ref<number[]>([])
 
 function isExpired(row: ShareRow) {
   if (row.status === 0) return true
@@ -80,7 +81,32 @@ function isImageShare(row: ShareRow) {
   return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
 }
 
-function getShareImageUrl(row: ShareRow) {
+function isVideoShare(row: ShareRow) {
+  if (!row.fileId) return false
+  const name = row.fileName.toLowerCase()
+  const ext = name.split('.').pop() || ''
+  return ['mp4', 'mkv', 'avi', 'mov', 'flv', 'webm'].includes(ext)
+}
+
+function isCoverBroken(row: ShareRow) {
+  return !!row.fileId && brokenCoverIds.value.includes(row.fileId)
+}
+
+function markCoverBroken(row: ShareRow) {
+  if (!row.fileId || isCoverBroken(row)) return
+  brokenCoverIds.value = [...brokenCoverIds.value, row.fileId]
+}
+
+function shouldShowCover(row: ShareRow) {
+  if (!row.fileId || isCoverBroken(row)) return false
+  return isImageShare(row) || isVideoShare(row)
+}
+
+function getShareCoverUrl(row: ShareRow) {
+  if (!row.fileId) return ''
+  if (isVideoShare(row)) {
+    return mediaApiUrl(`/api/files/${row.fileId}/thumbnail`)
+  }
   return mediaApiUrl(`/api/files/${row.fileId}/preview`)
 }
 
@@ -227,8 +253,11 @@ onMounted(load)
           <el-table-column label="文件" min-width="220">
             <template #default="{ row }">
               <div class="cd-file-name">
-                <div v-if="isImageShare(row)" class="cd-share-cover-wrapper">
-                  <img :src="getShareImageUrl(row)" class="cd-share-cover" alt="" />
+                <div v-if="shouldShowCover(row)" class="cd-share-cover-wrapper">
+                  <img :src="getShareCoverUrl(row)" class="cd-share-cover" alt="" @error="markCoverBroken(row)" />
+                  <div v-if="isVideoShare(row)" class="cd-share-cover-play">
+                    <el-icon :size="16"><VideoPlay /></el-icon>
+                  </div>
                 </div>
                 <template v-else>
                   <FolderTypeIcon v-if="isFolder(row)" :size="24" />
@@ -410,6 +439,7 @@ onMounted(load)
 }
 
 .cd-share-cover-wrapper {
+  position: relative;
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -427,6 +457,16 @@ onMounted(load)
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.cd-share-cover-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.22);
 }
 
 /* ---- 空状态美化 ---- */

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { request, USER_KEY, NICKNAME_KEY, ROLE_KEY, uploadFile, fileApiUrl } from '@/api/http'
+import { useFileStore } from './file'
 import {
   getSessionBearer,
   setSessionBearer,
@@ -119,6 +120,7 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
     await fetchProfile()
     await refreshMediaToken()
+    useFileStore().reset()
   }
 
   async function register(
@@ -144,6 +146,7 @@ export const useAuthStore = defineStore('auth', () => {
     persist()
     await fetchProfile()
     await refreshMediaToken()
+    useFileStore().reset()
     return data
   }
 
@@ -191,6 +194,7 @@ export const useAuthStore = defineStore('auth', () => {
     uni.removeStorageSync('cd_has_avatar')
     clearAvatarThumb()
     clearMediaTokenCache()
+    useFileStore().reset()
   }
 
   async function logout() {

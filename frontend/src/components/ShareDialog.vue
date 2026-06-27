@@ -250,10 +250,10 @@ async function copyLink() {
 .cd-info-code {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px;
-  padding: 5px 12px;
+  padding: 5px 16px;
   background: var(--cd-bg-white);
   border: 1px solid var(--cd-border);
-  border-radius: var(--cd-radius-sm);
+  border-radius: var(--cd-radius-full, 999px);
   font-weight: 600;
   color: var(--cd-primary);
 }

@@ -30,6 +30,16 @@ export const useFileStore = defineStore('file', () => {
   const listInitialized = ref(false)
   const needsRefresh = ref(false)
 
+  function reset() {
+    currentFolderId.value = 0
+    breadcrumb.value = [{ id: 0, name: '全部文件' }]
+    items.value = []
+    keyword.value = ''
+    fileType.value = ''
+    listInitialized.value = false
+    needsRefresh.value = false
+  }
+
   function markListStale() {
     needsRefresh.value = true
   }
@@ -143,6 +153,7 @@ export const useFileStore = defineStore('file', () => {
     fileType,
     listInitialized,
     needsRefresh,
+    reset,
     markListStale,
     onTranscodeEvent,
     hasActiveTranscode,

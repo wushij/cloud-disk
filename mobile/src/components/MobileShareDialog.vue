@@ -401,9 +401,9 @@ function copyLink() {
   font-weight: 700;
   color: var(--cd-primary);
   background: #fff;
-  padding: 6rpx 16rpx;
+  padding: 6rpx 20rpx;
   border: 1rpx solid var(--cd-border);
-  border-radius: 8rpx;
+  border-radius: 999rpx;
 }
 
 .url-copy-box {

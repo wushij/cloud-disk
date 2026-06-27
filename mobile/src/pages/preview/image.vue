@@ -14,12 +14,16 @@ const loadError = ref('')
 onLoad(async (query) => {
   name.value = decodeURIComponent((query?.name as string) || '图片预览')
   const fileId = Number(query?.fileId || 0)
+  const rawUrl = decodeURIComponent((query?.url as string) || '')
+  const isShare = rawUrl.includes('/share/')
   try {
-    await ensureMediaToken()
+    if (!isShare) {
+      await ensureMediaToken()
+    }
     if (fileId > 0) {
       url.value = fileApiUrl(`/api/files/${fileId}/preview`)
     } else {
-      url.value = decodeURIComponent((query?.url as string) || '')
+      url.value = rawUrl
     }
   } catch {
     loadError.value = '图片加载失败，请返回后重试'

@@ -29,6 +29,16 @@ function isFolderShare(item: ShareItem) {
   return item.shareType === 'FOLDER' || !!item.folderId || (item.fileName || '').includes('（文件夹）')
 }
 
+function isArchiveShare(item: ShareItem) {
+  if (isFolderShare(item)) return false
+  const name = item.fileName || ''
+  if (!name) return false
+  const parts = name.split('.')
+  if (parts.length <= 1) return false
+  const ext = parts.pop()?.toLowerCase() || ''
+  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
+}
+
 function isTeamFolderShare(item: ShareItem) {
   return isFolderShare(item) && (item.fileName || '').includes('[团队]')
 }
@@ -47,9 +57,36 @@ function isImageShare(item: ShareItem) {
   return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
 }
 
-function getShareImageUrl(item: ShareItem) {
+function isVideoShare(item: ShareItem) {
+  if (isFolderShare(item)) return false
+  const name = item.fileName || ''
+  if (!name || !item.fileId) return false
+  const parts = name.split('.')
+  if (parts.length <= 1) return false
+  const ext = parts.pop()?.toLowerCase() || ''
+  return ['mp4', 'mkv', 'avi', 'mov', 'flv', 'webm'].includes(ext)
+}
+
+const brokenCovers = ref<Set<number>>(new Set())
+
+function markCoverBroken(item: ShareItem) {
+  if (!item.fileId) return
+  const next = new Set(brokenCovers.value)
+  next.add(item.fileId)
+  brokenCovers.value = next
+}
+
+function getShareCoverUrl(item: ShareItem) {
   if (!item.fileId) return ''
+  if (isVideoShare(item)) {
+    return fileApiUrl(`/api/files/${item.fileId}/thumbnail`)
+  }
   return fileApiUrl(`/api/files/${item.fileId}/preview`)
+}
+
+function shouldShowCover(item: ShareItem) {
+  if (!item.fileId || brokenCovers.value.has(item.fileId)) return false
+  return isImageShare(item) || isVideoShare(item)
 }
 
 function formatExpireTime(timeStr?: string) {
@@ -76,7 +113,7 @@ function getShareIcon(item: ShareItem) {
 }
 
 function getShareIconStyle(item: ShareItem) {
-  if (isFolderShare(item)) return {}
+  if (isFolderShare(item) || isArchiveShare(item)) return {}
 
   const name = item.fileName || ''
   const gradients = {
@@ -293,19 +330,27 @@ async function handleRemoveShareConfirm() {
           <view
             class="share-badge"
             :class="{
-              'is-folder': isFolderShare(item),
+              'is-folder': isFolderShare(item) || isArchiveShare(item),
               'is-team-folder': isTeamFolderShare(item)
             }"
             :style="getShareIconStyle(item)"
           >
-            <image
-              v-if="isImageShare(item)"
-              class="share-cover-img"
-              :src="getShareImageUrl(item)"
-              mode="aspectFill"
-            />
+            <template v-if="shouldShowCover(item)">
+              <image
+                class="share-cover-img"
+                :src="getShareCoverUrl(item)"
+                mode="aspectFill"
+                @error="markCoverBroken(item)"
+              />
+              <view v-if="isVideoShare(item)" class="share-play-badge">
+                <u-icon name="play-circle-fill" size="24" color="#fff" />
+              </view>
+            </template>
             <view v-else-if="isFolderShare(item)" class="share-folder-icon">
               <FolderTypeIcon :size="44" />
+            </view>
+            <view v-else-if="isArchiveShare(item)" class="share-folder-icon">
+              <FolderTypeIcon archive :size="44" />
             </view>
             <u-icon v-else :name="getShareIcon(item)" size="22" color="#fff" />
           </view>
@@ -490,6 +535,7 @@ async function handleRemoveShareConfirm() {
 }
 
 .share-badge {
+  position: relative;
   width: 112rpx;
   height: 112rpx;
   border-radius: 24rpx;
@@ -525,6 +571,15 @@ async function handleRemoveShareConfirm() {
   height: 100%;
   border-radius: 24rpx;
   background: var(--cd-bg-surface);
+}
+
+.share-play-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.18);
 }
 
 .share-main {
