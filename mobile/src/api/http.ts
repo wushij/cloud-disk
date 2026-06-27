@@ -1,8 +1,8 @@
-export const TOKEN_KEY = 'cd_token'
 export const USER_KEY = 'cd_username'
 export const NICKNAME_KEY = 'cd_nickname'
 export const ROLE_KEY = 'cd_role'
 
+import { getSessionBearer, setSessionBearer, clearLegacyToken } from '@/api/sessionAuth'
 import { mediaTokenQuery } from '@/utils/mediaToken'
 import { useAuthStore } from '@/stores/auth'
 
@@ -92,7 +92,7 @@ function getMessage(data: unknown, fallback: string, status?: number) {
 }
 
 export function request<T>(options: RequestOptions): Promise<T> {
-  const token = uni.getStorageSync(TOKEN_KEY)
+  const token = getSessionBearer()
   const header: Record<string, string> = {
     'Content-Type': 'application/json',
     ...options.header
@@ -114,7 +114,8 @@ export function request<T>(options: RequestOptions): Promise<T> {
             const authStore = useAuthStore()
             void authStore.logout()
           } catch (e) {
-            uni.removeStorageSync(TOKEN_KEY)
+            setSessionBearer(null)
+            clearLegacyToken()
             uni.removeStorageSync(USER_KEY)
             uni.removeStorageSync(NICKNAME_KEY)
             uni.removeStorageSync(ROLE_KEY)
@@ -155,7 +156,7 @@ export function uploadFile(options: {
   onProgress?: (ratio: number) => void
   onTaskCreated?: (task: UniApp.UploadTask) => void
 }): Promise<unknown> {
-  const token = uni.getStorageSync(TOKEN_KEY)
+  const token = getSessionBearer()
   return new Promise((resolve, reject) => {
     const task = uni.uploadFile({
       url: buildUrl(options.url),

@@ -7,6 +7,7 @@ import { useFileStore, type FileItem } from '@/stores/file'
 import { useTransferStore } from '@/stores/transfer'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
+import BrandMark from '@/components/BrandMark.vue'
 import MobileActionBar from '@/components/MobileActionBar.vue'
 import BreadcrumbBar from '@/components/BreadcrumbBar.vue'
 import FileListItem from '@/components/FileListItem.vue'
@@ -15,7 +16,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileShareDialog from '@/components/MobileShareDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
-import { fileApiUrl, TOKEN_KEY } from '@/api/http'
+import { fileApiUrl } from '@/api/http'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
 import { isTextFile } from '@/utils/filePreview'
 import { resolveFilePreviewUrl } from '@/utils/fileUrl'
@@ -527,8 +528,10 @@ async function chooseAndUpload() {
       title="我的云盘"
       :subtitle="pageSubtitle"
       gradient
-      icon-type="cloud"
     >
+      <template #left>
+        <BrandMark size="44rpx" />
+      </template>
       <template #right>
         <view class="header-action-group">
           <!-- 多选切换按钮 -->

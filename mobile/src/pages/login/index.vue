@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { validateRegisterUsername } from '@/utils/username'
 import { toCaptchaDataUrl } from '@/utils/captcha'
 
@@ -134,9 +135,7 @@ function onPendingDialogConfirm() {
     <view class="center-wrap">
       <view class="logo-float">
         <view class="logo-box">
-          <svg width="34" height="34" viewBox="0 0 1024 1024">
-            <path fill="#fff" d="M544 864V672h128L512 480 352 672h128v192H320v-1.6c-5.376.32-10.496 1.6-16 1.6A240 240 0 0 1 64 624c0-123.136 93.12-223.488 212.608-237.248A239.81 239.81 0 0 1 512 192a239.87 239.87 0 0 1 235.456 194.752c119.488 13.76 212.48 114.112 212.48 237.248a240 240 0 0 1-240 240c-5.376 0-10.56-1.28-16-1.6v1.6z" />
-          </svg>
+          <BrandMark size="68rpx" />
         </view>
       </view>
 
@@ -232,7 +231,7 @@ function onPendingDialogConfirm() {
             >
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
-              <line x1="4" y1="5" x2="20" y2="19" />
+              <line x1="3" y1="4" x2="21" y2="20" />
             </svg>
           </view>
         </view>
@@ -356,14 +355,13 @@ function onPendingDialogConfirm() {
   width: 112rpx;
   height: 112rpx;
   border-radius: 30rpx;
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow:
-    0 16rpx 48rpx rgba(15, 23, 42, 0.35),
-    0 4rpx 12rpx rgba(15, 23, 42, 0.2),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.12);
+    0 16rpx 48rpx rgba(15, 23, 42, 0.2),
+    0 4rpx 12rpx rgba(15, 23, 42, 0.12);
 }
 
 .card {

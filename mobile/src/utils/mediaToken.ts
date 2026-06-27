@@ -1,6 +1,5 @@
 import { ref } from 'vue'
-
-export const TOKEN_KEY = 'cd_token'
+import { getSessionBearer } from '@/api/sessionAuth'
 
 /** 供头像/预览等 URL 拼接；与 ensureMediaToken 同步更新 */
 export const mediaTokenRef = ref('')
@@ -40,7 +39,7 @@ export function clearMediaTokenCache() {
 export async function refreshMediaToken(): Promise<string> {
   if (!inflight) {
     inflight = new Promise<string>((resolve, reject) => {
-      const token = uni.getStorageSync(TOKEN_KEY)
+      const token = getSessionBearer()
       uni.request({
         url: buildAuthUrl('/api/auth/media-token'),
         method: 'GET',

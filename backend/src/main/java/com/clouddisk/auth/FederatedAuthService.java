@@ -15,11 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import com.clouddisk.cache.CacheService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.HashMap;
@@ -177,3 +175,4 @@ public class FederatedAuthService {
         return m;
     }
 }
+

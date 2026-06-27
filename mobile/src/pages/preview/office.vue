@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request, fileApiUrl, TOKEN_KEY } from '@/api/http'
+import { request, fileApiUrl } from '@/api/http'
 
 const fileId = ref(0)
 const name = ref('')

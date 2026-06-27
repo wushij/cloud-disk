@@ -1,4 +1,5 @@
-import { fileApiUrl, TOKEN_KEY } from '@/api/http'
+import { fileApiUrl } from '@/api/http'
+import { getSessionBearer } from '@/api/sessionAuth'
 
 /**
  * 移动端打包下载。
@@ -16,7 +17,7 @@ export function downloadZip(path: string) {
 }
 
 function h5Download(url: string) {
-  const token = uni.getStorageSync(TOKEN_KEY) || ''
+  const token = getSessionBearer() || ''
   fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   }).then(async (resp) => {

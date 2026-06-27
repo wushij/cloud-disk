@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 
 import ThemePicker from '@/components/ThemePicker.vue'
+import BrandMark from '@/components/BrandMark.vue'
 
 import { useTransferStore } from '@/stores/transfer'
 
@@ -583,11 +584,7 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
 
       <div class="cd-sidebar-logo">
 
-        <div class="cd-logo-icon">
-
-          <el-icon :size="24"><UploadFilled /></el-icon>
-
-        </div>
+        <BrandMark :size="24" class="cd-logo-icon" />
 
         <span class="cd-logo-text">CloudDisk Pro</span>
 

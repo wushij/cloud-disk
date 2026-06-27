@@ -13,7 +13,7 @@ const playbackRate = ref(1)
 const rateSheetVisible = ref(false)
 const isLandscapeFullscreen = ref(false)
 const isPlaying = ref(false)
-const isH5 = process.env.UNI_PLATFORM === 'h5'
+const isH5 = import.meta.env.UNI_PLATFORM === 'h5'
 
 onLoad((query) => {
   url.value = decodeURIComponent((query?.url as string) || '')

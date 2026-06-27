@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { request } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { fmtSize } from '@/utils/fileCover'
 import { globalStorageUsage, updateStorageUsage } from '@/utils/sharedState'
 
@@ -364,9 +365,7 @@ async function submitApply() {
       <view class="about-mask" @click="aboutVisible = false" />
       <view class="about-panel cd-scale-in" @click.stop>
         <view class="about-logo">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="#ffffff"/>
-          </svg>
+          <BrandMark size="48rpx" />
         </view>
         <text class="about-name">CloudDisk Pro</text>
         <text class="about-version">版本 v1.2.0</text>
@@ -836,11 +835,11 @@ async function submitApply() {
   width: 96rpx;
   height: 96rpx;
   border-radius: 28rpx;
-  background: linear-gradient(135deg, #010710 0%, #1e293b 100%);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(1, 7, 16, 0.25);
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
   margin-bottom: 28rpx;
 }
 

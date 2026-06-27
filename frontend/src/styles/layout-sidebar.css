@@ -22,15 +22,9 @@
 }
 
 .layout-sidebar .cd-logo-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--cd-radius);
-  background: var(--theme-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 2px 8px var(--theme-primary-muted-strong);
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 .layout-sidebar .cd-logo-text {

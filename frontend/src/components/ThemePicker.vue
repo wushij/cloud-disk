@@ -46,8 +46,8 @@ function onHexInput(val: string) {
     popper-class="theme-picker-popper"
   >
     <template #reference>
-      <el-button class="cd-header-btn theme-picker-trigger" circle title="外观主题">
-        <img src="/theme-brand-icon.png" alt="" class="theme-brand-icon" />
+      <el-button class="cd-header-btn theme-picker-trigger" title="外观主题">
+        <img src="/theme-brand-icon-transparent.png" alt="" class="theme-brand-icon" />
       </el-button>
     </template>
 
@@ -101,13 +101,16 @@ function onHexInput(val: string) {
 .theme-picker-trigger {
   width: 36px !important;
   height: 36px !important;
+  min-width: 36px !important;
   border: none !important;
+  border-radius: 10px !important;
   color: #111827 !important;
   transition: var(--cd-transition-fast);
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
+  background: transparent !important;
 }
 
 .theme-picker-trigger:hover {
@@ -116,8 +119,8 @@ function onHexInput(val: string) {
 }
 
 .theme-brand-icon {
-  width: 32px;
-  height: 32px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   display: block;
   pointer-events: none;

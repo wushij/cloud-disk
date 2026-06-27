@@ -25,7 +25,6 @@ import com.clouddisk.util.MediaResponseHeaders;
 import com.clouddisk.mapper.UserMapper;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 
 import lombok.RequiredArgsConstructor;

@@ -2,7 +2,8 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Cloudy, Connection, Link } from '@element-plus/icons-vue'
+import { User, Lock, Connection, Link } from '@element-plus/icons-vue'
+import BrandMark from '@/components/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -198,7 +199,7 @@ onMounted(() => {
       <section class="auth-brand">
         <div class="auth-brand-inner">
           <div class="auth-logo">
-            <el-icon :size="30"><Cloudy /></el-icon>
+            <BrandMark :size="40" />
           </div>
           <h1>CloudDisk Pro</h1>
           <p class="auth-brand-desc">企业级智能云盘 · 安全存储 · 高效协作</p>
@@ -278,8 +279,8 @@ onMounted(() => {
                   <svg
                     v-if="showPassword"
                     viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
+                    width="15"
+                    height="15"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.75"
@@ -293,8 +294,8 @@ onMounted(() => {
                   <svg
                     v-else
                     viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
+                    width="15"
+                    height="15"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.75"
@@ -304,7 +305,7 @@ onMounted(() => {
                   >
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
-                    <line x1="4" y1="5" x2="20" y2="19" />
+                    <line x1="3" y1="4" x2="21" y2="20" />
                   </svg>
                 </button>
               </template>
@@ -452,55 +453,27 @@ onMounted(() => {
   -webkit-backdrop-filter: blur(20px);
 }
 
-/* ---- 左侧品牌 ---- */
+/* ---- 左侧品牌（与移动端「我的」顶部 hero 粉色调一致） ---- */
 .auth-brand {
   position: relative;
   padding: 48px 40px;
-  background: linear-gradient(135deg, rgba(9, 13, 26, 0.88) 0%, rgba(17, 24, 39, 0.9) 50%, rgba(30, 27, 75, 0.92) 100%);
-  color: #fff;
+  background: rgba(255, 251, 251, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  color: #0f172a;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
   overflow: hidden;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(240, 212, 212, 0.72);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.6);
 }
 
-.auth-brand-deco-1 {
-  position: absolute;
-  top: -50px;
-  left: -50px;
-  width: 280px;
-  height: 280px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
-  filter: blur(40px);
-  pointer-events: none;
-  animation: orbPulseA 12s ease-in-out infinite alternate;
-}
-
+.auth-brand-deco-1,
 .auth-brand-deco-2 {
-  position: absolute;
-  right: -80px;
-  bottom: -80px;
-  width: 320px;
-  height: 320px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, transparent 70%);
-  filter: blur(50px);
-  pointer-events: none;
-  animation: orbPulseB 12s ease-in-out infinite alternate;
-}
-
-@keyframes orbPulseA {
-  0% { transform: scale(1) translate(0, 0); opacity: 0.7; }
-  100% { transform: scale(1.15) translate(20px, 20px); opacity: 0.9; }
-}
-
-@keyframes orbPulseB {
-  0% { transform: scale(1.15) translate(0, 0); opacity: 0.8; }
-  100% { transform: scale(0.9) translate(-30px, -20px); opacity: 0.6; }
+  display: none;
 }
 
 .auth-brand-inner {
@@ -516,16 +489,15 @@ onMounted(() => {
   width: 64px;
   height: 64px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-  color: #93c5fd;
+  border: 1px solid rgba(240, 212, 212, 0.72);
+  box-shadow:
+    0 6px 28px rgba(239, 68, 68, 0.08),
+    0 2px 10px rgba(239, 68, 68, 0.05);
   animation: gentleFloat 4s ease-in-out infinite;
 }
 
@@ -535,18 +507,14 @@ onMounted(() => {
   font-weight: 800;
   letter-spacing: -0.5px;
   line-height: 1.2;
-  background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  color: #0f172a;
 }
 
 .auth-brand-desc {
   margin: 0 0 40px;
   font-size: 15px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   letter-spacing: 0.5px;
 }
 
@@ -560,59 +528,53 @@ onMounted(() => {
   width: 100%;
   max-width: 290px;
   align-items: stretch;
+  counter-reset: feature;
 }
 
 .auth-features li {
   position: relative;
   padding: 12px 16px 12px 42px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(240, 212, 212, 0.55);
+  border-radius: 999px;
   line-height: 1.5;
   text-align: left;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.05);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  counter-increment: feature;
 }
 
 .auth-features li:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(240, 212, 212, 0.72);
   transform: translateY(-2px);
-  box-shadow: 
-    0 12px 28px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-  color: #ffffff;
+  box-shadow:
+    0 6px 28px rgba(239, 68, 68, 0.08),
+    0 2px 10px rgba(239, 68, 68, 0.05);
+  color: #0f172a;
 }
 
 .auth-features li::before {
-  content: '✓';
+  content: counter(feature);
   position: absolute;
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(79, 124, 255, 0.2), rgba(168, 85, 247, 0.2));
-  color: #3b82f6;
+  background: #ffffff;
+  border: 1.5px solid rgba(240, 212, 212, 0.85);
+  color: #0f172a;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
-  transition: transform 0.3s ease;
-}
-
-.auth-features li:hover::before {
-  transform: translateY(-50%) scale(1.1) rotate(360deg);
-  color: #818cf8;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.06);
 }
 
 /* ---- 右侧表单 ---- */
@@ -620,7 +582,7 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  padding: 64px 40px 36px;
+  padding: 80px 40px 36px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -735,8 +697,8 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   margin-right: -2px;
   border: none;
   border-radius: 50%;

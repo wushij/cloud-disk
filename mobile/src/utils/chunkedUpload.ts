@@ -1,10 +1,11 @@
-import { request, uploadFile, TOKEN_KEY, buildUrl } from '@/api/http'
+import { request, uploadFile, buildUrl } from '@/api/http'
+import { getSessionBearer } from '@/api/sessionAuth'
 
 const MB = 1024 * 1024
 const SIMPLE_MAX = 8 * MB
 const CHUNK_SIZE = 4 * MB
 const CONCURRENCY = 2
-const isH5 = process.env.UNI_PLATFORM === 'h5'
+const isH5 = import.meta.env.UNI_PLATFORM === 'h5'
 
 interface UploadResult {
   instant?: boolean
@@ -77,7 +78,7 @@ function uploadSimpleFileH5(
 
       const xhr = new XMLHttpRequest()
       xhr.open('POST', buildUrl('/api/files/simple'))
-      const token = uni.getStorageSync(TOKEN_KEY)
+      const token = getSessionBearer()
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
       const onAbort = () => {
@@ -127,7 +128,7 @@ function uploadChunkXHR(
     fd.append('uploadId', uploadId)
     fd.append('chunkIndex', String(index))
     fd.append('file', slice, `part-${index}`)
-    const token = uni.getStorageSync(TOKEN_KEY)
+    const token = getSessionBearer()
     const xhr = new XMLHttpRequest()
     xhr.open('POST', buildUrl('/api/upload/chunk'))
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)

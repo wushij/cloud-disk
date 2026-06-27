@@ -1,4 +1,4 @@
-import { TOKEN_KEY } from '@/api/http'
+import { getSessionBearer } from '@/api/sessionAuth'
 import { ensureMediaToken } from '@/utils/mediaToken'
 
 const MEMORY = new Map<number, string>()
@@ -56,7 +56,7 @@ function blobToThumbDataUrl(blob: Blob, size = 200): Promise<string> {
 
 async function fetchCoverBlobH5(url: string): Promise<Blob> {
   await ensureMediaToken()
-  const token = uni.getStorageSync(TOKEN_KEY)
+  const token = getSessionBearer()
   const res = await fetch(url, {
     credentials: 'include',
     headers: token ? { Authorization: `Bearer ${token}` } : {}

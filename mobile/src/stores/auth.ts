@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { request, TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, uploadFile, fileApiUrl } from '@/api/http'
+import { request, USER_KEY, NICKNAME_KEY, ROLE_KEY, uploadFile, fileApiUrl } from '@/api/http'
+import {
+  getSessionBearer,
+  setSessionBearer,
+  migrateLegacySessionToken,
+  clearLegacyToken
+} from '@/api/sessionAuth'
 import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken, mediaTokenRef } from '@/utils/mediaToken'
 import {
   loadAvatarThumb,
@@ -41,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function restore() {
-    token.value = uni.getStorageSync(TOKEN_KEY) || null
+    token.value = getSessionBearer() || migrateLegacySessionToken()
     username.value = uni.getStorageSync(USER_KEY) || null
     nickname.value = uni.getStorageSync(NICKNAME_KEY) || null
     role.value = uni.getStorageSync(ROLE_KEY) || null
@@ -54,8 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function persist() {
-    if (token.value) uni.setStorageSync(TOKEN_KEY, token.value)
-    else uni.removeStorageSync(TOKEN_KEY)
+    setSessionBearer(token.value)
     if (username.value) uni.setStorageSync(USER_KEY, username.value)
     else uni.removeStorageSync(USER_KEY)
     if (nickname.value) uni.setStorageSync(NICKNAME_KEY, nickname.value)
@@ -185,7 +190,8 @@ export const useAuthStore = defineStore('auth', () => {
     hasAvatar.value = false
     avatarVersion.value = 0
     avatarCachedSrc.value = ''
-    uni.removeStorageSync(TOKEN_KEY)
+    setSessionBearer(null)
+    clearLegacyToken()
     uni.removeStorageSync(USER_KEY)
     uni.removeStorageSync(NICKNAME_KEY)
     uni.removeStorageSync(ROLE_KEY)

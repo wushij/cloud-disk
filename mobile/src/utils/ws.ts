@@ -1,4 +1,4 @@
-import { request, TOKEN_KEY } from '@/api/http'
+import { request } from '@/api/http'
 
 export type WsMessage = {
   type?: string
