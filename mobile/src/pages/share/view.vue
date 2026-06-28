@@ -320,7 +320,8 @@ function onSheetSelect(item: { name: string }) {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 

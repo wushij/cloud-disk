@@ -395,6 +395,7 @@ async function handleRemoveShareConfirm() {
           </template>
         </view>
       </view>
+      <view v-if="displayedList.length" class="scroll-bottom-spacer" />
     </scroll-view>
 
     <MobileTabBar active="shares" />
@@ -421,14 +422,18 @@ async function handleRemoveShareConfirm() {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
-  padding-bottom: calc(var(--cd-tab-height) + env(safe-area-inset-bottom));
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 
 .scroll {
   height: calc(100vh - 300rpx);
   padding: 4rpx 0 24rpx;
+}
+
+.scroll-bottom-spacer {
+  height: calc(var(--cd-tab-height) + env(safe-area-inset-bottom) + 32rpx);
 }
 
 .share-card {

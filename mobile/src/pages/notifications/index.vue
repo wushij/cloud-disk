@@ -746,7 +746,8 @@ onUnload(() => {
 
 <style lang="scss" scoped>
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
   padding-bottom: calc(env(safe-area-inset-bottom) + 24rpx);
 }

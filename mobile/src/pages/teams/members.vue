@@ -385,8 +385,8 @@ async function confirmRemove() {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
-  padding-bottom: calc(env(safe-area-inset-bottom) + 20rpx);
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 

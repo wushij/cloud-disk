@@ -392,6 +392,7 @@ onUnmounted(() => {
           </view>
         </view>
       </view>
+      <view v-if="teams.length" class="scroll-bottom-spacer" />
     </scroll-view>
 
     <u-action-sheet
@@ -437,8 +438,8 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
-  padding-bottom: calc(var(--cd-tab-height) + env(safe-area-inset-bottom) + 20rpx);
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 
@@ -463,6 +464,10 @@ onUnmounted(() => {
 
 .content-scroll {
   height: calc(100vh - 260rpx);
+}
+
+.scroll-bottom-spacer {
+  height: calc(var(--cd-tab-height) + env(safe-area-inset-bottom) + 28rpx);
 }
 
 .state-box {

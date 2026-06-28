@@ -216,6 +216,7 @@ async function handleClearAllConfirm() {
           </view>
         </view>
       </view>
+      <view v-if="list.length" class="scroll-bottom-spacer" />
     </scroll-view>
 
     <MobileConfirmDialog
@@ -248,7 +249,8 @@ async function handleClearAllConfirm() {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   padding-bottom: calc(env(safe-area-inset-bottom) + 24rpx);
   background: var(--cd-bg);
 }
@@ -256,6 +258,10 @@ async function handleClearAllConfirm() {
 .scroll {
   height: calc(100vh - 200rpx);
   padding: 4rpx 0 24rpx;
+}
+
+.scroll-bottom-spacer {
+  height: calc(env(safe-area-inset-bottom) + 32rpx);
 }
 
 .header-action-btn {
