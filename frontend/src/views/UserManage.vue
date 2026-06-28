@@ -535,7 +535,7 @@ onMounted(async () => {
         </div>
       </template>
 
-      <p class="cd-quota-hint">重置后，该用户的所有在线登录会话将<strong>立即强制失效</strong>，需重新输入新密码进行登录。</p>
+      <p class="cd-quota-hint">重置后，该用户将被强制下线，需用新密码重新登录。</p>
       <div class="cd-quota-field pwd-field">
         <el-input
           v-model="pwdInput"

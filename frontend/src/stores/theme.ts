@@ -15,7 +15,7 @@ const CUSTOM_COLOR_KEY = 'cd_theme_custom_color'
 
 export const useThemeStore = defineStore('theme', () => {
   const presetId = ref<ThemeSelection>(DEFAULT_THEME_ID)
-  const customColor = ref('#010710')
+  const customColor = ref('#E89696')
 
   const currentPrimary = computed(() => {
     if (presetId.value === 'custom') return customColor.value
@@ -33,8 +33,15 @@ export const useThemeStore = defineStore('theme', () => {
         return
       }
     }
-    const id = saved && THEME_PRESETS.some((p) => p.id === saved) ? (saved as ThemePresetId) : DEFAULT_THEME_ID
+    const normalized = saved === 'ocean' ? 'blush' : saved
+    const id =
+      normalized && THEME_PRESETS.some((p) => p.id === normalized)
+        ? (normalized as ThemePresetId)
+        : DEFAULT_THEME_ID
     setPreset(id)
+    if (saved === 'ocean') {
+      localStorage.setItem(STORAGE_KEY, 'blush')
+    }
   }
 
   function setPreset(id: ThemePresetId) {

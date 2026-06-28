@@ -1153,7 +1153,7 @@ onUnmounted(() => {
 
     <!-- 邀请成员 -->
     <el-dialog v-model="inviteVisible" title="邀请成员" width="420px" destroy-on-close>
-      <p class="cd-dialog-desc">输入对方登录用户名即可邀请加入团队，对方确认后才会加入</p>
+      <p class="cd-dialog-desc">输入对方用户名即可邀请加入团队，对方确认后才会加入</p>
       <el-input
         v-model="inviteUsername"
         placeholder="请输入被邀请人的用户名"
@@ -1161,7 +1161,7 @@ onUnmounted(() => {
       />
       <div style="margin-top: 12px">
         <div class="cd-dialog-desc" style="margin-bottom: 8px">成员角色</div>
-        <el-select v-model="inviteRole" style="width: 100%">
+        <el-select v-model="inviteRole" class="cd-invite-role-select">
           <el-option label="成员（可上传/管理自己的文件）" value="MEMBER" />
           <el-option label="只读成员（仅浏览下载）" value="VIEWER" />
           <el-option label="管理员（可管理成员与全部文件）" value="ADMIN" />
@@ -1210,9 +1210,6 @@ onUnmounted(() => {
     >
       <div class="cd-member-shell">
         <div v-if="membersContext" class="cd-member-hero-card">
-          <button type="button" class="cd-member-close" aria-label="关闭" @click="showMembers = false">
-            <el-icon :size="16"><Close /></el-icon>
-          </button>
           <div class="cd-member-hero-top">
             <div
               class="cd-member-team-avatar"
@@ -1267,8 +1264,8 @@ onUnmounted(() => {
               <el-select
                 v-if="canManageMembers && member.role !== 'OWNER' && member.username !== auth.username"
                 :model-value="member.role"
+                class="cd-member-role-select"
                 size="small"
-                style="width: 112px"
                 @change="(val: string) => updateMemberRole(member, val)"
               >
                 <el-option label="只读" value="VIEWER" />
@@ -1716,6 +1713,39 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--theme-bg) 55%, #fff);
 }
 
+.cd-member-drawer :deep(.el-drawer__header) {
+  margin-bottom: 0;
+  padding: 18px 18px 10px;
+}
+
+.cd-member-drawer :deep(.el-drawer__headerbtn) {
+  top: 18px;
+  right: 18px;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  border: 1px solid var(--cd-border) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--cd-text-secondary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  box-shadow: var(--cd-shadow-xs);
+  transition: var(--cd-transition-fast);
+}
+
+.cd-member-drawer :deep(.el-drawer__headerbtn:hover) {
+  color: var(--cd-text-primary) !important;
+  border-color: color-mix(in srgb, var(--theme-primary) 22%, var(--cd-border)) !important;
+  background: #fff !important;
+}
+
+.cd-member-drawer :deep(.el-drawer__close-btn) {
+  font-size: 18px !important;
+}
+
 .cd-member-shell {
   display: flex;
   flex-direction: column;
@@ -1733,34 +1763,10 @@ onUnmounted(() => {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
-.cd-member-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--cd-border-light);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--cd-text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: var(--cd-transition-fast);
-}
-
-.cd-member-close:hover {
-  color: var(--cd-text-primary);
-  border-color: var(--cd-border);
-  background: #fff;
-}
-
 .cd-member-hero-top {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding-right: 36px;
 }
 
 .cd-member-team-avatar {
@@ -1921,16 +1927,49 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.cd-member-role-select {
+  width: 112px;
+  flex-shrink: 0;
+}
+
+.cd-member-role-select :deep(.el-select__wrapper) {
+  border-radius: 999px !important;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  box-shadow: 0 0 0 1px var(--cd-border) inset !important;
+  background: #fff;
+}
+
+.cd-member-role-select :deep(.el-select__selected-item) {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cd-invite-role-select {
+  width: 100%;
+}
+
+.cd-invite-role-select :deep(.el-select__wrapper) {
+  border-radius: 999px !important;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 14px;
+  box-shadow: 0 0 0 1px var(--cd-border) inset !important;
+  background: #fff;
+}
+
 .cd-member-remove-btn {
-  padding: 5px 12px;
+  padding: 5px 14px;
   border: 1px solid rgba(239, 68, 68, 0.18);
-  border-radius: 8px;
+  border-radius: 999px;
   background: rgba(254, 242, 242, 0.9);
   color: var(--cd-danger);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   transition: var(--cd-transition-fast);
+  white-space: nowrap;
 }
 
 .cd-member-remove-btn:hover {

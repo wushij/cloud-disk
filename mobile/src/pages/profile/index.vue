@@ -131,7 +131,8 @@ async function submitApply() {
     return
   }
   const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
-  if (usage.value && quotaBytes <= usage.value.quotaBytes) {
+  const currentQuota = usage.value?.quotaBytes
+  if (currentQuota != null && quotaBytes <= currentQuota) {
     uni.showToast({ title: '申请配额必须大于当前配额', icon: 'none' })
     return
   }
@@ -270,10 +271,11 @@ async function submitApply() {
 
       <!-- 传输列表 -->
       <view class="menu-item cd-pressable" @click="goTransfer">
-        <view class="menu-icon-box orange">
-          <!-- 📥 传输 -->
+        <view class="menu-icon-box cyan">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" fill="#f97316"/>
+            <circle cx="12" cy="12" r="10" stroke="#0891b2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M6.5 11L9 8.5L11.5 11M9 8.5V16.5" stroke="#0891b2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M12.5 13.5L15 16L17.5 13.5M15 8V16" stroke="#0891b2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </view>
         <view class="menu-body">
@@ -727,6 +729,10 @@ async function submitApply() {
 
 .menu-icon-box.orange {
   background: rgba(249, 115, 22, 0.08);
+}
+
+.menu-icon-box.cyan {
+  background: rgba(8, 145, 178, 0.08);
 }
 
 .menu-icon-box.violet {

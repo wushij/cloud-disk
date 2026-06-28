@@ -764,8 +764,10 @@ async function chooseAndUpload() {
 
 <style scoped lang="scss">
 .disk-page {
-  min-height: 100vh;
-  padding-bottom: var(--cd-page-bottom);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 
@@ -818,7 +820,7 @@ async function chooseAndUpload() {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16rpx;
-  padding: 16rpx 24rpx 48rpx;
+  padding: 16rpx 24rpx calc(var(--cd-page-bottom) + 48rpx);
 }
 
 .file-grid-item {
@@ -830,7 +832,7 @@ async function chooseAndUpload() {
 /* ============ 列表视图 ============ */
 .file-list {
   padding-top: 8rpx;
-  padding-bottom: 48rpx;
+  padding-bottom: calc(var(--cd-page-bottom) + 48rpx);
 }
 
 /* ============ 加载状态 ============ */

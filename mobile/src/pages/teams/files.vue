@@ -749,8 +749,8 @@ function previewOffice(row: FileItem) {
 
 <style scoped lang="scss">
 .page {
-  min-height: 100vh;
-  padding-bottom: calc(env(safe-area-inset-bottom) + 20rpx);
+  height: 100vh;
+  overflow: hidden;
   background: var(--cd-bg);
 }
 
@@ -766,7 +766,7 @@ function previewOffice(row: FileItem) {
 
 .file-list {
   padding-top: 4rpx;
-  padding-bottom: 32rpx;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 32rpx);
 }
 
 .more-btn {

@@ -1,10 +1,10 @@
 export type ThemePresetId =
   | 'slate'
   | 'indigo'
-  | 'ocean'
   | 'teal'
   | 'emerald'
   | 'amber'
+  | 'blush'
   | 'rose'
   | 'violet'
 
@@ -40,15 +40,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     sidebarBg: '#ffffff'
   },
   {
-    id: 'ocean',
-    label: '海蓝',
-    primary: '#2563eb',
-    primaryHover: '#1d4ed8',
-    primaryActive: '#1e40af',
-    bg: '#eff6ff',
-    sidebarBg: '#ffffff'
-  },
-  {
     id: 'teal',
     label: '青绿',
     primary: '#0d9488',
@@ -76,6 +67,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     sidebarBg: '#ffffff'
   },
   {
+    id: 'blush',
+    label: '淡粉',
+    primary: '#E89696',
+    primaryHover: '#DC8585',
+    primaryActive: '#CF7575',
+    bg: '#fffbfb',
+    sidebarBg: '#ffffff'
+  },
+  {
     id: 'rose',
     label: '玫红',
     primary: '#e11d48',
@@ -95,7 +95,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   }
 ]
 
-export const DEFAULT_THEME_ID: ThemePresetId = 'slate'
+export const DEFAULT_THEME_ID: ThemePresetId = 'blush'
 
 const THEME_MAP = Object.fromEntries(THEME_PRESETS.map((p) => [p.id, p])) as Record<
   ThemePresetId,
@@ -122,7 +122,7 @@ function rgbToHex(r: number, g: number, b: number) {
   )
 }
 
-export function normalizeHex(input: string, fallback = '#010710') {
+export function normalizeHex(input: string, fallback = '#E89696') {
   let hex = input.trim()
   if (!hex.startsWith('#')) hex = `#${hex}`
   if (/^#[0-9a-fA-F]{3}$/.test(hex)) {

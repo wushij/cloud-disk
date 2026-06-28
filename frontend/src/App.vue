@@ -4,13 +4,13 @@
 
 <style>
 :root {
-  /* 默认主题：石墨 slate */
-  --theme-primary: #010710;
-  --theme-primary-hover: #0f1a2e;
-  --theme-primary-active: #000000;
-  --theme-primary-muted: rgba(1, 7, 16, 0.08);
-  --theme-primary-muted-strong: rgba(1, 7, 16, 0.14);
-  --theme-bg: #f3f5f8;
+  /* 默认主题：淡粉 blush */
+  --theme-primary: #E89696;
+  --theme-primary-hover: #DC8585;
+  --theme-primary-active: #CF7575;
+  --theme-primary-muted: rgba(232, 150, 150, 0.08);
+  --theme-primary-muted-strong: rgba(232, 150, 150, 0.14);
+  --theme-bg: #fffbfb;
   --theme-sidebar-bg: #ffffff;
   --theme-text-base: #1e293b;
   --theme-text-secondary: #64748b;

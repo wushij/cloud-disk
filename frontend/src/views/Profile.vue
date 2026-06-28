@@ -492,7 +492,9 @@ async function save() {
 
 .profile-form :deep(.el-input__wrapper) {
   height: 42px;
-  border-radius: 10px !important;
+  border-radius: var(--cd-radius-full) !important;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 .profile-form-actions {
@@ -504,7 +506,8 @@ async function save() {
 .profile-form-actions .el-button {
   min-width: 148px;
   height: 42px !important;
-  border-radius: 10px !important;
+  padding: 0 28px;
+  border-radius: var(--cd-radius-full) !important;
 }
 
 @media (max-width: 900px) {

@@ -37,6 +37,8 @@ const pendingInviteUsername = ref('')
 const avatarBroken = ref<Record<number, boolean>>({})
 const removeVisible = ref(false)
 const removeTarget = ref<TeamMember | null>(null)
+const memberActionVisible = ref(false)
+const actionTarget = ref<TeamMember | null>(null)
 
 const canInvite = computed(() => myRole.value === 'OWNER' || myRole.value === 'ADMIN')
 
@@ -123,6 +125,27 @@ function memberInitial(member: TeamMember) {
   return memberDisplayName(member).charAt(0).toUpperCase()
 }
 
+function canManageMember(member: TeamMember) {
+  return member.role !== 'OWNER' && canInvite.value && member.username !== auth.username
+}
+
+const memberActionTitle = computed(() => {
+  if (!actionTarget.value) return '成员操作'
+  return `管理 ${memberDisplayName(actionTarget.value)}`
+})
+
+const memberActionList = computed(() => {
+  const member = actionTarget.value
+  if (!member) return [] as { name: string; key: string; color?: string }[]
+
+  const list: { name: string; key: string; color?: string }[] = []
+  if (member.role !== 'ADMIN') list.push({ key: 'ADMIN', name: '设为管理员' })
+  if (member.role !== 'MEMBER') list.push({ key: 'MEMBER', name: '设为成员' })
+  if (member.role !== 'VIEWER') list.push({ key: 'VIEWER', name: '设为只读成员' })
+  list.push({ key: 'remove', name: '移除成员', color: '#ef4444' })
+  return list
+})
+
 function memberAvatarSrc(member: TeamMember) {
   if (avatarBroken.value[member.userId]) return ''
   const hasAvatar = member.hasAvatar ?? !!member.avatar
@@ -188,6 +211,37 @@ async function confirmSubmitInvite() {
 function removeMember(member: TeamMember) {
   removeTarget.value = member
   removeVisible.value = true
+}
+
+function openMemberActions(member: TeamMember) {
+  if (!canManageMember(member)) return
+  actionTarget.value = member
+  memberActionVisible.value = true
+}
+
+async function updateMemberRole(member: TeamMember, role: string) {
+  try {
+    await request({
+      url: `/api/teams/${spaceId.value}/members/${member.userId}/role`,
+      method: 'PUT',
+      data: { role }
+    })
+    uni.showToast({ title: '成员角色已更新', icon: 'success' })
+    await loadMembers()
+  } catch {
+    /* handled */
+  }
+}
+
+async function onMemberActionSelect(item: { key?: string; name: string }) {
+  const member = actionTarget.value
+  memberActionVisible.value = false
+  if (!member || !item.key) return
+  if (item.key === 'remove') {
+    removeMember(member)
+    return
+  }
+  await updateMemberRole(member, item.key)
 }
 
 async function confirmRemove() {
@@ -268,16 +322,27 @@ async function confirmRemove() {
               <text>{{ roleLabel(member.role) }}</text>
             </view>
             <view
-              v-if="member.role !== 'OWNER' && canInvite && member.username !== auth.username"
-              class="remove-action cd-pressable"
-              @click="removeMember(member)"
+              v-if="canManageMember(member)"
+              class="manage-action cd-pressable"
+              @click="openMemberActions(member)"
             >
-              <text class="remove-action-text">移除</text>
+              <u-icon name="setting" size="16" color="var(--cd-text-secondary)" />
+              <text class="manage-action-text">管理</text>
             </view>
           </view>
         </view>
       </view>
     </scroll-view>
+
+    <u-action-sheet
+      :show="memberActionVisible"
+      :actions="memberActionList"
+      :title="memberActionTitle"
+      cancel-text="取消"
+      round="16"
+      @close="memberActionVisible = false"
+      @select="onMemberActionSelect"
+    />
 
     <MobilePromptDialog
       v-model:show="inviteVisible"
@@ -493,6 +558,29 @@ async function confirmRemove() {
   border-radius: var(--cd-radius-full);
   font-size: 18rpx;
   font-weight: 700;
+}
+
+.manage-action {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: var(--cd-radius-full);
+  background: #f8fafc;
+  border: 1rpx solid var(--cd-border);
+  box-shadow: var(--cd-shadow-xs);
+  transition: all var(--cd-transition-fast);
+}
+
+.manage-action:active {
+  transform: scale(0.95);
+  background: #f1f5f9;
+}
+
+.manage-action-text {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: var(--cd-text-secondary);
 }
 
 .remove-action {
