@@ -17,7 +17,7 @@ import type { FileItem } from '@/stores/file'
 import { useTransferStore, promptCreateFolder } from '@/stores/transfer'
 import { connectUploadWs, disconnectUploadWs } from '@/utils/ws'
 import { bumpTeamAvatarVersion, getTeamAvatarVersion } from '@/utils/teamAvatar'
-import { downloadZip } from '@/utils/download'
+import { buildZipDisplayName, buildZipDownloadUrl } from '@/utils/download'
 import CachedEntityAvatar from '@/components/CachedEntityAvatar.vue'
 import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
 import {
@@ -97,10 +97,10 @@ function handleBatchDownload() {
   const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
   const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
   if (folders.length === 0 && files.length === 0) return
-  const params: string[] = []
-  if (folders.length > 0) params.push(`folderIds=${folders.join(',')}`)
-  if (files.length > 0) params.push(`fileIds=${files.join(',')}`)
-  downloadZip(`/api/files/download/zip?${params.join('&')}`)
+  transferStore.addZipDownloadTask(
+    buildZipDownloadUrl(folders, files),
+    buildZipDisplayName(selectedItems.value)
+  )
 }
 
 async function handleBatchDelete() {
@@ -533,7 +533,10 @@ function backToList() {
 
 function downloadFile(row: FileItem) {
   if (row.type === 'folder') {
-    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
+    transferStore.addZipDownloadTask(
+      buildZipDownloadUrl([row.id], []),
+      `${row.name}.zip`
+    )
     return
   }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)

@@ -6,6 +6,8 @@ import { fileApiUrl, tokenQuery } from '@/api/http'
 import { loadCoverThumb } from '@/utils/coverCache'
 import EmptyState from '@/components/EmptyState.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import TransferTaskIcon from '@/components/TransferTaskIcon.vue'
+import { fileTypeKindFromName } from '@/utils/fileType'
 
 const transferStore = useTransferStore()
 const { tasks } = storeToRefs(transferStore)
@@ -69,58 +71,16 @@ function fmtSize(bytes?: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-interface FileIconInfo {
-  emoji: string
-  bg: string
-}
-
-function getFileIconInfo(name: string): FileIconInfo {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext))
-    return { emoji: '📦', bg: 'rgba(139,146,165,0.12)' }
-  if (['mp4', 'mkv', 'avi', 'mov', 'flv', 'webm'].includes(ext))
-    return { emoji: '🎬', bg: 'rgba(168,85,247,0.12)' }
-  if (['mp3', 'wav', 'flac', 'aac', 'ogg'].includes(ext))
-    return { emoji: '🎵', bg: 'rgba(236,72,153,0.12)' }
-  if (['pdf'].includes(ext))
-    return { emoji: '📄', bg: 'rgba(239,68,68,0.1)' }
-  if (['doc', 'docx'].includes(ext))
-    return { emoji: '📝', bg: 'rgba(59,130,246,0.1)' }
-  if (['xls', 'xlsx'].includes(ext))
-    return { emoji: '📊', bg: 'rgba(34,197,94,0.1)' }
-  if (['ppt', 'pptx'].includes(ext))
-    return { emoji: '📽️', bg: 'rgba(249,115,22,0.1)' }
-  if (['html', 'css', 'js', 'ts', 'vue', 'json'].includes(ext))
-    return { emoji: '💻', bg: 'rgba(99,102,241,0.1)' }
-  if (['txt', 'md', 'log'].includes(ext))
-    return { emoji: '📃', bg: 'rgba(107,114,128,0.1)' }
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext))
-    return { emoji: '🖼️', bg: 'rgba(20,184,166,0.1)' }
-  return { emoji: '📁', bg: 'rgba(100,116,139,0.08)' }
-}
-
 function formatPercent(progress: number): string {
   return `${Math.round(progress * 100)}%`
-}
-
-const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']
-const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'flv', 'webm']
-
-function isImageName(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  return imageExts.includes(ext)
-}
-
-function isVideoName(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  return videoExts.includes(ext)
 }
 
 function taskHasCover(t: TransferTask): boolean {
   if (t.coverUrl) return true
   if (!t.fileId) return false
-  if (isImageName(t.name)) return true
-  if (isVideoName(t.name)) return !!loadCoverThumb(t.fileId, 0)
+  const kind = fileTypeKindFromName(t.name)
+  if (kind === 'image') return true
+  if (kind === 'video') return !!loadCoverThumb(t.fileId, 0)
   return false
 }
 
@@ -131,9 +91,11 @@ function showCover(t: TransferTask): boolean {
 function coverSrc(t: TransferTask): string {
   if (t.coverUrl) return t.coverUrl
   if (!t.fileId) return ''
-  if (isVideoName(t.name)) {
+  const kind = fileTypeKindFromName(t.name)
+  if (kind === 'video') {
     return loadCoverThumb(t.fileId, 0) || ''
   }
+  if (kind !== 'image') return ''
   const param = `access_token=${tokenQuery()}`
   if (coverFallback.value[t.id]) {
     return fileApiUrl(`/api/files/${t.fileId}/preview?${param}`)
@@ -142,7 +104,7 @@ function coverSrc(t: TransferTask): string {
 }
 
 function onCoverError(t: TransferTask) {
-  if (t.fileId && isImageName(t.name) && !coverFallback.value[t.id]) {
+  if (t.fileId && fileTypeKindFromName(t.name) === 'image' && !coverFallback.value[t.id]) {
     coverFallback.value[t.id] = true
     return
   }
@@ -222,7 +184,6 @@ function onCoverError(t: TransferTask) {
             <view
               class="task-icon-box"
               :class="{ 'has-cover': showCover(t) }"
-              :style="{ background: getFileIconInfo(t.name).bg }"
             >
               <image
                 v-if="showCover(t)"
@@ -231,7 +192,7 @@ function onCoverError(t: TransferTask) {
                 mode="aspectFill"
                 @error="onCoverError(t)"
               />
-              <text v-else class="task-emoji">{{ getFileIconInfo(t.name).emoji }}</text>
+              <TransferTaskIcon v-else :name="t.name" :size="44" />
             </view>
             <!-- 传输类型小标记 -->
             <view class="task-type-dot" :class="t.type">
@@ -318,7 +279,6 @@ function onCoverError(t: TransferTask) {
             <view
               class="task-icon-box small"
               :class="{ 'has-cover': t.status !== 'error' && showCover(t) }"
-              :style="{ background: t.status === 'error' ? 'rgba(239,68,68,0.08)' : getFileIconInfo(t.name).bg }"
             >
               <image
                 v-if="t.status !== 'error' && showCover(t)"
@@ -327,7 +287,12 @@ function onCoverError(t: TransferTask) {
                 mode="aspectFill"
                 @error="onCoverError(t)"
               />
-              <text v-else class="task-emoji">{{ t.status === 'error' ? '❌' : getFileIconInfo(t.name).emoji }}</text>
+              <TransferTaskIcon
+                v-else
+                :name="t.name"
+                :size="36"
+                :error="t.status === 'error'"
+              />
             </view>
           </view>
 

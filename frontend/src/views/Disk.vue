@@ -22,7 +22,7 @@ import VideoPreview from '@/components/VideoPreview.vue'
 import TextPreview from '@/components/TextPreview.vue'
 import { isTextFile } from '@/utils/filePreview'
 import { connectUploadWs, disconnectUploadWs, type WsMessage } from '@/utils/ws'
-import { downloadZip } from '@/utils/download'
+import { buildZipDisplayName, buildZipDownloadUrl } from '@/utils/download'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
 import { sanitizeHighlight } from '@/utils/sanitize'
 
@@ -95,10 +95,10 @@ function handleBatchDownload() {
   const folders = selectedItems.value.filter(i => i.type === 'folder').map(i => i.id)
   const files = selectedItems.value.filter(i => i.type === 'file').map(i => i.id)
   if (folders.length === 0 && files.length === 0) return
-  const params: string[] = []
-  if (folders.length > 0) params.push(`folderIds=${folders.join(',')}`)
-  if (files.length > 0) params.push(`fileIds=${files.join(',')}`)
-  downloadZip(`/api/files/download/zip?${params.join('&')}`)
+  transferStore.addZipDownloadTask(
+    buildZipDownloadUrl(folders, files),
+    buildZipDisplayName(selectedItems.value)
+  )
 }
 
 async function handleBatchDelete() {
@@ -169,7 +169,10 @@ function onDragLeave(e: DragEvent) {
 
 function download(row: FileItem) {
   if (row.type === 'folder') {
-    downloadZip(`/api/files/download/zip?folderIds=${row.id}`)
+    transferStore.addZipDownloadTask(
+      buildZipDownloadUrl([row.id], []),
+      `${row.name}.zip`
+    )
     return
   }
   transferStore.addDownloadTask(row.id, row.name, row.sizeBytes || 0)

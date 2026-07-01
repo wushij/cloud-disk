@@ -10,6 +10,11 @@ import { clearFolderCache, ensureFolderPath, fileRelativePath } from '@/utils/fo
 import { captureVideoCover, isVideoUpload } from '@/utils/videoCover'
 import { cacheCoverFromDataUrl } from '@/utils/coverCache'
 import axios from 'axios'
+import { getSessionBearer } from '@/api/sessionAuth'
+import {
+  parseDownloadFileName,
+  resolveDownloadUrl
+} from '@/utils/download'
 import { useStorageStore } from '@/stores/storage'
 import { useFileStore } from '@/stores/file'
 
@@ -39,6 +44,9 @@ export interface TransferTask {
   uploadId?: string
   chunkSize?: number
   totalChunks?: number
+  /** 打包下载（流式 ZIP，无暂停） */
+  zipDownload?: boolean
+  downloadUrl?: string
 }
 
 const DOWNLOAD_IN_MEMORY_MAX = 300 * 1024 * 1024 // 300MB
@@ -177,7 +185,7 @@ export const useTransferStore = defineStore('transfer', () => {
   // 暂停任务（仅上传支持暂停）
   function pauseTask(taskId: string) {
     const task = getTask(taskId)
-    if (!task || task.status !== 'running') return
+    if (!task || task.type !== 'upload' || task.status !== 'running') return
 
     task.abortController?.abort()
     patchTask(taskId, { status: 'paused', speed: '已暂停' })
@@ -436,10 +444,13 @@ export const useTransferStore = defineStore('transfer', () => {
           const current = getTask(taskId)
           if (!current || current.status !== 'running') return
           const loaded = e.loaded
-          const progress = e.total ? loaded / e.total : Math.min(0.99, loaded / size)
-          const elapsed = (Date.now() - (current.startTime || Date.now())) / 1000
+          const total = e.total && e.total > 0 ? e.total : size
+          const progress = e.total && e.total > 0
+            ? Math.min(1, loaded / e.total)
+            : (size > 0 ? Math.min(1, loaded / size) : 0)
           patchTask(taskId, {
             loaded,
+            size: total,
             progress,
             speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, '下载中...')
           })
@@ -449,6 +460,7 @@ export const useTransferStore = defineStore('transfer', () => {
       if (!getTask(taskId)) return
 
       const blob = new Blob([response.data], { type: (response.headers['content-type'] as string) || undefined })
+      const finalSize = blob.size || size
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -459,12 +471,93 @@ export const useTransferStore = defineStore('transfer', () => {
       patchTask(taskId, {
         status: 'done',
         progress: 1,
-        loaded: size,
+        loaded: finalSize,
+        size: finalSize,
         speed: '已完成'
       })
     } catch (err: any) {
       if (axios.isCancel(err) || err?.name === 'CanceledError') return
       patchTask(taskId, { status: 'error', speed: '下载失败' })
+    }
+  }
+
+  // 打包下载（进传输列表，流式下载，无暂停）
+  async function addZipDownloadTask(path: string, name: string) {
+    const taskId = String(crypto.randomUUID())
+    const abortController = new AbortController()
+    tasks.value.unshift({
+      id: taskId,
+      type: 'download',
+      name,
+      size: 0,
+      progress: 0,
+      loaded: 0,
+      speed: '正在打包...',
+      status: 'waiting',
+      zipDownload: true,
+      downloadUrl: path,
+      abortController,
+      startTime: Date.now()
+    })
+
+    try {
+      patchTask(taskId, {
+        status: 'running',
+        speed: '正在打包...',
+        startTime: Date.now(),
+        ...speedBaseline(0)
+      })
+
+      const bearer = getSessionBearer()
+      const response = await axios({
+        url: resolveDownloadUrl(path),
+        method: 'GET',
+        responseType: 'blob',
+        withCredentials: true,
+        signal: abortController.signal,
+        headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+        onDownloadProgress: (e) => {
+          const current = getTask(taskId)
+          if (!current || current.status !== 'running') return
+          const loaded = e.loaded
+          // 流式 ZIP 无可靠 Content-Length，仅更新已下载量与速度
+          patchTask(taskId, {
+            loaded,
+            speed: calcTransferSpeed(loaded, current.speedBaseLoaded, current.speedBaseTime, '打包下载中...')
+          })
+        }
+      })
+
+      if (!getTask(taskId)) return
+
+      const blob = response.data as Blob
+      const finalSize = blob.size
+      const saveName = parseDownloadFileName(
+        response.headers['content-disposition'] as string | undefined,
+        name
+      )
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = saveName
+      a.click()
+      URL.revokeObjectURL(objectUrl)
+
+      patchTask(taskId, {
+        status: 'done',
+        progress: 1,
+        loaded: finalSize,
+        size: finalSize,
+        name: saveName,
+        speed: '已完成'
+      })
+    } catch (err: any) {
+      if (axios.isCancel(err) || err?.name === 'CanceledError') return
+      const msg = err?.response?.data instanceof Blob
+        ? '打包下载失败'
+        : (err?.response?.data?.error || err?.response?.data?.message || '打包下载失败')
+      patchTask(taskId, { status: 'error', speed: '下载失败' })
+      ElMessage.error(msg)
     }
   }
 
@@ -476,6 +569,7 @@ export const useTransferStore = defineStore('transfer', () => {
     updateProgress,
     processFiles,
     addDownloadTask,
+    addZipDownloadTask,
     pauseTask,
     resumeTask,
     cancelTask,

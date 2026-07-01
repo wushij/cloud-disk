@@ -97,3 +97,23 @@ export function fileExtLabel(row: FileItem): string {
   const dot = name.lastIndexOf('.')
   return dot > 0 ? name.substring(dot + 1).toUpperCase().slice(0, 4) : 'FILE'
 }
+
+function pseudoFileItem(name: string, mimeType?: string | null): FileItem {
+  return { name, type: 'file', mimeType }
+}
+
+export function fileTypeKindFromName(name: string, mimeType?: string | null): FileKind {
+  return fileTypeKind(pseudoFileItem(name, mimeType))
+}
+
+export function fileTypeColorFromName(name: string, mimeType?: string | null): string {
+  return fileTypeColor(pseudoFileItem(name, mimeType))
+}
+
+export function fileTypeIconFromName(name: string, mimeType?: string | null): string {
+  return fileTypeIcon(pseudoFileItem(name, mimeType))
+}
+
+export function fileExtLabelFromName(name: string): string {
+  return fileExtLabel(pseudoFileItem(name))
+}

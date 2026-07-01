@@ -89,6 +89,11 @@ function formatPercent(progress: number): string {
   return `${Math.round(progress * 100)}%`
 }
 
+/** 流式打包下载：服务端无 Content-Length，百分比不可信 */
+function isZipStreaming(t: TransferTask): boolean {
+  return !!(t.zipDownload && t.status === 'running' && t.size <= 0)
+}
+
 function progressGradient(status: string): string {
   if (status === 'error') return '#EF4444'
   if (status === 'paused') return '#F59E0B'
@@ -245,22 +250,34 @@ async function handleClearCompleted() {
             <div class="task-info">
               <div class="task-name" :title="t.name">{{ t.name }}</div>
               <div class="progress-row">
-                <div class="progress-track">
+                <div class="progress-track" :class="{ indeterminate: isZipStreaming(t) }">
                   <div
                     class="progress-fill"
-                    :class="{ error: t.status === 'error', paused: t.status === 'paused' }"
-                    :style="{
+                    :class="{
+                      error: t.status === 'error',
+                      paused: t.status === 'paused',
+                      indeterminate: isZipStreaming(t)
+                    }"
+                    :style="isZipStreaming(t) ? { background: progressGradient(t.status) } : {
                       width: `${Math.round(t.progress * 100)}%`,
                       background: progressGradient(t.status)
                     }"
                   />
                 </div>
-                <span class="progress-pct" :class="{ error: t.status === 'error' }">
+                <span v-if="!isZipStreaming(t)" class="progress-pct" :class="{ error: t.status === 'error' }">
                   {{ formatPercent(t.progress) }}
                 </span>
               </div>
               <div class="task-meta">
-                <span class="meta-size">{{ fmtSize(t.loaded) }} / {{ fmtSize(t.size) }}</span>
+                <span class="meta-size">
+                  {{
+                    isZipStreaming(t)
+                      ? fmtSize(t.loaded)
+                      : t.size > 0
+                        ? `${fmtSize(t.loaded)} / ${fmtSize(t.size)}`
+                        : fmtSize(t.loaded)
+                  }}
+                </span>
                 <span class="meta-speed" :class="{ error: t.status === 'error' }">{{ t.speed }}</span>
               </div>
             </div>
@@ -815,7 +832,30 @@ async function handleClearCompleted() {
   transition: width 0.3s ease;
 }
 
-.progress-fill:not(.error):not(.paused)::after {
+.progress-track.indeterminate {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill.indeterminate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40%;
+  transition: none;
+  animation: zip-stream 1.6s ease-in-out infinite;
+}
+
+@keyframes zip-stream {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.progress-fill:not(.error):not(.paused):not(.indeterminate)::after {
   content: '';
   display: block;
   width: 100%;
