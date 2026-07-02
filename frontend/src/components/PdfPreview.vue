@@ -6,6 +6,7 @@ import { toUserMessage } from '@/utils/error'
 // 与 package.json 中 pdfjs-dist 版本一致；避免 Nginx 将 .mjs 当作 octet-stream 导致 worker 无法加载
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs'
+const PDFJS_VERSION = '6.0.227'
 
 const props = defineProps<{ src: string }>()
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -33,9 +34,12 @@ function handleZoomPercentChange() {
 
 let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
 let resizeObserver: ResizeObserver | null = null
+let renderTask: pdfjsLib.RenderTask | null = null
+let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null
 
 async function renderPage(num: number) {
   if (!pdfDoc || !canvasRef.value) return
+  renderTask?.cancel()
   const page = await pdfDoc.getPage(num)
   const viewport = page.getViewport({ scale: scale.value })
   const canvas = canvasRef.value
@@ -56,7 +60,17 @@ async function renderPage(num: number) {
     viewport: viewport,
     transform: [dpr, 0, 0, dpr, 0, 0]
   }
-  await page.render(renderContext).promise
+  renderTask = page.render(renderContext)
+  try {
+    await renderTask.promise
+  } catch (e: unknown) {
+    const maybeError = e as { name?: string }
+    if (maybeError?.name !== 'RenderingCancelledException') {
+      throw e
+    }
+  } finally {
+    renderTask = null
+  }
 }
 
 async function fitPage() {
@@ -86,9 +100,22 @@ async function fitPage() {
 async function loadPdf() {
   loading.value = true
   error.value = ''
+  renderTask?.cancel()
+  loadingTask?.destroy()
   pdfDoc = null
   try {
-    pdfDoc = await pdfjsLib.getDocument({ url: props.src }).promise
+    const response = await fetch(props.src, { credentials: 'same-origin' })
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    loadingTask = pdfjsLib.getDocument({
+      data: bytes,
+      cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/cmaps/`,
+      cMapPacked: true,
+      standardFontDataUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/standard_fonts/`
+    })
+    pdfDoc = await loadingTask.promise
     pageCount.value = pdfDoc.numPages
     pageNum.value = 1
     loading.value = false
@@ -139,6 +166,8 @@ onMounted(() => {
 watch(() => props.src, loadPdf)
 
 onBeforeUnmount(() => {
+  renderTask?.cancel()
+  loadingTask?.destroy()
   pdfDoc?.cleanup()
   if (resizeObserver) {
     resizeObserver.disconnect()
