@@ -37,6 +37,12 @@ clouddisk:
     enabled: true
     # Windows 示例: C:/ffmpeg/bin/ffmpeg.exe
     path: ffmpeg
+  # 开发环境：关闭时间戳/Nonce校验，方便 Postman / Swagger 调试
+  api-security:
+    timestamp-enabled: false
+    nonce-enabled: false
+    sm2-sign-enabled: false
+    sm4-encrypt-enabled: false
 
 sa-token:
   alone-redis:

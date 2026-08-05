@@ -2,6 +2,7 @@ package com.clouddisk.controller;
 
 import com.clouddisk.service.AdminService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -107,5 +108,27 @@ public class AdminController {
         if (password == null) throw new com.clouddisk.common.BusinessException("缺少 password 参数");
         adminService.resetUserPassword(id, password);
         return Map.of("message", "ok");
+    }
+
+    /** 获取系统 API 安全与加密开关配置 */
+    @GetMapping("/security/config")
+    public Map<String, Object> getSecurityConfig() {
+        return adminService.getSecurityConfig();
+    }
+
+    /** 保存系统 API 安全与加密开关配置（热更新即时生效） */
+    @PutMapping(value = "/security/config", consumes = MediaType.ALL_VALUE)
+    public Map<String, Object> updateSecurityConfig(@org.springframework.web.bind.annotation.RequestBody(required = false) String rawBody) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        if (rawBody != null && !rawBody.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> parsed = mapper.readValue(rawBody, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                if (parsed != null) body.putAll(parsed);
+            } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(AdminController.class).warn("updateSecurityConfig 解析 body 失败: {}", e.getMessage());
+            }
+        }
+        return adminService.updateSecurityConfig(body);
     }
 }

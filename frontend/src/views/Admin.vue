@@ -12,9 +12,10 @@ import {
   Box,
   Clock,
   List,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from '@element-plus/icons-vue'
-import http from '@/api/http'
+import http, { applySecurityConfig } from '@/api/http'
 import { adminUserAvatarUrl } from '@/utils/mediaUrl'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
@@ -126,9 +127,45 @@ const topStorageUsers = computed(() =>
 const maxStorageUsed = computed(() => topStorageUsers.value[0]?.storageUsed || 1)
 const totalUsedBytes = computed(() => Number(dashboard.value.totalUsedBytes || 0))
 
+const securityForm = ref({
+  timestampEnabled: true,
+  nonceEnabled: true,
+  sm3SignEnabled: false,
+  sm4EncryptEnabled: false
+})
+const savingSecurity = ref(false)
+
+async function loadSecurityConfig() {
+  try {
+    const { data } = await http.get('/api/admin/security/config')
+    if (data) {
+      securityForm.value.timestampEnabled = Boolean(data.timestampEnabled)
+      securityForm.value.nonceEnabled = Boolean(data.nonceEnabled)
+      securityForm.value.sm3SignEnabled = Boolean(data.sm3SignEnabled || data.sm2SignEnabled)
+      securityForm.value.sm4EncryptEnabled = Boolean(data.sm4EncryptEnabled)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function saveSecurityConfig() {
+  savingSecurity.value = true
+  try {
+    const { data } = await http.put('/api/admin/security/config', securityForm.value)
+    ElMessage.success('系统 API 安全防护配置保存成功，即时生效')
+    applySecurityConfig(data)
+  } catch (err: any) {
+    ElMessage.error(err?.message || '保存安全配置失败')
+  } finally {
+    savingSecurity.value = false
+  }
+}
+
 async function loadAll() {
   loading.value = true
   avatarBroken.value = {}
+  loadSecurityConfig().catch(() => {})
 
   try {
     const { data } = await http.get('/api/admin/dashboard')
@@ -192,8 +229,15 @@ function actionLabel(row: AuditRow) {
   const action = row.action
   if (!action) return '操作'
   if (action === 'LOGIN') return '登录'
+  if (action === 'REGISTER') return '注册'
+  if (action.includes('SECURITY')) return '安全设置'
   if (action.includes('APPROVE_REGISTER')) return '通过注册'
   if (action.includes('REJECT_REGISTER')) return '拒绝注册'
+  if (action.includes('APPROVE_QUOTA')) return '同意扩容'
+  if (action.includes('REJECT_QUOTA')) return '拒绝扩容'
+  if (action.includes('QUOTA')) return '修改配额'
+  if (action.includes('ROLE')) return '修改角色'
+  if (action.includes('PASSWORD')) return '重置密码'
   if (action.includes('DELETE')) return '删除'
   if (action.includes('UPLOAD')) return '上传'
   if (action.includes('DISABLE') || action.includes('ENABLE')) {
@@ -207,8 +251,9 @@ function actionLabel(row: AuditRow) {
 
 function actionTone(row: AuditRow): 'success' | 'warning' | 'danger' | 'info' {
   const label = actionLabel(row)
-  if (label === '登录' || label === '通过注册' || label === '启用') return 'success'
-  if (label === '禁用' || label === '拒绝注册' || (row.action || '').includes('DELETE')) return 'danger'
+  if (label === '登录' || label === '注册' || label === '通过注册' || label === '同意扩容' || label === '启用') return 'success'
+  if (label === '禁用' || label === '拒绝注册' || label === '拒绝扩容' || (row.action || '').includes('DELETE')) return 'danger'
+  if (label === '安全设置' || label === '重置密码' || label === '修改角色' || label === '修改配额') return 'warning'
   if ((row.action || '').includes('ADMIN')) return 'warning'
   return 'info'
 }
@@ -310,6 +355,53 @@ onMounted(loadAll)
               <span v-if="link.badge" class="action-badge">{{ link.badge }}</span>
               <el-icon class="action-arrow"><ArrowRight /></el-icon>
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel security-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <el-icon :size="16" color="var(--cd-primary)"><Lock /></el-icon>
+            <span>API 全链路安全与国密加固防护控制</span>
+          </div>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="savingSecurity"
+            @click="saveSecurityConfig"
+          >
+            保存并热应用配置
+          </el-button>
+        </div>
+        <div class="security-grid">
+          <div class="sec-item">
+            <div class="sec-info">
+              <span class="sec-title">时间戳有效性校验</span>
+              <span class="sec-sub">校验请求发送时间戳（防止过期与重放攻击）</span>
+            </div>
+            <el-switch v-model="securityForm.timestampEnabled" />
+          </div>
+          <div class="sec-item">
+            <div class="sec-info">
+              <span class="sec-title">Nonce 随机数防重放</span>
+              <span class="sec-sub">基于 Redis 自动去重校验随机数，杜绝重复请求</span>
+            </div>
+            <el-switch v-model="securityForm.nonceEnabled" />
+          </div>
+          <div class="sec-item">
+            <div class="sec-info">
+              <span class="sec-title">国密 HMAC-SM3 数字签名</span>
+              <span class="sec-sub">请求路径、时间戳与 Body 签名校验</span>
+            </div>
+            <el-switch v-model="securityForm.sm3SignEnabled" />
+          </div>
+          <div class="sec-item">
+            <div class="sec-info">
+              <span class="sec-title">国密 SM4-CBC 接口双向加解密</span>
+              <span class="sec-sub">基于一次性会话随机密钥对请求体和响应体全程加密</span>
+            </div>
+            <el-switch v-model="securityForm.sm4EncryptEnabled" />
           </div>
         </div>
       </section>
@@ -825,6 +917,51 @@ onMounted(loadAll)
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.security-panel {
+  margin-bottom: 20px;
+}
+
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+@media (max-width: 768px) {
+  .security-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sec-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--cd-bg-hover, #f8fafc);
+  border: 1px solid var(--cd-border-light, #e2e8f0);
+}
+
+.sec-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sec-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cd-text-primary, #0f172a);
+}
+
+.sec-sub {
+  font-size: 12px;
+  color: var(--cd-text-secondary, #64748b);
 }
 
 .audit-tag.tone-success { color: #059669; background: rgba(16, 185, 129, 0.1); }

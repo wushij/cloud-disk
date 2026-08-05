@@ -28,6 +28,8 @@ public class CloudDiskProperties {
     private Monitoring monitoring = new Monitoring();
     private Cdn cdn = new Cdn();
     private VirusScan virusScan = new VirusScan();
+    private ApiSecurity apiSecurity = new ApiSecurity();
+
 
     @Data
     public static class Redis {
@@ -193,5 +195,30 @@ public class CloudDiskProperties {
         private int port = 3310;
         private int timeoutMs = 30000;
         private long maxBytes = 104857600;
+    }
+
+    @Data
+    public static class ApiSecurity {
+        /** 时间戳校验开关（默认 5 分钟窗口），默认开启 */
+        private boolean timestampEnabled = true;
+        /** 时间戳校验允许的最大窗口时差（毫秒），默认 5 分钟 (300,000 ms) */
+        private long timestampWindowMs = 5 * 60 * 1000L;
+        /** Nonce 随机数防重放（Redis 去重），默认开启 */
+        private boolean nonceEnabled = true;
+        /**
+         * HMAC-SM3 数字签名开关（推荐使用此字段）。
+         * 历史上因混淆命名遗留 sm2SignEnabled，两者 OR 取值，效果相同。
+         */
+        private boolean sm3SignEnabled = false;
+        /** 兼容旧配置的签名开关（等同于 sm3SignEnabled，二者有一为 true 即生效） */
+        private boolean sm2SignEnabled = false;
+        /** SM4-CBC 双向加密，需前后端同时开启 */
+        private boolean sm4EncryptEnabled = false;
+        /** 静态备用 HMAC-SM3 签名密钥（回退兜底，生产建议留空，使用会话随机密钥） */
+        private String sm3SignKey = "";
+        /** 静态备用 SM4 密钥（16字节字符串或32位Hex，回退兜底） */
+        private String sm4SecretKey = "";
+        /** 会话密钥 Redis TTL（分钟） */
+        private long sessionSignTtlMinutes = 120L;
     }
 }

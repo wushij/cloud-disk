@@ -46,6 +46,7 @@ public class AdminService {
 
     private final AuthHelper authHelper;
     private final NotificationDispatcher notificationDispatcher;
+    private final com.clouddisk.security.SecurityConfigService securityConfigService;
 
     @Autowired(required = false)
     private FileSearchService fileSearchService;
@@ -370,5 +371,22 @@ public class AdminService {
         userCacheService.evict(userId);
         StpUtil.logout(userId); // 重置密码后强制下线
         auditLogService.logCurrentUser("ADMIN_RESET_PASSWORD", "user", String.valueOf(userId), "重置密码");
+    }
+
+    public Map<String, Object> getSecurityConfig() {
+        requireAdmin();
+        return securityConfigService.getConfig();
+    }
+
+    public Map<String, Object> updateSecurityConfig(Map<String, Object> req) {
+        User actor = actor();
+        Map<String, Object> updated = securityConfigService.updateConfig(req);
+        // 审计日志失败不应阻塞主业务（与 logCurrentUser 的容错保持一致）
+        try {
+            auditLogService.log(actor.getId(), actor.getUsername(), "UPDATE_SECURITY_CONFIG", "API_SECURITY", "0", "更新系统 API 安全与加固设置");
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(AdminService.class).warn("写入 UPDATE_SECURITY_CONFIG 审计日志失败", e);
+        }
+        return updated;
     }
 }

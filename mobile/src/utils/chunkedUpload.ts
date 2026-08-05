@@ -1,4 +1,6 @@
 import { request, uploadFile, buildUrl, resolveBearer } from '@/api/http'
+import { getTimestamp, generateNonce } from '@/utils/crypto'
+import { getClientId } from '@/utils/security-config'
 import { pickChunkSize } from '@/utils/md5'
 
 const MB = 1024 * 1024
@@ -18,6 +20,18 @@ export interface ChunkedUploadOptions {
   h5File?: File
   mimeType?: string
   onInit?: (session: { uploadId: string; chunkSize: number; totalChunks: number }) => void
+}
+
+/**
+ * 给原生 XMLHttpRequest 附加基础安全头（X-Timestamp/X-Nonce/X-Client-Id），
+ * 避免后端 ApiSecurityFilter 在 multipart 放行之前的时间戳校验 403。
+ * multipart 上传后端不走签名校验，因此这里不需要 X-Signature；
+ * merge 走 JSON 体时改用 request() 让拦截器统一处理签名/加解密。
+ */
+function applySecurityHeaders(xhr: XMLHttpRequest): void {
+  xhr.setRequestHeader('X-Timestamp', String(getTimestamp()))
+  xhr.setRequestHeader('X-Nonce', generateNonce())
+  xhr.setRequestHeader('X-Client-Id', getClientId())
 }
 
 function parseXhrErrorMessage(xhr: XMLHttpRequest, fallback: string): string {
@@ -73,6 +87,7 @@ function uploadChunkXHR(
     const token = resolveBearer()
     const xhr = new XMLHttpRequest()
     xhr.open('POST', buildUrl('/api/upload/chunk'))
+    applySecurityHeaders(xhr)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
     const onAbort = () => {
@@ -100,37 +115,16 @@ function mergeUploadXHR(
   mimeType?: string,
   signal?: AbortSignal
 ): Promise<{ id?: number }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', buildUrl('/api/upload/merge'))
-    xhr.setRequestHeader('Content-Type', 'application/json')
-    const token = resolveBearer()
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-    const onAbort = () => {
-      xhr.abort()
-      reject(new Error('Canceled'))
-    }
-    if (signal) signal.addEventListener('abort', onAbort)
-
-    xhr.onload = () => {
-      if (signal) signal.removeEventListener('abort', onAbort)
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          resolve(JSON.parse(xhr.responseText) as { id?: number })
-        } catch {
-          reject(new Error('合并响应解析失败'))
-        }
-        return
-      }
-      reject(new Error(parseXhrErrorMessage(xhr, `合并失败 (${xhr.status})`)))
-    }
-    xhr.onerror = () => {
-      if (signal) signal.removeEventListener('abort', onAbort)
-      reject(new Error('合并网络错误，大文件合并时间较长请稍候重试'))
-    }
-    xhr.send(JSON.stringify({ uploadId, mimeType: mimeType || undefined }))
-  })
+  // merge 走 JSON body，与 PC 端一致：使用 request() 走拦截器统一加签名/加解密头，
+  // 避免 XHR 手工补签名/加解密容易与拦截器逻辑分叉。
+  // 通过 AbortSignal 链路监听取消；timeout: 0 与 PC 端 axios 一致，长耗时大文件不超时。
+  return request<{ id?: number }>({
+    url: '/api/upload/merge',
+    method: 'POST',
+    data: { uploadId, mimeType: mimeType || undefined },
+    timeout: 0,
+    signal,
+  } as any).then((data) => ({ id: data?.id }))
 }
 
 // #ifdef H5
@@ -192,6 +186,7 @@ function uploadSimpleFileH5(
 
         const xhr = new XMLHttpRequest()
         xhr.open('POST', buildUrl('/api/files/simple'))
+        applySecurityHeaders(xhr)
         const token = resolveBearer()
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 

@@ -72,9 +72,9 @@ export const useNotificationStore = defineStore('notification', () => {
     title?: string
     content?: string
     refId?: string
-    inviteStatus?: AppNotification['inviteStatus']
-    registrationStatus?: AppNotification['registrationStatus']
-    quotaStatus?: AppNotification['quotaStatus']
+    inviteStatus?: string
+    registrationStatus?: string
+    quotaStatus?: string
   }) {
     const id = payload.id != null ? String(payload.id) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     if (items.value.find((x) => x.id === id)) return
@@ -88,9 +88,9 @@ export const useNotificationStore = defineStore('notification', () => {
       refId: payload.refId,
       read: false,
       createdAt: Date.now(),
-      inviteStatus: payload.inviteStatus ?? (type === 'TEAM_INVITED' ? 'PENDING' : undefined),
-      registrationStatus: payload.registrationStatus ?? (type === 'USER_REGISTER' ? 'PENDING' : undefined),
-      quotaStatus: payload.quotaStatus ?? (type === 'QUOTA_APPLY' ? 'PENDING' : undefined)
+      inviteStatus: (payload.inviteStatus as AppNotification['inviteStatus']) ?? (type === 'TEAM_INVITED' ? 'PENDING' : undefined),
+      registrationStatus: (payload.registrationStatus as AppNotification['registrationStatus']) ?? (type === 'USER_REGISTER' ? 'PENDING' : undefined),
+      quotaStatus: (payload.quotaStatus as AppNotification['quotaStatus']) ?? (type === 'QUOTA_APPLY' ? 'PENDING' : undefined)
     })
     if (items.value.length > 50) {
       items.value.length = 50

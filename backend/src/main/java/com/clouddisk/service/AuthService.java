@@ -73,6 +73,8 @@ public class AuthService {
 
     private final CloudDiskProperties cloudDiskProperties;
 
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+
     private final NotificationDispatcher notificationDispatcher;
 
     private final StoragePathService storagePathService;
@@ -153,6 +155,23 @@ public class AuthService {
 
         loginProtection.clearOnSuccess(ip, username);
         StpUtil.login(user.getId());
+
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                            org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes != null) {
+                jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+                String clientId = request.getHeader("X-Client-Id");
+                if (cn.hutool.core.util.StrUtil.isNotBlank(clientId)) {
+                    long ttl = cloudDiskProperties.getApiSecurity().getSessionSignTtlMinutes();
+                    stringRedisTemplate.opsForValue().set(
+                            "security:session-sign:client-user:" + clientId,
+                            String.valueOf(user.getId()), ttl, java.util.concurrent.TimeUnit.MINUTES);
+                }
+            }
+        } catch (Exception ignored) {}
+
         auditLogService.log(user.getId(), user.getUsername(), "LOGIN", "user", String.valueOf(user.getId()), "登录成功");
         return buildAuthResponse(user);
     }

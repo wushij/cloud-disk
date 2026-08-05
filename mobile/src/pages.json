@@ -119,6 +119,13 @@
         "navigationBarTitleText": "用户管理",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/admin/security",
+      "style": {
+        "navigationBarTitleText": "系统安全配置",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

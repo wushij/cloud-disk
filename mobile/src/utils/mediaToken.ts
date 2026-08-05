@@ -1,27 +1,11 @@
 import { ref } from 'vue'
-import { getSessionBearer } from '@/api/sessionAuth'
+import { request } from '@/api/http'
 
 /** 供头像/预览等 URL 拼接；与 ensureMediaToken 同步更新 */
 export const mediaTokenRef = ref('')
 
 let cache: { token: string; expiresAt: number } | null = null
 let inflight: Promise<string> | null = null
-
-function apiOrigin(): string {
-  const base = (import.meta.env.VITE_API_BASE || '').trim()
-  if (/^https?:\/\//.test(base)) return base.replace(/\/$/, '')
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin
-  }
-  return ''
-}
-
-function buildAuthUrl(path: string): string {
-  if (/^https?:\/\//.test(path)) return path
-  const normalized = path.startsWith('/') ? path : `/${path}`
-  const origin = apiOrigin()
-  return origin ? `${origin}${normalized}` : normalized
-}
 
 function applyToken(token: string, expiresIn: number) {
   cache = {
@@ -38,23 +22,13 @@ export function clearMediaTokenCache() {
 
 export async function refreshMediaToken(): Promise<string> {
   if (!inflight) {
-    inflight = new Promise<string>((resolve, reject) => {
-      const token = getSessionBearer()
-      uni.request({
-        url: buildAuthUrl('/api/auth/media-token'),
-        method: 'GET',
-        header: token ? { Authorization: `Bearer ${token}` } : {},
-        success: (res) => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            const data = res.data as { mediaToken: string; expiresIn: number }
-            applyToken(data.mediaToken, data.expiresIn)
-            resolve(data.mediaToken)
-          } else {
-            reject(new Error('获取媒体访问凭证失败'))
-          }
-        },
-        fail: reject
-      })
+    inflight = request<{ mediaToken: string; expiresIn: number }>({
+      url: '/api/auth/media-token',
+      method: 'GET',
+      skipErrorHandler: true,
+    }).then((data) => {
+      applyToken(data.mediaToken, data.expiresIn)
+      return data.mediaToken
     }).finally(() => {
       inflight = null
     })

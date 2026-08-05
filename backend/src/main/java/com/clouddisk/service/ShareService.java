@@ -385,16 +385,24 @@ public class ShareService {
         if (share.getExtractCode() == null) return;
 
         String shareCode = share.getShareCode();
-        // 1. 尝试通过 Cookie 和 Cache 会话校验访问权限，规避 URL 拼接密码
-        String cookieToken = readShareAccessCookie(shareCode);
-        if (org.springframework.util.StringUtils.hasText(cookieToken)) {
-            String val = cacheService.get(shareAccessCacheKey(shareCode, cookieToken));
-            if (val != null) {
-                return; // 会话有效，校验通过
+
+        // 1. 如果调用方没有传入 extractCode（资源访问类请求），才允许 Cookie 会话兜底免验证
+        //    如果传入了 extractCode（即用户主动提交验证），必须校验其正确性，Cookie 不能绕过
+        boolean hasInputCode = org.springframework.util.StringUtils.hasText(extractCode);
+        if (!hasInputCode) {
+            // 没有传提取码：尝试 Cookie 会话免验证
+            String cookieToken = readShareAccessCookie(shareCode);
+            if (org.springframework.util.StringUtils.hasText(cookieToken)) {
+                String val = cacheService.get(shareAccessCacheKey(shareCode, cookieToken));
+                if (val != null) {
+                    return; // 会话有效，校验通过
+                }
             }
+            // Cookie 也无效，说明需要先输入提取码
+            throw new BusinessException("提取码错误");
         }
 
-        // 2. 先检查该 IP 是否已达到频率上限（即使这次输入了正确的码也不允许通过）
+        // 2. 用户传入了 extractCode，必须先检查频率上限，再校验正确性
         String ip = clientIp();
         String failKey = "share:fail:" + shareCode + ":" + ip;
         String failVal = cacheService.get(failKey);

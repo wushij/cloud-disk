@@ -15,6 +15,7 @@ import {
   cacheAvatarFromPath,
   cacheAvatarFromUrl
 } from '@/utils/avatarCache'
+import { requestSessionSignKey, clearSignKeys, getClientId } from '@/utils/security-config'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -118,6 +119,14 @@ export const useAuthStore = defineStore('auth', () => {
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
     persist()
+    const requestFn = () =>
+      request<any>({
+        url: `/api/auth/session-sign-init?clientId=${getClientId()}`,
+        method: 'POST',
+        data: undefined,
+        skipErrorHandler: true
+      } as any)
+    await requestSessionSignKey(requestFn).catch(() => {})
     await fetchProfile()
     await refreshMediaToken()
     useFileStore().reset()
@@ -185,6 +194,7 @@ export const useAuthStore = defineStore('auth', () => {
     hasAvatar.value = false
     avatarVersion.value = 0
     avatarCachedSrc.value = ''
+    clearSignKeys()
     setSessionBearer(null)
     clearLegacyToken()
     uni.removeStorageSync(USER_KEY)

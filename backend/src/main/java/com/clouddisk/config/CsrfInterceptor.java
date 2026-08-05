@@ -66,6 +66,7 @@ public class CsrfInterceptor implements HandlerInterceptor {
         }
         return uri.equals("/api/auth/login")
                 || uri.equals("/api/auth/register")
+                || uri.equals("/api/auth/session-sign-init")
                 || uri.equals("/api/auth/ldap/login")
                 || uri.equals("/api/auth/sso/ticket")
                 || uri.equals("/api/auth/sync-cookie");

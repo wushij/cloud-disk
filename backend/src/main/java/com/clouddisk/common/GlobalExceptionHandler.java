@@ -37,9 +37,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiErrorResponse> handleBusiness(BusinessException e, HttpServletRequest request) {
-        HttpStatus status = "RATE_LIMITED".equals(e.getCode())
-                ? HttpStatus.TOO_MANY_REQUESTS
-                : HttpStatus.BAD_REQUEST;
+        HttpStatus status;
+        if ("RATE_LIMITED".equals(e.getCode())) {
+            status = HttpStatus.TOO_MANY_REQUESTS;
+        } else if ("UNAUTHORIZED".equals(e.getCode())) {
+            status = HttpStatus.UNAUTHORIZED;
+        } else if ("FORBIDDEN".equals(e.getCode())) {
+            status = HttpStatus.FORBIDDEN;
+        } else {
+            status = HttpStatus.BAD_REQUEST;
+        }
         if (status == HttpStatus.BAD_REQUEST) {
             log.debug("业务异常 path={} code={}: {}", request.getRequestURI(), e.getCode(), e.getMessage());
         }

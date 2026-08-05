@@ -12,6 +12,7 @@ import {
   cacheAvatarFromUrl,
   avatarVersionFromPath
 } from '@/utils/avatarCache'
+import { requestSessionSignKey, clearSignKeys } from '@/utils/security-config'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -135,6 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem(HAS_AVATAR_KEY)
     clearAvatarThumb()
     clearMediaTokenCache()
+    clearSignKeys()
     persist()
   }
 
@@ -218,6 +220,7 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = data.role || 'USER'
     defaultPassword.value = data.defaultPassword || false
     persist()
+    await requestSessionSignKey(http).catch(() => {})
     await fetchProfile({ silent: true })
     await refreshMediaToken()
   }

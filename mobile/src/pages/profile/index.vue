@@ -105,6 +105,10 @@ function goUserManage() {
   uni.navigateTo({ url: '/pages/admin/users' })
 }
 
+function goSecurityConfig() {
+  uni.navigateTo({ url: '/pages/admin/security' })
+}
+
 const applyVisible = ref(false)
 const applyGB = ref('')
 const applyReason = ref('')
@@ -248,6 +252,20 @@ async function submitApply() {
         <view class="menu-body">
           <text class="menu-name">用户管理</text>
           <text class="menu-desc">管理用户角色、状态及容量配额</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
+      <!-- 接口安全与国密 -->
+      <view v-if="auth.isAdmin" class="menu-item cd-pressable" @click="goSecurityConfig">
+        <view class="menu-icon-box slate">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.81z" fill="#475569"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">接口安全与国密</text>
+          <text class="menu-desc">时间戳、Nonce防重放、SM3及SM4</text>
         </view>
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>
@@ -756,6 +774,9 @@ async function submitApply() {
   margin-top: 6rpx;
   font-size: 22rpx;
   color: var(--cd-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menu-badge {

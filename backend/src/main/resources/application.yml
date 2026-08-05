@@ -169,6 +169,22 @@ clouddisk:
     port: 3310
     timeout-ms: 30000
     max-bytes: 104857600
+  # ---- 全链路 API 安全加密 ----
+  api-security:
+    # 时间戳校验（前后 5 分钟窗口），默认开启
+    timestamp-enabled: true
+    # Nonce 随机数防重放（Redis 去重），默认开启
+    nonce-enabled: true
+    # HMAC-SM3 数字签名，生产环境建议开启
+    sm2-sign-enabled: false
+    # SM4-CBC 双向加密，生产环境建议开启
+    sm4-encrypt-enabled: false
+    # 静态备用签名密钥（回退兑底，生产建议留空使用会话随机密钥）
+    sm3-sign-key: ""
+    # 静态备用 SM4 密钥（16字节字符串或 32位 Hex）
+    sm4-secret-key: ""
+    # 会话密钥 Redis TTL（分钟）
+    session-sign-ttl-minutes: 120
 
 springdoc:
   swagger-ui:
