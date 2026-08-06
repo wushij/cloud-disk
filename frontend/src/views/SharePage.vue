@@ -17,6 +17,7 @@ import VideoPreview from '@/components/VideoPreview.vue'
 
 import OnlyOfficeEditor from '@/components/OnlyOfficeEditor.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
+import { fileIconColor } from '@/utils/fileMeta'
 
 
 
@@ -318,49 +319,87 @@ async function previewSingle() {
 
 }
 
+// ── 列表文件辅助 ──────────────────────────────────────────────────
 const isArchive = (item: ShareItem) => {
   if (item.type !== 'file') return false
   const name = item.name.toLowerCase()
   const ext = name.split('.').pop() || ''
-  return ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)
+  return ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)
 }
 
-function getFileIconName(item: ShareItem) {
+const isImageItem = (item: ShareItem) => {
+  if (item.type !== 'file') return false
+  const mime = (item.mimeType || '').toLowerCase()
+  if (mime.startsWith('image/')) return true
+  const ext = (item.name.split('.').pop() || '').toLowerCase()
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)
+}
+
+/** 取文件后缀（大写） */
+function itemExt(item: ShareItem): string {
+  if (item.type === 'folder') return ''
+  const dot = item.name.lastIndexOf('.')
+  return dot > 0 ? item.name.substring(dot + 1).toUpperCase() : ''
+}
+
+/** 复用 fileIconColor，将 ShareItem 映射为简单对象 */
+function itemIconColor(item: ShareItem): string {
+  return fileIconColor({ type: item.type, mimeType: item.mimeType } as any)
+}
+
+function getFileIconComponent(item: ShareItem): string {
   if (item.type === 'folder') return 'Folder'
-  const name = item.name.toLowerCase()
-  const ext = name.split('.').pop() || ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'Picture'
-  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return 'VideoPlay'
-  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'Headset'
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return 'Notebook'
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Files'
+  const mime = (item.mimeType || '').toLowerCase()
+  const ext = (item.name.split('.').pop() || '').toLowerCase()
+  if (mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return 'Picture'
+  if (mime.startsWith('video/') || ['mp4','mkv','avi','mov','flv'].includes(ext)) return 'VideoPlay'
+  if (mime.startsWith('audio/') || ['mp3','wav','ogg','flac'].includes(ext)) return 'Headset'
   return 'Document'
 }
 
-function getIconColorStyle(item: ShareItem) {
-  if (item.type === 'folder') return '#f59e0b'
-  const name = item.name.toLowerCase()
-  const ext = name.split('.').pop() || ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '#10b981'
-  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return '#8b5cf6'
-  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '#ec4899'
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return '#3b82f6'
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '#f97316'
-  return '#94a3b8'
-}
-
+// ── 单文件分享头部辅助 ─────────────────────────────────────────────
 function isSingleImageShare() {
   if (!info.value) return false
   if (info.value.shareType === 'FOLDER') return false
-  const name = String(info.value.fileName || '').toLowerCase()
-  const ext = name.split('.').pop() || ''
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
+  const mime = String(info.value.mimeType || '').toLowerCase()
+  const ext = String(info.value.fileName || '').toLowerCase().split('.').pop() || ''
+  return mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','svg'].includes(ext)
+}
+
+function isSingleArchiveShare() {
+  if (!info.value) return false
+  if (info.value.shareType === 'FOLDER') return false
+  const ext = String(info.value.fileName || '').toLowerCase().split('.').pop() || ''
+  return ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)
+}
+
+function getSingleFileIconComponent(): string {
+  if (!info.value) return 'Document'
+  const mime = String(info.value.mimeType || '').toLowerCase()
+  const ext = String(info.value.fileName || '').toLowerCase().split('.').pop() || ''
+  if (mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return 'Picture'
+  if (mime.startsWith('video/') || ['mp4','mkv','avi','mov','flv'].includes(ext)) return 'VideoPlay'
+  if (mime.startsWith('audio/') || ['mp3','wav','ogg','flac'].includes(ext)) return 'Headset'
+  return 'Document'
+}
+
+function getSingleFileIconColor(): string {
+  if (!info.value) return 'var(--cd-file-default)'
+  return fileIconColor({ type: 'file', mimeType: String(info.value.mimeType || '') } as any)
+}
+
+function getSingleFileExt(): string {
+  if (!info.value) return ''
+  const name = String(info.value.fileName || '')
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.substring(dot + 1).toUpperCase() : ''
 }
 
 function getSingleShareImageUrl() {
   if (!info.value || !info.value.fileId) return ''
   return `/share/${code}/preview${q(`fileId=${info.value.fileId}`)}`
 }
+
 </script>
 
 
@@ -387,16 +426,43 @@ function getSingleShareImageUrl() {
 
       <!-- 头部 -->
       <div class="cd-share-header">
-        <div class="cd-share-logo" :class="{ 'cd-share-logo-img': isSingleImageShare() && (verified || !info.needExtractCode) }">
+        <div
+          class="cd-share-logo"
+          :class="{
+            'cd-share-logo-img': isSingleImageShare() && (verified || !info.needExtractCode),
+            'cd-share-logo-folder': info.shareType === 'FOLDER' || isSingleArchiveShare(),
+            'cd-share-logo-file': info.shareType !== 'FOLDER' && !isSingleImageShare() && !isSingleArchiveShare()
+          }"
+        >
+          <!-- 图片：显示缩略图 -->
           <img
             v-if="isSingleImageShare() && (verified || !info.needExtractCode)"
             :src="getSingleShareImageUrl()"
             class="cd-share-logo-cover"
             alt=""
           />
-          <svg v-else class="cd-share-logo-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
-          </svg>
+          <!-- 文件夹分享 -->
+          <FolderTypeIcon v-else-if="info.shareType === 'FOLDER'" :size="56" />
+          <!-- 压缩包：带拉链的 FolderTypeIcon -->
+          <FolderTypeIcon v-else-if="isSingleArchiveShare()" :archive="true" :size="56" />
+          <!-- 图片（未验证/无需验证）：通用图片图标 -->
+          <div
+            v-else-if="isSingleImageShare()"
+            class="cd-share-logo-icon"
+            :style="{ color: getSingleFileIconColor() }"
+          >
+            <el-icon :size="32"><component :is="getSingleFileIconComponent()" /></el-icon>
+            <span v-if="getSingleFileExt()" class="cd-share-logo-ext">{{ getSingleFileExt() }}</span>
+          </div>
+          <!-- 其他文件类型 -->
+          <div
+            v-else
+            class="cd-share-logo-icon"
+            :style="{ color: getSingleFileIconColor() }"
+          >
+            <el-icon :size="32"><component :is="getSingleFileIconComponent()" /></el-icon>
+            <span v-if="getSingleFileExt()" class="cd-share-logo-ext">{{ getSingleFileExt() }}</span>
+          </div>
         </div>
         <div class="cd-share-title-area">
           <h1 class="cd-share-title">{{ info.shareType === 'FOLDER' ? info.folderName : info.fileName }}</h1>
@@ -482,13 +548,29 @@ function getSingleShareImageUrl() {
 
             >
 
-              <div class="cd-share-file-icon">
+              <div
+                class="cd-share-file-icon"
+                :class="{ 'cd-share-file-icon-cover': isImageItem(item) }"
+                :style="isImageItem(item) ? {} : { color: itemIconColor(item) }"
+              >
+                <!-- 文件夹 -->
                 <FolderTypeIcon v-if="item.type === 'folder'" :size="48" />
+                <!-- 压缩包 -->
                 <FolderTypeIcon v-else-if="isArchive(item)" :archive="true" :size="48" />
-                <el-icon v-else :size="36" :style="{ color: getIconColorStyle(item) }">
-                  <component :is="getFileIconName(item)" />
-                </el-icon>
+                <!-- 图片：显示真实缩略图 -->
+                <img
+                  v-else-if="isImageItem(item)"
+                  :src="`/share/${code}/preview?fileId=${item.id}`"
+                  class="cd-share-file-thumb"
+                  alt=""
+                />
+                <!-- 其他文件：图标 + ext 标签 -->
+                <template v-else>
+                  <el-icon :size="32"><component :is="getFileIconComponent(item)" /></el-icon>
+                  <span v-if="itemExt(item)" class="cd-share-file-ext">{{ itemExt(item) }}</span>
+                </template>
               </div>
+
 
               <div class="cd-share-file-info">
 
@@ -824,6 +906,54 @@ function getSingleShareImageUrl() {
   fill: currentColor;
 }
 
+/* 文件夹/压缩包：去掉背景，让彩色 SVG 图标自然呈现 */
+.cd-share-logo-folder {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 普通文件类型：去掉背景，与文件夹/压缩包保持一致 */
+.cd-share-logo-file {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 头部图标容器（图标 + ext 标签纵向排列） */
+.cd-share-logo-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 头部 ext 标签（PDF / DOCX / MP4 等） */
+.cd-share-logo-ext {
+  font-size: 10px;
+  font-weight: 700;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* 文件列表中的 ext 标签 */
+.cd-share-file-ext {
+  font-size: 10px;
+  font-weight: 700;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  margin-top: 4px;
+  display: block;
+}
+
 
 
 .cd-share-title {
@@ -1036,13 +1166,17 @@ function getSingleShareImageUrl() {
 
   border-radius: var(--cd-radius-lg);
 
-  padding: 20px;
+  overflow: hidden;
 
   transition: all var(--cd-transition);
 
   cursor: pointer;
 
   box-shadow: var(--cd-shadow-card, 0 2px 8px rgba(0,0,0,0.06));
+
+  display: flex;
+
+  flex-direction: column;
 
 }
 
@@ -1064,10 +1198,44 @@ function getSingleShareImageUrl() {
 
 .cd-share-file-icon {
 
-  text-align: center;
+  display: flex;
 
-  margin-bottom: 16px;
+  flex-direction: column;
 
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 6px;
+
+  height: 110px;
+
+  margin-bottom: 0;
+
+  padding: 0 12px;
+
+}
+
+/* 图片类：铺满作为封面 */
+.cd-share-file-icon-cover {
+  margin-bottom: 0;
+  width: 100%;
+  height: 110px;
+  overflow: hidden;
+  border-radius: var(--cd-radius-lg) var(--cd-radius-lg) 0 0;
+  gap: 0;
+}
+
+.cd-share-file-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.25s ease;
+}
+
+.cd-share-file:hover .cd-share-file-thumb {
+  transform: scale(1.05);
 }
 
 
@@ -1075,6 +1243,16 @@ function getSingleShareImageUrl() {
 .cd-share-file-info {
 
   text-align: center;
+
+  padding: 14px 14px 14px;
+
+  flex: 1;
+
+  display: flex;
+
+  flex-direction: column;
+
+  justify-content: space-between;
 
 }
 
@@ -1118,6 +1296,12 @@ function getSingleShareImageUrl() {
 
   font-weight: 700;
 
+  border: none !important;
+
+  box-shadow: none !important;
+
+  background: transparent !important;
+
 }
 
 
@@ -1125,6 +1309,8 @@ function getSingleShareImageUrl() {
 .cd-share-file-actions :deep(.el-button:hover) {
 
   color: #3b82f6 !important;
+
+  background: transparent !important;
 
 }
 

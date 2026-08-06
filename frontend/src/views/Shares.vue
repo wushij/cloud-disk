@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Notebook, Files } from '@element-plus/icons-vue'
+import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Files } from '@element-plus/icons-vue'
 import http from '@/api/http'
 import { buildPublicShareUrl } from '@/utils/shareUrl'
 import { mediaApiUrl } from '@/utils/mediaUrl'
@@ -42,21 +42,24 @@ function getFileIcon(fileName: string) {
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return Picture
   if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return VideoPlay
   if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return Headset
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return Notebook
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return Files
   return Document
 }
 
 function getIconColor(fileName: string) {
   const name = fileName.toLowerCase()
-  if (!name.includes('.')) return '#f59e0b' // Folder - 琥珀
+  if (!name.includes('.')) return '#f59e0b'
   const ext = name.split('.').pop() || ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '#10b981' // 图片 - 翡翠
-  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return '#8b5cf6' // 视频 - 罗兰
-  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '#ec4899' // 音频 - 玫瑰
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return '#3b82f6' // 文档 - 蓝色
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '#f97316' // 压缩包 - 橙色
-  return '#64748b' // 默认 - 灰色
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '#10b981'
+  if (['mp4', 'mkv', 'avi', 'mov', 'flv'].includes(ext)) return '#8b5cf6'
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '#ec4899'
+  if (['pdf'].includes(ext)) return '#ef4444'
+  if (['doc', 'docx'].includes(ext)) return '#2563eb'
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return '#059669'
+  if (['ppt', 'pptx'].includes(ext)) return '#d97706'
+  if (['txt', 'md'].includes(ext)) return '#64748b'
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '#f97316'
+  return '#64748b'
 }
 
 interface ShareRow {
