@@ -107,11 +107,9 @@ public class EmailCodeService {
         String plainText = "您好！" + actionText + "，您的验证码为：" + code + "，有效期 " + expireMin + " 分钟。如非本人操作请忽略。";
         String htmlContent = buildHtmlCodeTemplate(platformName, sceneTitle, actionText, code, expireMin);
 
-        // 打印控制台开发日志
-        log.info("📧 [邮箱验证码通知] 目标邮箱: {}, 场景: {}, 验证码: {}, 有效期: {}分钟", email, normalizedScene, code, expireMin);
-
-        // 5. 异步发送邮件（multipart/alternative 结构，防止垃圾邮件判定）
+        // 5. 发送邮件或记录调试日志
         if (mailSender != null && StrUtil.isNotBlank(mailUsername)) {
+            log.info("📧 [邮箱验证码通知] 目标邮箱: {}, 场景: {}, 有效期: {}分钟", email, normalizedScene, expireMin);
             CompletableFuture.runAsync(() -> {
                 try {
                     MimeMessage mimeMessage = mailSender.createMimeMessage();
@@ -129,6 +127,9 @@ public class EmailCodeService {
                     log.error("发送【{}】场景邮件验证码至 {} 失败", normalizedScene, email, e);
                 }
             });
+        } else {
+            // 未配置 SMTP 发件服务时，在警告日志中输出验证码，仅供开发测试调测
+            log.warn("⚠️ 未配置 SMTP 发件服务 (spring.mail.username)，进入本地调测模式。目标邮箱: {}, 场景: {}, 验证码: {}", email, normalizedScene, code);
         }
     }
 

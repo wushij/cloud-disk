@@ -26,7 +26,7 @@ async function sendCode() {
   loading.value = true
   try {
     await http.post('/api/auth/email/send-code', { email: em, scene: props.scene }, { skipErrorHandler: true })
-    ElMessage.success('验证码发送成功，请前往邮箱或控制台查看')
+    ElMessage.success('验证码发送成功，请前往邮箱查看')
     countdown.value = 60
     const timer = setInterval(() => {
       countdown.value--
