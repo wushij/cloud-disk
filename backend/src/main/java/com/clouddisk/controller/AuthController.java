@@ -139,6 +139,31 @@ public class AuthController {
         return federatedAuthService.loginWithSsoTicket(ticket, response);
     }
 
+    private final com.clouddisk.security.EmailCodeService emailCodeService;
+
+    @PostMapping("/email/send-code")
+    public Map<String, Object> sendEmailCode(@Valid @RequestBody com.clouddisk.dto.EmailSendCodeRequest req) {
+        emailCodeService.sendCode(req.getEmail(), req.getScene());
+        Map<String, Object> m = new HashMap<>();
+        m.put("success", true);
+        m.put("message", "验证码发送成功，请前往邮箱查看");
+        return m;
+    }
+
+    @PostMapping("/email/login")
+    public Map<String, Object> emailLogin(@Valid @RequestBody com.clouddisk.dto.EmailLoginRequest req) {
+        return authService.loginByEmailCode(req);
+    }
+
+    @PostMapping("/email/reset-password")
+    public Map<String, Object> resetPasswordByEmail(@Valid @RequestBody com.clouddisk.dto.EmailResetPasswordRequest req) {
+        authService.resetPasswordByEmail(req);
+        Map<String, Object> m = new HashMap<>();
+        m.put("success", true);
+        m.put("message", "密码重置成功，请使用新密码登录");
+        return m;
+    }
+
     @PostMapping("/register")
     @SentinelResource(value = "auth_register", blockHandler = "registerBlocked")
     public Map<String, Object> register(@Valid @RequestBody RegisterRequest req) {

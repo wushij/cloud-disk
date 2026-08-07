@@ -57,6 +57,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .notMatch(
                         "/api/auth/login",
                         "/api/auth/register",
+                        "/api/auth/email/**",
                         "/api/auth/captcha",
                         "/api/auth/captcha/required",
                         "/api/auth/session-sign-init",

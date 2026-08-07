@@ -14,7 +14,9 @@ public class ProfileUpdateRequest {
     @Size(max = 128, message = "邮箱长度不能超过 128 位")
     private String email;
 
-    @Pattern(regexp = "^[0-9+\\-]{6,32}$", message = "手机号格式不正确")
+    private String emailCode;
+
+    @Pattern(regexp = "^$|^[0-9+\\-]{6,32}$", message = "手机号格式不正确")
     private String phone;
 
 }

@@ -81,6 +81,7 @@ onShow(() => {
     // 后端 session-sign-init 会建立 clientId-user 绑定，否则后续签名请求会因绑定缺失而 403。
     void initSecurityConfig()
     void auth.ensureMediaToken().catch(() => {})
+    void auth.fetchProfile().catch(() => {})
   }
   setupNotifications()
 })

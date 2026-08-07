@@ -247,38 +247,74 @@ export const useAuthStore = defineStore('auth', () => {
     await refreshMediaToken()
   }
 
-  async function register(
-    u: string,
-    p: string,
-    nick?: string,
-    captcha?: { captchaId?: string; captchaAnswer?: string }
-  ) {
-    const { data } = await http.post(
-      '/api/auth/register',
-      { username: u, password: p, nickname: nick, ...captcha },
-      { skipErrorHandler: true }
-    )
-    if (data.pending) {
-      return data as { pending: true; title?: string; message?: string }
-    }
+  async function loginByEmailCode(email: string, code: string) {
+    avatarCachedSrc.value = ''
+    avatarStoragePath.value = ''
+    const { data } = await http.post('/api/auth/email/login', { email, code }, { skipErrorHandler: true })
     await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
     defaultPassword.value = data.defaultPassword || false
     persist()
+    await requestSessionSignKey(http).catch(() => {})
     await fetchProfile({ silent: true })
     await refreshMediaToken()
+  }
+
+  async function register(
+    u: string,
+    p: string,
+    nick?: string,
+    captcha?: { captchaId?: string; captchaAnswer?: string },
+    emailPayload?: { email?: string; emailCode?: string }
+  ) {
+    const { data } = await http.post(
+      '/api/auth/register',
+      { username: u, password: p, nickname: nick, ...captcha, ...emailPayload },
+      { skipErrorHandler: true }
+    )
+    if (data?.token) {
+      await establishSession(data.token)
+      username.value = data.username
+      nickname.value = data.nickname || data.username
+      role.value = data.role || 'USER'
+      defaultPassword.value = data.defaultPassword || false
+      persist()
+      await requestSessionSignKey(http).catch(() => {})
+      await fetchProfile({ silent: true })
+      await refreshMediaToken()
+    }
     return data
+  }
+
+  const pendingUserCount = ref(0)
+
+  async function fetchPendingCount() {
+    if (!isAdmin.value) {
+      pendingUserCount.value = 0
+      return
+    }
+    try {
+      const { data } = await http.get('/api/admin/dashboard', { skipErrorHandler: true })
+      if (data && typeof data.pendingUserCount === 'number') {
+        pendingUserCount.value = data.pendingUserCount
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function fetchProfile(opts?: { silent?: boolean }) {
     const { data } = await http.get('/api/auth/me', opts?.silent ? { skipErrorHandler: true } : undefined)
     applyProfile(data)
+    if (isAdmin.value) {
+      void fetchPendingCount()
+    }
     return data
   }
 
-  async function updateProfile(payload: { nickname?: string; email?: string; phone?: string }) {
+  async function updateProfile(payload: { nickname?: string; email?: string; emailCode?: string; phone?: string }) {
     const { data } = await http.put('/api/auth/profile', payload)
     applyProfile(data)
     return data
@@ -343,11 +379,14 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isSuperAdmin,
     defaultPassword,
+    pendingUserCount,
+    fetchPendingCount,
     restore,
     initAuth,
     restoreAvatarCache,
     bumpAvatar,
     login,
+    loginByEmailCode,
     ldapLogin,
     completeSsoSession,
     register,

@@ -94,7 +94,10 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
             "/api/auth/ldap/login",
             "/api/auth/session-sign-init",
             "/api/auth/sso/ticket",
-            "/api/auth/sync-cookie"
+            "/api/auth/sync-cookie",
+            "/api/auth/email/send-code",
+            "/api/auth/email/login",
+            "/api/auth/email/reset-password"
     );
 
     private boolean isPublicAuthUri(String servletPath) {
@@ -102,7 +105,8 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
         if (PUBLIC_AUTH_URIS.contains(servletPath)) return true;
         return servletPath.startsWith("/api/auth/captcha")
                 || servletPath.startsWith("/api/auth/config")
-                || servletPath.startsWith("/api/auth/providers");
+                || servletPath.startsWith("/api/auth/providers")
+                || servletPath.startsWith("/api/auth/email/");
     }
 
     /** 分享类接口：无登录态，跳过签名校验（时间戳/Nonce 仍然执行） */

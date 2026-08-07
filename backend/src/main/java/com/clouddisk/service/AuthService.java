@@ -75,6 +75,8 @@ public class AuthService {
 
     private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
 
+    private final com.clouddisk.security.EmailCodeService emailCodeService;
+
     private final NotificationDispatcher notificationDispatcher;
 
     private final StoragePathService storagePathService;
@@ -116,14 +118,23 @@ public class AuthService {
         User admin = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, "admin"));
 
         if (admin != null) {
+
             boolean changed = false;
+
             if (admin.getRole() == null || admin.getRole().isBlank() || SystemRole.ADMIN.equals(admin.getRole())) {
+
                 admin.setRole(SystemRole.SUPER_ADMIN);
+
                 changed = true;
+
             }
+
             if (changed) {
+
                 userMapper.updateById(admin);
+
             }
+
         }
 
     }
@@ -131,71 +142,216 @@ public class AuthService {
 
 
     public Map<String, Object> login(LoginRequest req) {
+
         String ip = ClientIpUtil.current();
+
         String username = req.getUsername();
+
         loginProtection.checkAllowed(ip, username);
+
         if (loginProtection.captchaRequired(ip)) {
+
             captchaService.verify(req.getCaptchaId(), req.getCaptchaAnswer());
+
         }
+
+
 
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
-                .eq(User::getUsername, username));
+
+                .eq(User::getUsername, username)
+
+                .or()
+
+                .eq(User::getEmail, username));
+
+
 
         if (user == null || !passwordEncoder.matches(req.getPassword(), user.getPassword())) {
+
             loginProtection.recordFailure(ip, username);
-            throw new BusinessException("用户名或密码错误");
+
+            throw new BusinessException("用户名/邮箱或密码错误");
+
         }
+
+
 
         if (user.getStatus() != null && user.getStatus() == UserStatus.DISABLED) {
+
             throw new BusinessException("账号已被禁用");
+
         }
+
         if (user.getStatus() != null && user.getStatus() == UserStatus.PENDING) {
+
             throw new BusinessException("您的账号尚未通过审核，请等待管理员批准后再登录");
+
         }
+
+
 
         loginProtection.clearOnSuccess(ip, username);
+
         StpUtil.login(user.getId());
 
+
+
         try {
+
             org.springframework.web.context.request.ServletRequestAttributes attributes =
+
                     (org.springframework.web.context.request.ServletRequestAttributes)
+
                             org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+
             if (attributes != null) {
+
                 jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+
                 String clientId = request.getHeader("X-Client-Id");
+
                 if (cn.hutool.core.util.StrUtil.isNotBlank(clientId)) {
+
                     long ttl = cloudDiskProperties.getApiSecurity().getSessionSignTtlMinutes();
+
                     stringRedisTemplate.opsForValue().set(
+
                             "security:session-sign:client-user:" + clientId,
+
                             String.valueOf(user.getId()), ttl, java.util.concurrent.TimeUnit.MINUTES);
+
                 }
+
             }
+
         } catch (Exception ignored) {}
 
+
+
         auditLogService.log(user.getId(), user.getUsername(), "LOGIN", "user", String.valueOf(user.getId()), "登录成功");
+
         return buildAuthResponse(user);
+
+    }
+
+
+
+    public Map<String, Object> loginByEmailCode(com.clouddisk.dto.EmailLoginRequest req) {
+
+        String email = req.getEmail().trim();
+
+        emailCodeService.verifyCode(email, "login", req.getCode());
+
+
+
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+
+                .eq(User::getEmail, email));
+
+
+
+        if (user == null) {
+
+            throw new BusinessException("该邮箱尚未绑定任何账号，请先注册");
+
+        }
+
+
+
+        if (user.getStatus() != null && user.getStatus() == UserStatus.DISABLED) {
+
+            throw new BusinessException("账号已被禁用");
+
+        }
+
+        if (user.getStatus() != null && user.getStatus() == UserStatus.PENDING) {
+
+            throw new BusinessException("您的账号尚未通过审核，请等待管理员批准后再登录");
+
+        }
+
+
+
+        StpUtil.login(user.getId());
+
+        auditLogService.log(user.getId(), user.getUsername(), "LOGIN", "user", String.valueOf(user.getId()), "邮箱验证码登录成功");
+
+        return buildAuthResponse(user);
+
+    }
+
+
+
+    public void resetPasswordByEmail(com.clouddisk.dto.EmailResetPasswordRequest req) {
+
+        String email = req.getEmail().trim();
+
+        emailCodeService.verifyCode(email, "resetpwd", req.getCode());
+
+
+
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+
+                .eq(User::getEmail, email));
+
+
+
+        if (user == null) {
+
+            throw new BusinessException("未找到该邮箱对应的账号，请确认邮箱是否输入正确");
+
+        }
+
+
+
+        user.setPassword(passwordEncoder.encode(req.getNewPassword()));
+
+        userMapper.updateById(user);
+
+        auditLogService.log(user.getId(), user.getUsername(), "RESET_PASSWORD", "user", String.valueOf(user.getId()), "通过邮箱验证码重置密码成功");
+
     }
 
 
 
     public Map<String, Object> register(RegisterRequest req) {
+
         if (cloudDiskProperties.getRateLimit().isCaptchaOnRegister()) {
+
             captchaService.verify(req.getCaptchaId(), req.getCaptchaAnswer());
+
         }
+
+
 
         String username = UsernameValidator.normalize(req.getUsername());
+
         UsernameValidator.validate(username);
+
         req.setUsername(username);
 
+
+
         User existing = userMapper.selectOne(new LambdaQueryWrapper<User>()
+
                 .eq(User::getUsername, username));
 
+
+
         if (existing != null) {
+
             if (existing.getStatus() != null && existing.getStatus() == UserStatus.PENDING) {
+
                 throw new BusinessException("该用户名已提交注册申请，请等待管理员审核，无需重复注册");
+
             }
+
             throw new BusinessException("用户名已存在");
+
         }
+
+
 
         User user = new User();
 
@@ -205,15 +361,55 @@ public class AuthService {
 
         user.setNickname(req.getNickname() != null ? req.getNickname() : req.getUsername());
 
+
+
+        if (StringUtils.hasText(req.getEmail())) {
+
+            String email = req.getEmail().trim();
+
+            if (!email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")) {
+
+                throw new BusinessException("邮箱格式不正确");
+
+            }
+
+            User emailOwner = userMapper.selectOne(new LambdaQueryWrapper<User>()
+
+                    .eq(User::getEmail, email));
+
+            if (emailOwner != null) {
+
+                throw new BusinessException("该邮箱已被其他账号校验或注册");
+
+            }
+
+            if (StringUtils.hasText(req.getEmailCode())) {
+
+                emailCodeService.verifyCode(email, "register", req.getEmailCode());
+
+            }
+
+            user.setEmail(email);
+
+        }
+
+
+
         user.setStatus(UserStatus.PENDING);
 
         user.setRole("USER");
 
         user.setStorageQuota(UserStatus.DEFAULT_USER_QUOTA_BYTES);
 
+
+
         userMapper.insert(user);
 
+
+
         notifyAdminsPendingRegistration(user);
+
+
 
         Map<String, Object> m = new HashMap<>();
 
@@ -267,25 +463,38 @@ public class AuthService {
 
 
     public Map<String, Object> updateProfile(ProfileUpdateRequest req) {
-
         Long userId = StpUtil.getLoginIdAsLong();
-
         User user = userMapper.selectById(userId);
-
         if (user == null) throw new BusinessException("用户不存在");
 
         if (req.getNickname() != null) user.setNickname(req.getNickname());
-
-        if (req.getEmail() != null) user.setEmail(req.getEmail());
-
         if (req.getPhone() != null) user.setPhone(req.getPhone());
 
+        if (req.getEmail() != null) {
+            String newEmail = req.getEmail().trim();
+            String currentEmail = user.getEmail() != null ? user.getEmail().trim() : "";
+            if (!newEmail.equalsIgnoreCase(currentEmail)) {
+                if (!org.springframework.util.StringUtils.hasText(newEmail)) {
+                    user.setEmail(null);
+                } else {
+                    User emailOwner = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                            .eq(User::getEmail, newEmail)
+                            .ne(User::getId, userId));
+                    if (emailOwner != null) {
+                        throw new BusinessException("该邮箱已被其它账号使用");
+                    }
+                    if (!org.springframework.util.StringUtils.hasText(req.getEmailCode())) {
+                        throw new BusinessException("绑定或修改邮箱必须输入邮箱验证码");
+                    }
+                    emailCodeService.verifyCode(newEmail, "bind", req.getEmailCode());
+                    user.setEmail(newEmail);
+                }
+            }
+        }
+
         userMapper.updateById(user);
-
         userCacheService.evict(userId);
-
         return me();
-
     }
 
 

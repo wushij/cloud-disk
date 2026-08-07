@@ -40,6 +40,22 @@ spring:
     multipart:
       max-file-size: 128MB
       max-request-size: 128MB
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.qq.com}
+    port: ${SPRING_MAIL_PORT:465}
+    username: ${SPRING_MAIL_USERNAME:974473458@qq.com}
+    password: ${SPRING_MAIL_PASSWORD:cqjvfpulydqwbegh}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          socketFactory:
+            port: 465
+            class: javax.net.ssl.SSLSocketFactory
+            fallback: false
   datasource:
     hikari:
       maximum-pool-size: 20

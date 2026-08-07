@@ -19,4 +19,8 @@ public class RegisterRequest {
     private String captchaId;
     /** 注册验证码答案 */
     private String captchaAnswer;
+    /** 绑定的电子邮箱 */
+    private String email;
+    /** 邮箱验证码（如果填了邮箱且系统要求校验） */
+    private String emailCode;
 }

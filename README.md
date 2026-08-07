@@ -53,7 +53,8 @@
 
 | 模块 | 能力 |
 |------|------|
-| 用户中心 | 注册（管理员审批）/ 登录、图形验证码、头像、个人信息；RBAC（`USER` / `ADMIN`） |
+| 用户中心 | 注册（管理员审批）/ 登录、快捷邮箱登录/重置密码、图形/邮箱验证码、绑定/更换邮箱、头像、个人信息；RBAC（`USER` / `ADMIN`） |
+| 邮件服务 | SMTP 邮件验证码系统（注册/登录/重置密码/邮箱绑定），内嵌高保真纯 HTML 矢量品牌 Logo，RFC 标准 `multipart/alternative` 防垃圾邮件算法防护 |
 | 文件 | 上传/下载/重命名/移动/复制；MD5 秒传、分片、断点续传；最大 20GB |
 | 文件夹 | 多级目录、树形导航、面包屑；文件夹级联回收站 |
 | 分享 | 文件/文件夹分享、提取码、过期时间、下载计数去重；分享页预览（pdf.js / video.js / OnlyOffice 只读） |
@@ -287,6 +288,10 @@ docker compose -f docker/docker-compose.yml logs -f
 | `clouddisk.ldap.enabled` | LDAP 统一认证 |
 | `clouddisk.sso.enabled` | SSO 单点登录 |
 | `clouddisk.schedule.recycle-retain-days` | 回收站自动清理天数（默认 30） |
+| `clouddisk.mail.code-expire-minutes` | 邮箱验证码有效时长（默认 5 分钟） |
+| `clouddisk.mail.code-interval-seconds` | 邮箱验证码重发冷却间隔（默认 60 秒） |
+| `clouddisk.mail.daily-limit-per-email` | 单邮箱单日发送上限（默认 10 次） |
+| `spring.mail.host` / `port` / `username` / `password` | SMTP 邮件服务器连接配置 |
 
 ### API 全链路国密加固（`clouddisk.api-security.*`）
 
@@ -334,7 +339,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=prod,monitoring    # 生产 + 监
 
 | 模块 | 路径 | 说明 |
 |------|------|------|
-| 认证 | `/api/auth/*` | 登录、注册（审批制）、验证码、LDAP/SSO、**会话密钥协商**（`session-sign-init`）、头像上传/查看、个人信息、退出 |
+| 认证 | `/api/auth/*` | 登录、注册（审批制）、图形验证码、LDAP/SSO、**会话密钥协商**（`session-sign-init`）、头像上传/查看、个人信息（含邮箱绑定与更改）、退出 |
+| 邮箱验证码 | `/api/auth/email/send-code` | 发送邮箱验证码（支持场景：`register` 注册 / `login` 快捷登录 / `resetpwd` 重置密码 / `bind` 绑定或更换邮箱），支持防刷限制与并发冷却 |
+| 密码重置 | `/api/auth/email/reset-password` | 通过邮箱验证码验证身份并重置登录密码 |
 | 文件夹 | `/api/folders/*` | 树形目录、创建、重命名、移动、删除、面包屑 |
 | 文件 | `/api/files/*` | 列表、上传、下载、预览、直链、搜索 |
 | 上传 | `/api/upload/*` | MD5 校验、分片 init/chunk/merge、断点续传 |

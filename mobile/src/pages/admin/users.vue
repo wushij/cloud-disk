@@ -56,6 +56,7 @@ async function loadUsers() {
   try {
     const data = await request<UserRow[]>({ url: '/api/admin/users' })
     users.value = data || []
+    auth.pendingUserCount = users.value.filter(u => u.status === 2).length
   } catch {
     /* error handled by api */
   } finally {
@@ -234,7 +235,7 @@ function resetPassword() {
         method: 'PUT',
         data: { password: pwd }
       })
-      uni.showToast({ title: '密码重置成功，已下线该用户', icon: 'success' })
+      uni.showToast({ title: '密码重置成功，已下线该用户', icon: 'none' })
       await loadUsers()
     } catch {}
   })

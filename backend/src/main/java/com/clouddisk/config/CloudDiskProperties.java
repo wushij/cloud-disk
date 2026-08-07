@@ -221,4 +221,15 @@ public class CloudDiskProperties {
         /** 会话密钥 Redis TTL（分钟） */
         private long sessionSignTtlMinutes = 120L;
     }
+
+    private Mail mail = new Mail();
+
+    @Data
+    public static class Mail {
+        private boolean enabled = true;
+        private String fromName = "CloudDisk Pro";
+        private int codeExpireMinutes = 5;
+        private int codeIntervalSeconds = 60;
+        private int dailyLimitPerEmail = 10;
+    }
 }

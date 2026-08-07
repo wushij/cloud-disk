@@ -54,6 +54,7 @@ async function loadUsers() {
   try {
     const { data } = await http.get<UserRow[]>('/api/admin/users')
     users.value = data || []
+    auth.pendingUserCount = users.value.filter(u => u.status === 2).length
   } catch {
     /* global toast */
   } finally {

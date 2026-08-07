@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   active: 'disk' | 'shares' | 'teams' | 'profile'
 }>()
 
+const auth = useAuthStore()
 const notifyStore = useNotificationStore()
 const unreadCount = computed(() => notifyStore.unreadCount())
+const profileBadgeCount = computed(() => unreadCount.value + (auth.isAdmin ? auth.pendingUserCount : 0))
 
 interface TabItem {
   key: string
@@ -57,8 +60,8 @@ function switchTab(tab: TabItem) {
             :size="22"
             :color="active === tab.key ? '#010710' : '#94a3b8'"
           />
-          <view v-if="tab.key === 'profile' && unreadCount > 0" class="tab-badge-dot">
-            <text class="tab-badge-text">{{ unreadCount > 9 ? '9+' : unreadCount }}</text>
+          <view v-if="tab.key === 'profile' && profileBadgeCount > 0" class="tab-badge-dot">
+            <text class="tab-badge-text">{{ profileBadgeCount > 9 ? '9+' : profileBadgeCount }}</text>
           </view>
         </view>
         <text class="tab-label">{{ tab.label }}</text>

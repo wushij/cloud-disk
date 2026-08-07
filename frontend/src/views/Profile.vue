@@ -1,18 +1,27 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Camera, Check, User, Message, Iphone, Loading } from '@element-plus/icons-vue'
+import { Camera, Check, User, Message, Iphone, Loading, Key } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import EmailCodeBtn from '@/components/EmailCodeBtn.vue'
 import http from '@/api/http'
 
 const auth = useAuthStore()
 const nickname = ref('')
 const email = ref('')
+const initialEmail = ref('')
+const emailCode = ref('')
 const phone = ref('')
 const loading = ref(false)
 const avatarUploading = ref(false)
 const avatarInputRef = ref<HTMLInputElement | null>(null)
 const avatarLoadFailed = ref(false)
+
+const isEmailChanged = computed(() => {
+  const current = email.value.trim()
+  const orig = initialEmail.value.trim()
+  return current !== orig && current.length > 0
+})
 
 interface StorageUsage {
   usedBytes: number
@@ -41,6 +50,7 @@ onMounted(async () => {
   const data = await auth.fetchProfile()
   nickname.value = data.nickname || ''
   email.value = data.email || ''
+  initialEmail.value = data.email || ''
   phone.value = data.phone || ''
   try {
     const { data: u } = await http.get('/api/storage/usage')
@@ -91,13 +101,24 @@ watch(() => auth.avatarVersion, () => {
 })
 
 async function save() {
+  const em = email.value.trim()
+  if (isEmailChanged.value) {
+    if (!emailCode.value.trim()) {
+      ElMessage.warning('绑定或修改邮箱必须输入邮箱验证码')
+      return
+    }
+  }
+
   loading.value = true
   try {
     await auth.updateProfile({
       nickname: nickname.value.trim(),
-      email: email.value.trim(),
+      email: em,
+      emailCode: isEmailChanged.value ? emailCode.value.trim() : undefined,
       phone: phone.value.trim()
     })
+    initialEmail.value = em
+    emailCode.value = ''
     ElMessage.success('保存成功')
   } catch {
     /* global toast */
@@ -108,7 +129,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="profile-page cd-page cd-page-scroll">
+  <div class="profile-page cd-page-scroll">
     <div class="profile-shell">
       <!-- 顶部身份区 -->
       <section class="profile-hero">
@@ -206,10 +227,22 @@ async function save() {
               <el-input v-model="nickname" placeholder="请输入昵称" :prefix-icon="User" />
             </el-form-item>
             <el-form-item label="邮箱">
-              <el-input v-model="email" placeholder="请输入邮箱" :prefix-icon="Message" />
+              <template #label>
+                <div class="form-label-with-tip">
+                  <span>邮箱</span>
+                  <span v-if="isEmailChanged" class="email-change-tag">修改或绑定邮箱需验证</span>
+                </div>
+              </template>
+              <div class="email-input-group">
+                <el-input v-model="email" placeholder="请输入电子邮箱" :prefix-icon="Message" />
+                <EmailCodeBtn v-if="isEmailChanged" :email="email.trim()" scene="bind" />
+              </div>
+            </el-form-item>
+            <el-form-item v-if="isEmailChanged" label="邮箱验证码">
+              <el-input v-model="emailCode" placeholder="请输入发送至新邮箱的 6 位验证码" maxlength="6" :prefix-icon="Key" />
             </el-form-item>
             <el-form-item label="手机号">
-              <el-input v-model="phone" placeholder="请输入手机号" :prefix-icon="Iphone" />
+              <el-input v-model="phone" placeholder="请输入手机号（可选）" :prefix-icon="Iphone" />
             </el-form-item>
           </div>
 
@@ -230,6 +263,7 @@ async function save() {
   width: 100%;
   box-sizing: border-box;
   animation: fadeIn 0.35s ease;
+  padding-bottom: 60px;
 }
 
 .profile-shell {
@@ -529,6 +563,27 @@ async function save() {
   .profile-section {
     padding: 20px;
   }
+}
+
+.form-label-with-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.email-change-tag {
+  font-size: 12px;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.email-input-group {
+  display: flex;
+  gap: 12px;
+  width: 100%;
 }
 
 @media (max-width: 640px) {

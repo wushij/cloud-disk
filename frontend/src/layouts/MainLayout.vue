@@ -579,9 +579,8 @@ async function rejectQuota(item: { id: string; refId?: string; content?: string 
         >
 
           <el-icon :size="20"><component :is="item.icon" /></el-icon>
-
           <span>{{ item.label }}</span>
-
+          <el-badge v-if="item.path === '/admin/users' && auth.pendingUserCount > 0" :value="auth.pendingUserCount" :max="99" class="nav-pending-badge" />
           <div v-if="active === item.path" class="cd-nav-indicator" />
 
         </router-link>

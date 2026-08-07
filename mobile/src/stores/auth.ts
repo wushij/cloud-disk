@@ -22,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
   const username = ref<string | null>(null)
   const nickname = ref<string | null>(null)
   const role = ref<string | null>(null)
+  const email = ref<string | null>(null)
   const hasAvatar = ref(false)
   const avatarVersion = ref(0)
   const avatarCachedSrc = ref('')
@@ -73,10 +74,11 @@ export const useAuthStore = defineStore('auth', () => {
     uni.setStorageSync('cd_has_avatar', String(hasAvatar.value))
   }
 
-  function applyProfile(data: { username?: string; nickname?: string; role?: string; avatar?: string | null }) {
+  function applyProfile(data: { username?: string; nickname?: string; role?: string; avatar?: string | null; email?: string | null }) {
     if (data.username) username.value = data.username
     nickname.value = data.nickname || data.username || nickname.value
     role.value = data.role || role.value || 'USER'
+    email.value = data.email || null
     hasAvatar.value = !!data.avatar
     if (!data.avatar) {
       avatarCachedSrc.value = ''
@@ -132,22 +134,51 @@ export const useAuthStore = defineStore('auth', () => {
     useFileStore().reset()
   }
 
+  async function loginByEmailCode(email: string, code: string) {
+    const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
+      url: '/api/auth/email/login',
+      method: 'POST',
+      data: { email, code },
+      skipAuth: true,
+      skipErrorHandler: true
+    })
+    setSessionBearer(data.token)
+    token.value = data.token
+    username.value = data.username
+    nickname.value = data.nickname || data.username
+    role.value = data.role || 'USER'
+    persist()
+    const requestFn = () =>
+      request<any>({
+        url: `/api/auth/session-sign-init?clientId=${getClientId()}`,
+        method: 'POST',
+        data: undefined,
+        skipErrorHandler: true
+      } as any)
+    await requestSessionSignKey(requestFn).catch(() => {})
+    await fetchProfile()
+    await refreshMediaToken()
+    useFileStore().reset()
+  }
+
   async function register(
     u: string,
     p: string,
     nick?: string,
-    captcha?: { captchaId?: string; captchaAnswer?: string }
+    captcha?: { captchaId?: string; captchaAnswer?: string },
+    emailPayload?: { email?: string; emailCode?: string }
   ) {
     const data = await request<{ token?: string; username?: string; nickname?: string; role?: string; pending?: boolean; title?: string; message?: string }>({
       url: '/api/auth/register',
       method: 'POST',
-      data: { username: u, password: p, nickname: nick, ...captcha },
+      data: { username: u, password: p, nickname: nick, ...captcha, ...emailPayload },
       skipAuth: true,
       skipErrorHandler: true
     })
     if (data.pending) {
       return data
     }
+    setSessionBearer(data.token!)
     token.value = data.token!
     username.value = data.username!
     nickname.value = data.nickname || data.username!
@@ -164,6 +195,9 @@ export const useAuthStore = defineStore('auth', () => {
       url: '/api/auth/me'
     })
     applyProfile(data)
+    if (isAdmin.value) {
+      void fetchPendingCount()
+    }
     return data
   }
 
@@ -232,11 +266,29 @@ export const useAuthStore = defineStore('auth', () => {
     return true
   }
 
+  const pendingUserCount = ref(0)
+
+  async function fetchPendingCount() {
+    if (!isAdmin.value) {
+      pendingUserCount.value = 0
+      return
+    }
+    try {
+      const data = await request<{ pendingUserCount?: number }>({ url: '/api/admin/dashboard', skipErrorHandler: true })
+      if (data && typeof data.pendingUserCount === 'number') {
+        pendingUserCount.value = data.pendingUserCount
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     token,
     username,
     nickname,
     role,
+    email,
     hasAvatar,
     avatarVersion,
     avatarSrc,
@@ -247,9 +299,12 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isSuperAdmin,
     displayName,
+    pendingUserCount,
+    fetchPendingCount,
     restore,
     restoreAvatarCache,
     login,
+    loginByEmailCode,
     register,
     fetchProfile,
     uploadAvatar,

@@ -3,6 +3,8 @@ import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { request } from '@/api/http'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import MobileEmailCodeBtn from '@/components/MobileEmailCodeBtn.vue'
+import MobileForgotPwdDialog from '@/components/MobileForgotPwdDialog.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import { validateRegisterUsername } from '@/utils/username'
 import { toCaptchaDataUrl } from '@/utils/captcha'
@@ -10,9 +12,19 @@ import { toCaptchaDataUrl } from '@/utils/captcha'
 const auth = useAuthStore()
 
 const mode = ref<'login' | 'register'>('login')
+const loginType = ref<'password' | 'email'>('password')
+
 const username = ref('')
 const password = ref('')
 const nickname = ref('')
+
+const email = ref('')
+const emailCode = ref('')
+
+const registerEmail = ref('')
+const registerEmailCode = ref('')
+const showForgotModal = ref(false)
+
 const loading = ref(false)
 const showPass = ref(false)
 const focusField = ref('')
@@ -43,6 +55,10 @@ async function syncCaptchaState() {
     await refreshCaptcha()
     return
   }
+  if (loginType.value === 'email') {
+    showCaptcha.value = false
+    return
+  }
   try {
     const data = await request<{ required?: boolean }>({
       url: '/api/auth/captcha/required',
@@ -56,7 +72,7 @@ async function syncCaptchaState() {
   }
 }
 
-watch(mode, () => {
+watch([mode, loginType], () => {
   void syncCaptchaState()
 })
 
@@ -64,42 +80,49 @@ onMounted(() => {
   void syncCaptchaState()
 })
 
+function onForgotSuccess(payload: { email: string; newPassword: string }) {
+  mode.value = 'login'
+  loginType.value = 'password'
+  username.value = payload.email
+  password.value = payload.newPassword
+}
+
 async function submit() {
   if (loading.value) return
 
-  const u = username.value.trim()
-  const p = password.value
-  const nick = nickname.value.trim()
-  const isRegister = mode.value === 'register'
+  if (mode.value === 'register') {
+    const u = username.value.trim()
+    const p = password.value
+    const nick = nickname.value.trim()
 
-  if (!u || !p) {
-    uni.showToast({ title: isRegister ? '请填写用户名和密码' : '请输入用户名和密码', icon: 'none' })
-    return
-  }
-  if (isRegister) {
+    if (!u || !p) {
+      uni.showToast({ title: '请填写用户名和密码', icon: 'none' })
+      return
+    }
     const usernameError = validateRegisterUsername(u)
     if (usernameError) {
       uni.showToast({ title: usernameError, icon: 'none' })
       return
     }
-  }
-  if (showCaptcha.value && !captchaAnswer.value.trim()) {
-    uni.showToast({ title: '请完成验证码', icon: 'none' })
-    return
-  }
+    if (showCaptcha.value && !captchaAnswer.value.trim()) {
+      uni.showToast({ title: '请完成验证码', icon: 'none' })
+      return
+    }
+    if (registerEmail.value.trim() && !registerEmailCode.value.trim()) {
+      uni.showToast({ title: '已填写邮箱，请输入验证码', icon: 'none' })
+      return
+    }
 
-  loading.value = true
-  const captchaPayload = showCaptcha.value
-    ? { captchaId: captchaId.value, captchaAnswer: captchaAnswer.value.trim() }
-    : undefined
+    loading.value = true
+    const captchaPayload = showCaptcha.value
+      ? { captchaId: captchaId.value, captchaAnswer: captchaAnswer.value.trim() }
+      : undefined
+    const emailPayload = registerEmail.value.trim()
+      ? { email: registerEmail.value.trim(), emailCode: registerEmailCode.value.trim() }
+      : undefined
 
-  try {
-    if (mode.value === 'login') {
-      await auth.login(u, p, captchaPayload)
-      uni.showToast({ title: '登录成功', icon: 'success' })
-      uni.reLaunch({ url: '/pages/disk/index' })
-    } else {
-      const res = await auth.register(u, p, nick || undefined, captchaPayload) as { pending?: boolean; title?: string; message?: string } | undefined
+    try {
+      const res = await auth.register(u, p, nick || undefined, captchaPayload, emailPayload) as { pending?: boolean; title?: string; message?: string } | undefined
       if (res?.pending) {
         pendingDialogTitle.value = res.title || '注册申请已提交'
         pendingDialogMessage.value = res.message || '管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。'
@@ -108,10 +131,46 @@ async function submit() {
         uni.showToast({ title: '注册成功', icon: 'success' })
         uni.reLaunch({ url: '/pages/disk/index' })
       }
+    } catch (e: any) {
+      uni.showToast({ title: e?.message || '注册失败', icon: 'none' })
+      await syncCaptchaState()
+    } finally {
+      loading.value = false
     }
+    return
+  }
+
+  // mode === 'login'
+  loading.value = true
+  const captchaPayload = showCaptcha.value
+    ? { captchaId: captchaId.value, captchaAnswer: captchaAnswer.value.trim() }
+    : undefined
+
+  try {
+    if (loginType.value === 'password') {
+      const u = username.value.trim()
+      const p = password.value
+      if (!u || !p) {
+        uni.showToast({ title: '请输入用户名/邮箱和密码', icon: 'none' })
+        loading.value = false
+        return
+      }
+      await auth.login(u, p, captchaPayload)
+      uni.showToast({ title: '登录成功', icon: 'success' })
+    } else {
+      const em = email.value.trim()
+      const code = emailCode.value.trim()
+      if (!em || !code) {
+        uni.showToast({ title: '请输入邮箱和验证码', icon: 'none' })
+        loading.value = false
+        return
+      }
+      await auth.loginByEmailCode(em, code)
+      uni.showToast({ title: '登录成功', icon: 'success' })
+    }
+    uni.reLaunch({ url: '/pages/disk/index' })
   } catch (e: any) {
-    const msg = e instanceof Error ? e.message : (isRegister ? '注册失败' : '登录失败')
-    uni.showToast({ title: msg, icon: 'none' })
+    uni.showToast({ title: e?.message || '登录失败', icon: 'none' })
     await syncCaptchaState()
   } finally {
     loading.value = false
@@ -122,6 +181,8 @@ function onPendingDialogConfirm() {
   mode.value = 'login'
   password.value = ''
   nickname.value = ''
+  registerEmail.value = ''
+  registerEmailCode.value = ''
   void syncCaptchaState()
 }
 </script>
@@ -142,105 +203,55 @@ function onPendingDialogConfirm() {
       <view class="card">
         <text class="card-title">CloudDisk Pro</text>
 
-        <!-- 注册登录模式切换 -->
-        <view class="auth-tabs">
-          <view
-            class="auth-tab"
-            :class="{ active: mode === 'login' }"
-            @click="mode = 'login'"
-          >
-            <text class="auth-tab-text">登录</text>
-            <view class="auth-tab-line" />
-          </view>
-          <view
-            class="auth-tab"
-            :class="{ active: mode === 'register' }"
-            @click="mode = 'register'"
-          >
-            <text class="auth-tab-text">注册</text>
-            <view class="auth-tab-line" />
-          </view>
+        <!-- 1. 登录模式下：密码登录 / 验证码登录 切换项 -->
+        <view v-if="mode === 'login'" class="login-sub-switch">
+          <text
+            class="sub-switch-item"
+            :class="{ active: loginType === 'password' }"
+            @click="loginType = 'password'"
+          >账号密码登录</text>
+          <text class="sub-switch-split">|</text>
+          <text
+            class="sub-switch-item"
+            :class="{ active: loginType === 'email' }"
+            @click="loginType = 'email'"
+          >邮箱验证码登录</text>
         </view>
 
-        <!-- 注册专用昵称输入 -->
-        <view v-if="mode === 'register'" class="field" :class="{ focused: focusField === 'nickname' }">
-          <view class="field-prefix">
-            <u-icon name="account" size="19" color="#a0aec0" />
-          </view>
-          <input
-            v-model="nickname"
-            class="field-input"
-            placeholder="昵称（可选）"
-            placeholder-class="ph"
-            @focus="focusField = 'nickname'"
-            @blur="focusField = ''"
-          />
-        </view>
-
-        <view class="field" :class="{ focused: focusField === 'user' }">
-          <view class="field-prefix">
-            <u-icon name="account" size="19" color="#a0aec0" />
-          </view>
-          <input
-            v-model="username"
-            class="field-input"
-            placeholder="用户名"
-            placeholder-class="ph"
-            :maxlength="mode === 'register' ? 12 : 32"
-            @focus="focusField = 'user'"
-            @blur="focusField = ''"
-          />
-        </view>
-
-        <view class="field" :class="{ focused: focusField === 'pass' }">
-          <view class="field-prefix">
-            <u-icon name="lock" size="19" color="#a0aec0" />
-          </view>
-          <input
-            v-model="password"
-            class="field-input"
-            :password="!showPass"
-            placeholder="密码"
-            placeholder-class="ph"
-            @focus="focusField = 'pass'"
-            @blur="focusField = ''"
-          />
-          <view class="field-suffix" @click="showPass = !showPass">
-            <svg
-              v-if="showPass"
-              class="eye-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#a0aec0"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <svg
-              v-else
-              class="eye-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#a0aec0"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-              <line x1="3" y1="4" x2="21" y2="20" />
-            </svg>
-          </view>
-        </view>
-
-        <view v-if="showCaptcha" class="captcha-row">
-          <view class="field captcha-input" :class="{ focused: focusField === 'captcha' }">
+        <!-- 1.1 账号密码登录 -->
+        <template v-if="mode === 'login' && loginType === 'password'">
+          <view class="field" :class="{ focused: focusField === 'user' }">
             <view class="field-prefix">
+              <u-icon name="account" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="username"
+              class="field-input"
+              placeholder="用户名/电子邮箱"
+              placeholder-class="ph"
+              maxlength="32"
+              @focus="focusField = 'user'"
+              @blur="focusField = ''"
+            />
+          </view>
+
+          <view class="field" :class="{ focused: focusField === 'pass' }">
+            <view class="field-prefix">
+              <u-icon name="lock" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="password"
+              class="field-input"
+              :password="!showPass"
+              placeholder="密码"
+              placeholder-class="ph"
+              @focus="focusField = 'pass'"
+              @blur="focusField = ''"
+            />
+            <view class="field-suffix" @click="showPass = !showPass">
               <svg
-                class="field-icon"
+                v-if="showPass"
+                class="eye-icon"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="#a0aec0"
@@ -248,48 +259,297 @@ function onPendingDialogConfirm() {
                 stroke-linecap="round"
                 stroke-linejoin="round"
               >
-                <circle cx="8.5" cy="12.5" r="4.5" />
-                <path d="M12 12h9" />
-                <path d="M18 12v3" />
-                <path d="M15 12v3" />
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg
+                v-else
+                class="eye-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a0aec0"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+                <line x1="3" y1="4" x2="21" y2="20" />
+              </svg>
+            </view>
+          </view>
+
+          <!-- 图形验证码 -->
+          <view v-if="showCaptcha" class="captcha-row">
+            <view class="field captcha-input" :class="{ focused: focusField === 'captcha' }">
+              <view class="field-prefix">
+                <svg
+                  class="field-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#a0aec0"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="8.5" cy="12.5" r="4.5" />
+                  <path d="M12 12h9" />
+                  <path d="M18 12v3" />
+                  <path d="M15 12v3" />
+                </svg>
+              </view>
+              <input
+                v-model="captchaAnswer"
+                class="field-input"
+                placeholder="请输入验证码"
+                placeholder-class="ph"
+                maxlength="6"
+                @focus="focusField = 'captcha'"
+                @blur="focusField = ''"
+                @confirm="submit"
+              />
+            </view>
+            <view
+              v-if="captchaImg"
+              class="captcha-img-wrap cd-pressable"
+              @click="refreshCaptcha"
+            >
+              <image
+                :src="captchaImg"
+                class="captcha-img"
+                mode="aspectFit"
+              />
+            </view>
+            <view v-else class="captcha-skeleton" />
+          </view>
+
+          <view class="auth-links-row">
+            <text class="auth-link-text" @click="mode = 'register'">没有账号？立即注册</text>
+            <text class="auth-link-text" @click="showForgotModal = true">忘记密码？</text>
+          </view>
+        </template>
+
+        <!-- 1.2 邮箱验证码登录 -->
+        <template v-if="mode === 'login' && loginType === 'email'">
+          <view class="field" :class="{ focused: focusField === 'email' }">
+            <view class="field-prefix">
+              <u-icon name="email" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="email"
+              class="field-input"
+              placeholder="电子邮箱"
+              placeholder-class="ph"
+              @focus="focusField = 'email'"
+              @blur="focusField = ''"
+            />
+          </view>
+
+          <view class="field code-field" :class="{ focused: focusField === 'emailCode' }">
+            <view class="field-prefix">
+              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="#a0aec0" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="4.5" />
+                <path d="M10.7 12.3L20 3" />
+                <path d="M16 7l2 2" />
+                <path d="M13 10l2 2" />
               </svg>
             </view>
             <input
-              v-model="captchaAnswer"
+              v-model="emailCode"
               class="field-input"
-              placeholder="请输入验证码"
+              placeholder="6 位邮箱验证码"
               placeholder-class="ph"
               maxlength="6"
-              @focus="focusField = 'captcha'"
+              @focus="focusField = 'emailCode'"
               @blur="focusField = ''"
-              @confirm="submit"
             />
+            <MobileEmailCodeBtn :email="email" scene="login" />
           </view>
-            <view
-            v-if="captchaImg"
-            class="captcha-img-wrap cd-pressable"
-            @click="refreshCaptcha"
-          >
-            <image
-              :src="captchaImg"
-              class="captcha-img"
-              mode="aspectFit"
-            />
-          </view>
-          <view v-else class="captcha-skeleton" />
-        </view>
 
+          <view class="auth-links-row">
+            <text class="auth-link-text" @click="mode = 'register'">没有账号？立即注册</text>
+            <text class="auth-link-text" @click="showForgotModal = true">忘记密码？</text>
+          </view>
+        </template>
+
+        <!-- 2. 账号注册 -->
+        <template v-if="mode === 'register'">
+          <view class="field" :class="{ focused: focusField === 'nickname' }">
+            <view class="field-prefix">
+              <u-icon name="account" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="nickname"
+              class="field-input"
+              placeholder="昵称（可选）"
+              placeholder-class="ph"
+              @focus="focusField = 'nickname'"
+              @blur="focusField = ''"
+            />
+          </view>
+
+          <view class="field" :class="{ focused: focusField === 'user' }">
+            <view class="field-prefix">
+              <u-icon name="account" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="username"
+              class="field-input"
+              placeholder="用户名 (4-12位)"
+              placeholder-class="ph"
+              maxlength="12"
+              @focus="focusField = 'user'"
+              @blur="focusField = ''"
+            />
+          </view>
+
+          <view class="field" :class="{ focused: focusField === 'pass' }">
+            <view class="field-prefix">
+              <u-icon name="lock" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="password"
+              class="field-input"
+              :password="!showPass"
+              placeholder="密码 (6-64位)"
+              placeholder-class="ph"
+              @focus="focusField = 'pass'"
+              @blur="focusField = ''"
+            />
+            <view class="field-suffix" @click="showPass = !showPass">
+              <svg
+                v-if="showPass"
+                class="eye-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a0aec0"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg
+                v-else
+                class="eye-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a0aec0"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+                <line x1="3" y1="4" x2="21" y2="20" />
+              </svg>
+            </view>
+          </view>
+
+          <view class="field" :class="{ focused: focusField === 'regEmail' }">
+            <view class="field-prefix">
+              <u-icon name="email" size="19" color="#a0aec0" />
+            </view>
+            <input
+              v-model="registerEmail"
+              class="field-input"
+              placeholder="电子邮箱 (推荐绑定)"
+              placeholder-class="ph"
+              @focus="focusField = 'regEmail'"
+              @blur="focusField = ''"
+            />
+          </view>
+
+          <view v-if="registerEmail.trim()" class="field code-field" :class="{ focused: focusField === 'regCode' }">
+            <view class="field-prefix">
+              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="#a0aec0" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="4.5" />
+                <path d="M10.7 12.3L20 3" />
+                <path d="M16 7l2 2" />
+                <path d="M13 10l2 2" />
+              </svg>
+            </view>
+            <input
+              v-model="registerEmailCode"
+              class="field-input"
+              placeholder="邮箱验证码"
+              placeholder-class="ph"
+              maxlength="6"
+              @focus="focusField = 'regCode'"
+              @blur="focusField = ''"
+            />
+            <MobileEmailCodeBtn :email="registerEmail" scene="register" />
+          </view>
+
+          <!-- 图形验证码 -->
+          <view v-if="showCaptcha" class="captcha-row">
+            <view class="field captcha-input" :class="{ focused: focusField === 'captcha' }">
+              <view class="field-prefix">
+                <svg
+                  class="field-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#a0aec0"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="8.5" cy="12.5" r="4.5" />
+                  <path d="M12 12h9" />
+                  <path d="M18 12v3" />
+                  <path d="M15 12v3" />
+                </svg>
+              </view>
+              <input
+                v-model="captchaAnswer"
+                class="field-input"
+                placeholder="请输入验证码"
+                placeholder-class="ph"
+                maxlength="6"
+                @focus="focusField = 'captcha'"
+                @blur="focusField = ''"
+                @confirm="submit"
+              />
+            </view>
+            <view
+              v-if="captchaImg"
+              class="captcha-img-wrap cd-pressable"
+              @click="refreshCaptcha"
+            >
+              <image
+                :src="captchaImg"
+                class="captcha-img"
+                mode="aspectFit"
+              />
+            </view>
+            <view v-else class="captcha-skeleton" />
+          </view>
+
+          <view class="auth-links-row single-right">
+            <text class="auth-link-text" @click="mode = 'login'">已有账号？去登录</text>
+          </view>
+        </template>
+
+        <!-- 提交按钮 -->
         <view
           class="login-btn cd-pressable"
           :class="{ loading }"
           @click="submit"
         >
           <text class="login-btn-text">
-            {{ loading ? (mode === 'login' ? '登录中...' : '注册中...') : (mode === 'login' ? '登 录' : '注 册') }}
+            {{
+              loading
+                ? (mode === 'login' ? '登录中...' : '注册中...')
+                : (mode === 'login' ? (loginType === 'password' ? '登 录' : '快捷登录') : '注 册')
+            }}
           </text>
         </view>
       </view>
     </view>
+
+    <!-- 找回密码 抽离弹窗组件 -->
+    <MobileForgotPwdDialog v-model:show="showForgotModal" @success="onForgotSuccess" />
 
     <MobileConfirmDialog
       v-model:show="pendingDialogVisible"
@@ -391,6 +651,38 @@ function onPendingDialogConfirm() {
   margin-bottom: 4rpx;
 }
 
+.login-sub-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 999rpx;
+  padding: 6rpx;
+  margin-bottom: 20rpx;
+}
+
+.sub-switch-item {
+  flex: 1;
+  text-align: center;
+  font-size: 26rpx;
+  color: #64748b;
+  padding: 12rpx 0;
+  border-radius: 999rpx;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sub-switch-item.active {
+  color: #0f172a;
+  font-weight: 700;
+  background: #ffffff;
+  box-shadow: 0 2rpx 10rpx rgba(15, 23, 42, 0.08);
+}
+
+.sub-switch-split {
+  display: none;
+}
+
 .field {
   display: flex;
   align-items: center;
@@ -410,6 +702,10 @@ function onPendingDialogConfirm() {
   }
 }
 
+.code-field {
+  padding-right: 12rpx;
+}
+
 .field-prefix,
 .field-suffix {
   flex-shrink: 0;
@@ -419,6 +715,25 @@ function onPendingDialogConfirm() {
 
 .field-suffix {
   padding: 8rpx;
+}
+
+.auth-links-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: -8rpx;
+  margin-bottom: 4rpx;
+  padding: 0 4rpx;
+
+  &.single-right {
+    justify-content: flex-end;
+  }
+}
+
+.auth-link-text {
+  font-size: 26rpx;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .eye-icon,
@@ -537,7 +852,7 @@ function onPendingDialogConfirm() {
 .auth-tab {
   position: relative;
   padding: 8rpx 16rpx;
-  
+
   .auth-tab-text {
     font-size: 32rpx;
     font-weight: 600;

@@ -6,6 +6,9 @@ import { useNotificationStore } from '@/stores/notification'
 import { request } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
+import MobileBindEmailDialog from '@/components/MobileBindEmailDialog.vue'
+import MobileApplyQuotaDialog from '@/components/MobileApplyQuotaDialog.vue'
+import MobileAboutModal from '@/components/MobileAboutModal.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import { fmtSize } from '@/utils/fileCover'
 import { globalStorageUsage, updateStorageUsage } from '@/utils/sharedState'
@@ -13,6 +16,16 @@ import { globalStorageUsage, updateStorageUsage } from '@/utils/sharedState'
 const auth = useAuthStore()
 const notifyStore = useNotificationStore()
 const usage = globalStorageUsage
+
+const bindEmailVisible = ref(false)
+const applyVisible = ref(false)
+const aboutVisible = ref(false)
+const logoutVisible = ref(false)
+const avatarLoadFailed = ref(false)
+
+function openBindEmailModal() {
+  bindEmailVisible.value = true
+}
 
 const unreadCount = computed(() => notifyStore.unreadCount())
 
@@ -22,9 +35,6 @@ const storagePercent = computed(() => {
 })
 
 const avatarInitial = computed(() => (auth.displayName || 'U').charAt(0).toUpperCase())
-const avatarLoadFailed = ref(false)
-const aboutVisible = ref(false)
-const logoutVisible = ref(false)
 
 onShow(async () => {
   uni.hideTabBar({ animation: false }).catch(() => {})
@@ -35,8 +45,7 @@ onShow(async () => {
       auth.fetchProfile().catch(() => {})
     ])
     notifyStore.loadFromApi().catch(() => {})
-    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
-    updateStorageUsage(data)
+    refreshUsage()
   } catch {
     /* Keep cached data */
   }
@@ -109,58 +118,20 @@ function goSecurityConfig() {
   uni.navigateTo({ url: '/pages/admin/security' })
 }
 
-const applyVisible = ref(false)
-const applyGB = ref('')
-const applyReason = ref('')
-const applySaving = ref(false)
-
 const canApplyQuota = computed(
   () => !auth.isSuperAdmin && usage.value != null && (usage.value.quotaBytes || 0) > 0
 )
 
 function openApplyQuota() {
   applyVisible.value = true
-  applyGB.value = ''
-  applyReason.value = ''
 }
 
-async function submitApply() {
-  if (!applyGB.value) {
-    uni.showToast({ title: '请输入目标容量', icon: 'none' })
-    return
-  }
-  const gb = Number(applyGB.value)
-  if (isNaN(gb) || gb <= 0) {
-    uni.showToast({ title: '容量必须大于 0', icon: 'none' })
-    return
-  }
-  const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
-  const currentQuota = usage.value?.quotaBytes
-  if (currentQuota != null && quotaBytes <= currentQuota) {
-    uni.showToast({ title: '申请配额必须大于当前配额', icon: 'none' })
-    return
-  }
-
-  applySaving.value = true
+async function refreshUsage() {
   try {
-    await request({
-      url: '/api/quota-applications',
-      method: 'POST',
-      data: {
-        applyQuota: quotaBytes,
-        reason: applyReason.value
-      }
-    })
-    uni.showToast({ title: '申请已提交', icon: 'success' })
-    applyVisible.value = false
-    
-    // Refresh storage usage
     const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
     updateStorageUsage(data)
-  } catch (err: any) {
-    uni.showToast({ title: err.response?.data?.message || err.message || '提交失败', icon: 'none' })
-  } finally {
-    applySaving.value = false
+  } catch {
+    /* ignore */
   }
 }
 </script>
@@ -252,6 +223,9 @@ async function submitApply() {
         <view class="menu-body">
           <text class="menu-name">用户管理</text>
           <text class="menu-desc">管理用户角色、状态及容量配额</text>
+        </view>
+        <view v-if="auth.pendingUserCount > 0" class="menu-badge">
+          <text>{{ auth.pendingUserCount }}</text>
         </view>
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>
@@ -348,6 +322,20 @@ async function submitApply() {
         <u-icon name="arrow-right" size="18" color="#cbd5e1" />
       </view>
 
+      <!-- 绑定 / 更改邮箱 -->
+      <view class="menu-item cd-pressable" @click="openBindEmailModal">
+        <view class="menu-icon-box blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill="#2563eb"/>
+          </svg>
+        </view>
+        <view class="menu-body">
+          <text class="menu-name">绑定 / 更改邮箱</text>
+          <text class="menu-desc">{{ auth.email ? auth.email : '未绑定电子邮箱' }}</text>
+        </view>
+        <u-icon name="arrow-right" size="18" color="#cbd5e1" />
+      </view>
+
       <!-- 关于我们 -->
       <view class="menu-item cd-pressable" @click="showAbout">
         <view class="menu-icon-box violet">
@@ -380,79 +368,10 @@ async function submitApply() {
       @confirm="confirmLogout"
     />
 
-    <!-- 关于我们 -->
-    <view v-if="aboutVisible" class="about-root" @touchmove.stop.prevent>
-      <view class="about-mask" @click="aboutVisible = false" />
-      <view class="about-panel cd-scale-in" @click.stop>
-        <view class="about-logo">
-          <BrandMark size="48rpx" />
-        </view>
-        <text class="about-name">CloudDisk Pro</text>
-        <text class="about-version">版本 v1.2.0</text>
-        <text class="about-desc">个人专属的高性能云端存储系统</text>
-        <view class="about-btn cd-pressable" @click="aboutVisible = false">
-          <text>知道了</text>
-        </view>
-      </view>
-    </view>
+    <MobileBindEmailDialog v-model:show="bindEmailVisible" />
 
-    <!-- 申请扩容弹窗 -->
-    <view v-if="applyVisible" class="about-root" @touchmove.stop.prevent>
-      <view class="about-mask" @click="applyVisible = false" />
-      <view class="about-panel cd-scale-in apply-panel" @click.stop>
-        <view class="apply-header">
-          <view class="apply-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" fill="var(--cd-primary)" />
-            </svg>
-          </view>
-          <text class="apply-title">申请容量扩容</text>
-        </view>
-        
-        <view class="apply-hint">
-          <text>请填写申请的目标容量（GB）及扩容原因</text>
-        </view>
-
-        <view class="apply-form">
-          <view class="form-item">
-            <text class="form-label">
-              目标容量 (GB)
-              <text v-if="usage?.quotaBytes" class="form-label-tip">
-                （当前 {{ fmtSize(usage.quotaBytes) }}）
-              </text>
-            </text>
-            <view class="input-wrap">
-              <input
-                type="number"
-                v-model="applyGB"
-                placeholder="例如 10"
-                class="apply-input"
-              />
-              <text class="input-unit">GB</text>
-            </view>
-          </view>
-          
-          <view class="form-item" style="margin-top: 20rpx;">
-            <text class="form-label">申请原因</text>
-            <textarea
-              v-model="applyReason"
-              placeholder="请输入申请扩容的理由..."
-              class="apply-textarea"
-              maxlength="200"
-            />
-          </view>
-        </view>
-
-        <view class="apply-buttons">
-          <view class="btn-cancel cd-pressable" @click="applyVisible = false">
-            <text>取消</text>
-          </view>
-          <view class="btn-submit cd-pressable" :class="{ loading: applySaving }" @click="submitApply">
-            <text>{{ applySaving ? '提交中...' : '提交申请' }}</text>
-          </view>
-        </view>
-      </view>
-    </view>
+    <MobileAboutModal v-model:show="aboutVisible" />
+    <MobileApplyQuotaDialog v-model:show="applyVisible" :quota-bytes="usage?.quotaBytes" @success="refreshUsage" />
   </view>
 </template>
 
@@ -774,9 +693,6 @@ async function submitApply() {
   margin-top: 6rpx;
   font-size: 22rpx;
   color: var(--cd-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .menu-badge {
@@ -821,100 +737,6 @@ async function submitApply() {
     opacity: 0.95;
   }
 }
-
-/* 关于弹窗 */
-.about-root {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48rpx;
-}
-
-.about-mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(6rpx);
-}
-
-.about-panel {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 580rpx;
-  padding: 48rpx 40rpx 36rpx;
-  background: var(--cd-bg-card);
-  border-radius: 32rpx;
-  box-shadow:
-    0 24rpx 64rpx rgba(15, 23, 42, 0.18),
-    0 0 0 1rpx rgba(255, 255, 255, 0.6) inset;
-  border: 1rpx solid var(--cd-border-light);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.about-logo {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 28rpx;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
-  margin-bottom: 28rpx;
-}
-
-.about-name {
-  font-size: 36rpx;
-  font-weight: 800;
-  color: var(--cd-text);
-  letter-spacing: -0.5rpx;
-}
-
-.about-version {
-  margin-top: 10rpx;
-  font-size: 24rpx;
-  color: var(--cd-text-muted);
-  font-weight: 500;
-}
-
-.about-desc {
-  margin-top: 20rpx;
-  font-size: 26rpx;
-  line-height: 1.6;
-  color: var(--cd-text-secondary);
-  padding: 0 12rpx;
-}
-
-.about-btn {
-  margin-top: 36rpx;
-  width: 100%;
-  height: 88rpx;
-  border-radius: 999rpx;
-  background: var(--cd-primary-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10rpx 28rpx rgba(1, 7, 16, 0.2);
-
-  text {
-    font-size: 28rpx;
-    font-weight: 700;
-    color: #fff;
-  }
-}
-
-.about-btn:active {
-  transform: scale(0.98);
-  opacity: 0.95;
-}
-
 .storage-head-left {
   display: flex;
   flex-direction: row;
@@ -934,178 +756,6 @@ async function submitApply() {
   &:active {
     background: rgba(79, 124, 255, 0.15);
     transform: scale(0.95);
-  }
-}
-
-/* 申请扩容弹窗样式 */
-.apply-panel {
-  max-width: 600rpx !important;
-  padding: 40rpx !important;
-}
-
-.apply-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16rpx;
-  width: 100%;
-  margin-bottom: 20rpx;
-}
-
-.apply-icon {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 18rpx;
-  background: rgba(79, 124, 255, 0.1);
-  color: var(--cd-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.apply-title {
-  font-size: 32rpx;
-  font-weight: 800;
-  color: var(--cd-text);
-}
-
-.apply-hint {
-  font-size: 24rpx;
-  line-height: 1.5;
-  color: var(--cd-text-secondary);
-  background: rgba(79, 124, 255, 0.04);
-  border-left: 6rpx solid var(--cd-primary);
-  padding: 16rpx 20rpx;
-  border-radius: 4rpx 16rpx 16rpx 4rpx;
-  width: 100%;
-  box-sizing: border-box;
-  text-align: left;
-  margin-bottom: 24rpx;
-}
-
-.apply-form {
-  width: 100%;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.form-label {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--cd-text);
-}
-
-.apply-fixed-quota {
-  padding: 20rpx 24rpx;
-  border-radius: 16rpx;
-  background: #f8fafc;
-  border: 1rpx solid var(--cd-border-light);
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--cd-text);
-}
-
-.input-wrap {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-}
-
-.apply-input {
-  width: 100%;
-  height: 80rpx;
-  background: var(--cd-bg);
-  border: 1rpx solid var(--cd-border);
-  border-radius: 16rpx;
-  padding: 0 80rpx 0 24rpx;
-  font-size: 28rpx;
-  color: var(--cd-text);
-}
-
-.input-unit {
-  position: absolute;
-  right: 24rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--cd-text-muted);
-}
-
-.apply-textarea {
-  width: 100%;
-  height: 160rpx;
-  background: var(--cd-bg);
-  border: 1rpx solid var(--cd-border);
-  border-radius: 16rpx;
-  padding: 16rpx 24rpx;
-  font-size: 28rpx;
-  color: var(--cd-text);
-  box-sizing: border-box;
-}
-
-.apply-buttons {
-  display: flex;
-  flex-direction: row;
-  gap: 16rpx;
-  width: 100%;
-  margin-top: 36rpx;
-}
-
-.btn-cancel {
-  flex: 1;
-  height: 80rpx;
-  border-radius: 999rpx;
-  background: #f1f5f9;
-  border: 1rpx solid var(--cd-border-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--cd-transition-fast);
-  
-  text {
-    font-size: 26rpx;
-    font-weight: 700;
-    color: var(--cd-text-secondary);
-  }
-  
-  &:active {
-    background: #e2e8f0;
-  }
-}
-
-.btn-submit {
-  flex: 1;
-  height: 80rpx;
-  border-radius: 999rpx;
-  background: var(--cd-primary-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 6rpx 16rpx rgba(1, 7, 16, 0.15);
-  transition: all var(--cd-transition-fast);
-  
-  text {
-    font-size: 26rpx;
-    font-weight: 700;
-    color: #ffffff;
-  }
-  
-  &:active {
-    transform: scale(0.98);
-    opacity: 0.95;
-  }
-  
-  &.loading {
-    opacity: 0.7;
-    pointer-events: none;
   }
 }
 </style>
