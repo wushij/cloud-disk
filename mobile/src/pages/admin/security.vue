@@ -3,16 +3,18 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { request, applySecurityConfig } from '@/api/http'
+import { getSecurityConfig } from '@/utils/security-config'
 import MobileHeader from '@/components/MobileHeader.vue'
 
 const auth = useAuthStore()
 const loading = ref(false)
 const saving = ref(false)
 
+const currentSec = getSecurityConfig()
 const timestampEnabled = ref(true)
 const nonceEnabled = ref(true)
-const sm3SignEnabled = ref(false)
-const sm4EncryptEnabled = ref(false)
+const sm3SignEnabled = ref(currentSec.sm3SignEnabled ?? true)
+const sm4EncryptEnabled = ref(currentSec.sm4EncryptEnabled ?? true)
 
 async function loadConfig() {
   loading.value = true

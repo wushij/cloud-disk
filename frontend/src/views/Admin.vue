@@ -16,6 +16,7 @@ import {
   Lock
 } from '@element-plus/icons-vue'
 import http, { applySecurityConfig } from '@/api/http'
+import { getSecurityConfig } from '@/utils/security-config'
 import { adminUserAvatarUrl } from '@/utils/mediaUrl'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
@@ -127,11 +128,12 @@ const topStorageUsers = computed(() =>
 const maxStorageUsed = computed(() => topStorageUsers.value[0]?.storageUsed || 1)
 const totalUsedBytes = computed(() => Number(dashboard.value.totalUsedBytes || 0))
 
+const currentSec = getSecurityConfig()
 const securityForm = ref({
   timestampEnabled: true,
   nonceEnabled: true,
-  sm3SignEnabled: false,
-  sm4EncryptEnabled: false
+  sm3SignEnabled: currentSec.sm3SignEnabled ?? true,
+  sm4EncryptEnabled: currentSec.sm4EncryptEnabled ?? true
 })
 const savingSecurity = ref(false)
 
