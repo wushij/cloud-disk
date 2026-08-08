@@ -2,7 +2,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete, Document, Folder, RefreshLeft, CaretRight } from '@element-plus/icons-vue'
-import http from '@/api/http'
+import { recycleApi } from '@/api'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { fmtSize } from '@/utils/md5'
 import PageHeader from '@/components/PageHeader.vue'
@@ -31,8 +31,8 @@ const confirmDialog = useConfirmDialogStore()
 async function load() {
   loading.value = true
   try {
-    const { data } = await http.get('/api/recycle')
-    items.value = data
+    const data = await recycleApi.list()
+    items.value = data as any
     listInitialized.value = true
   } catch {
     /* global toast */
@@ -66,11 +66,7 @@ async function restore(row: RecycleItem) {
   })
   if (!ok) return
   try {
-    const url =
-      row.type === 'folder'
-        ? `/api/recycle/restore/folder/${row.id}`
-        : `/api/recycle/restore/file/${row.id}`
-    await http.post(url)
+    await recycleApi.restore(row.type, row.id)
     ElMessage.success('已恢复')
     load()
   } catch {
@@ -87,9 +83,7 @@ async function remove(row: RecycleItem) {
   })
   if (!ok) return
   try {
-    const url =
-      row.type === 'folder' ? `/api/recycle/folder/${row.id}` : `/api/recycle/file/${row.id}`
-    await http.delete(url)
+    await recycleApi.remove(row.type, row.id)
     ElMessage.success('已永久删除')
     load()
   } catch {
@@ -106,7 +100,7 @@ async function clearAll() {
   })
   if (!ok) return
   try {
-    await http.delete('/api/recycle/clear')
+    await recycleApi.clear()
     ElMessage.success('已清空')
     load()
   } catch {

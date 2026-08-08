@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import http from '@/api/http'
+import { authApi } from '@/api'
 
 /** 供头像/预览等 URL 拼接；与 ensureMediaToken 同步更新 */
 export const mediaTokenRef = ref('')
@@ -22,11 +22,11 @@ export function clearMediaTokenCache() {
 
 export async function refreshMediaToken(): Promise<string> {
   if (!inflight) {
-    inflight = http
-      .get<{ mediaToken: string; expiresIn: number }>('/api/auth/media-token')
-      .then(({ data }) => {
+    inflight = authApi
+      .mediaToken()
+      .then((data: any) => {
         applyToken(data.mediaToken, data.expiresIn)
-        return data.mediaToken
+        return data.mediaToken as string
       })
       .finally(() => {
         inflight = null

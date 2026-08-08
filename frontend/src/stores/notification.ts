@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import http from '@/api/http'
+import { notificationApi, adminApi, storageApi } from '@/api'
 
 export interface AppNotification {
   id: string
@@ -48,9 +48,7 @@ export const useNotificationStore = defineStore('notification', () => {
   const loaded = ref(false)
 
   async function loadFromApi() {
-    const { data } = await http.get<NotificationDto[]>('/api/notifications', {
-      params: { page: 0, size: 50 }
-    })
+    const data = await notificationApi.list(0, 50)
     items.value = (data || []).map(toAppNotification)
     loaded.value = true
   }
@@ -90,30 +88,30 @@ export const useNotificationStore = defineStore('notification', () => {
   async function markRead(id: string) {
     const n = items.value.find((x) => x.id === id)
     if (!n || n.read) return
-    await http.put(`/api/notifications/${id}/read`)
+    await notificationApi.markRead(id)
     n.read = true
   }
 
   async function markAllRead() {
-    await http.put('/api/notifications/read-all')
+    await notificationApi.markAllRead()
     items.value.forEach((n) => {
       n.read = true
     })
   }
 
   async function remove(id: string) {
-    await http.delete(`/api/notifications/${id}`)
+    await notificationApi.remove(id)
     items.value = items.value.filter((n) => n.id !== id)
   }
 
   async function clearAll() {
-    await http.delete('/api/notifications/clear-all')
+    await notificationApi.clearAll()
     items.value = []
   }
 
   async function acceptTeamInvite(notification: AppNotification) {
     if (!notification.refId) throw new Error('邀请无效')
-    await http.post(`/api/team-invitations/${notification.refId}/accept`)
+    await notificationApi.acceptInvite(notification.refId)
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {
@@ -123,7 +121,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   async function rejectTeamInvite(notification: AppNotification) {
     if (!notification.refId) throw new Error('邀请无效')
-    await http.post(`/api/team-invitations/${notification.refId}/reject`)
+    await notificationApi.rejectInvite(notification.refId)
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {
@@ -133,7 +131,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   async function approveRegistration(notification: AppNotification) {
     if (!notification.refId) throw new Error('申请无效')
-    await http.post(`/api/admin/registrations/${notification.refId}/approve`)
+    await adminApi.approveRegistration(Number(notification.refId))
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {
@@ -143,7 +141,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   async function rejectRegistration(notification: AppNotification) {
     if (!notification.refId) throw new Error('申请无效')
-    await http.post(`/api/admin/registrations/${notification.refId}/reject`)
+    await adminApi.rejectRegistration(Number(notification.refId))
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {
@@ -153,7 +151,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   async function approveQuota(notification: AppNotification, opinion?: string) {
     if (!notification.refId) throw new Error('申请无效')
-    await http.post(`/api/quota-applications/admin/${notification.refId}/approve`, { opinion: opinion || '' })
+    await storageApi.approveQuota(Number(notification.refId), opinion || '')
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {
@@ -163,7 +161,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   async function rejectQuota(notification: AppNotification, opinion?: string) {
     if (!notification.refId) throw new Error('申请无效')
-    await http.post(`/api/quota-applications/admin/${notification.refId}/reject`, { opinion: opinion || '' })
+    await storageApi.rejectQuota(Number(notification.refId), opinion || '')
     await markRead(notification.id)
     const n = items.value.find((x) => x.id === notification.id)
     if (n) {

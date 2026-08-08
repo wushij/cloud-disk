@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Camera, Check, User, Message, Iphone, Loading, Key } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import EmailCodeBtn from '@/components/EmailCodeBtn.vue'
-import http from '@/api/http'
+import { storageApi } from '@/api'
 
 const auth = useAuthStore()
 const nickname = ref('')
@@ -53,7 +53,7 @@ onMounted(async () => {
   initialEmail.value = data.email || ''
   phone.value = data.phone || ''
   try {
-    const { data: u } = await http.get('/api/storage/usage')
+    const u = await storageApi.usage()
     usage.value = u
   } catch {
     /* ignore */

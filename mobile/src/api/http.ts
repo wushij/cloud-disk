@@ -353,6 +353,11 @@ export async function request<T>(options: RequestOptions): Promise<T> {
         }
 
         if (status >= 200 && status < 300) {
+          if (resData && typeof resData === 'object' && 'code' in (resData as any)) {
+            if ((resData as any).code === 0) {
+              resData = (resData as any).data
+            }
+          }
           resolve(resData as T)
           return
         }

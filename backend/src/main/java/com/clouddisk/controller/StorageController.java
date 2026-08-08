@@ -5,6 +5,7 @@ import com.clouddisk.config.CloudDiskProperties;
 import com.clouddisk.service.AuthService;
 import com.clouddisk.service.StorageQuotaService;
 import com.clouddisk.storage.StorageService;
+import com.clouddisk.vo.StorageUsageVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,7 +38,7 @@ public class StorageController {
 
     /** 当前用户的存储用量 */
     @GetMapping("/usage")
-    public Map<String, Object> usage() {
+    public StorageUsageVO usage() {
         return quotaService.getUsage(AuthService.currentUserId());
     }
 

@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 
 import { ElMessage } from 'element-plus'
 
-import http from '@/api/http'
+import { shareApi } from '@/api'
 import { getApiErrorMessage } from '@/utils/error'
 
 import PdfPreview from '@/components/PdfPreview.vue'
@@ -124,7 +124,7 @@ onMounted(async () => {
 
   try {
 
-    const { data } = await http.get(`/share/${code}`)
+    const data = (await shareApi.publicDetail(code)) as any
 
     info.value = data
 
@@ -154,13 +154,9 @@ onMounted(async () => {
 
 async function loadFolderItems(folderId?: number) {
 
-  const { data } = await http.get(`/share/${code}/items`, {
+  const data = (await shareApi.publicFolderItems(code, folderId)) as any
 
-    params: { folderId: folderId ?? undefined }
-
-  })
-
-  folderItems.value = data.items || []
+  folderItems.value = (data.items || []) as any
 
   breadcrumbs.value = data.breadcrumbs || []
 
@@ -188,7 +184,7 @@ async function verify() {
 
   try {
 
-    await http.post(`/share/${code}/access`, { extractCode: extractCode.value.trim() }, { skipErrorHandler: true })
+    await shareApi.publicAccess(code, extractCode.value.trim())
 
     verified.value = true
 
@@ -250,10 +246,7 @@ async function resolveSharePreviewUrl(fileId: number): Promise<string> {
 
   try {
 
-    const { data } = await http.get(`/share/${code}/direct-url`, {
-      params: { fileId },
-      skipErrorHandler: true
-    })
+    const data = await shareApi.publicDirectUrl(code, fileId)
 
     if (data.url) return data.url
 
@@ -281,9 +274,9 @@ async function previewItem(row: ShareItem) {
 
   if (row.officeFile) {
 
-    const { data } = await http.get(`/share/${code}/onlyoffice/${row.id}${q()}`)
+    const data = await shareApi.publicOnlyOffice(code, row.id)
 
-    onlyOfficeConfig.value = { documentServerUrl: data.documentServerUrl, config: data.config }
+    onlyOfficeConfig.value = { documentServerUrl: data.documentServerUrl as string, config: data.config as Record<string, unknown> }
 
   } else {
 

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import http from '@/api/http'
+import { uploadApi } from '@/api'
 import { pickChunkSize } from '@/utils/md5'
 
 const MB = 1024 * 1024
@@ -77,12 +77,12 @@ export async function uploadFile(
   }
 
   if (fileMd5 && !options?.skipMd5Check) {
-    const { data: check } = await http.post('/api/upload/check-md5', {
+    const check = await uploadApi.checkMd5({
       fileMd5,
       fileName: file.name,
       fileSize: file.size,
       folderId
-    }, { signal })
+    }, signal)
     if (check.exists && check.instant) {
       onProgress(1)
       return { instant: true, fileId: check.fileId }
@@ -90,8 +90,8 @@ export async function uploadFile(
   }
 
   if (file.size <= SIMPLE_MAX) {
-    const { data } = await withRetry(() =>
-      http.post<{ id?: number }>('/api/files/simple', (() => {
+    const data = await withRetry(() =>
+      uploadApi.simpleUpload((() => {
         const fd = new FormData()
         fd.append('file', file)
         fd.append('folderId', String(folderId))
@@ -114,12 +114,7 @@ export async function uploadFile(
   let uploaded: Set<number>
 
   if (isResume && options?.existingUploadId) {
-    const { data: resume } = await http.get<{
-      uploadId: string
-      chunkSize: number
-      totalChunks: number
-      uploadedChunks: number[]
-    }>(`/api/upload/${options.existingUploadId}/resume`, { signal })
+    const resume = await uploadApi.resume(options.existingUploadId, signal)
     uploadId = resume.uploadId
     serverChunk = resume.chunkSize
     totalChunks = resume.totalChunks
@@ -129,13 +124,13 @@ export async function uploadFile(
     }
   } else {
     const chunkSize = pickChunkSize(file.size)
-    const { data: init } = await http.post('/api/upload/init', {
+    const init = await uploadApi.init({
       fileName: file.name,
       totalSize: file.size,
       chunkSize,
       fileMd5: fileMd5 || undefined,
       folderId
-    }, { signal })
+    }, signal)
 
     uploaded = new Set<number>((init.uploadedChunks as number[]) || [])
     totalChunks = init.totalChunks as number
@@ -154,13 +149,13 @@ export async function uploadFile(
       fd.append('uploadId', uploadId)
       fd.append('chunkIndex', String(i))
       fd.append('file', file.slice(start, end), `part-${i}`)
-      await withRetry(() => http.post('/api/upload/chunk', fd, { signal, timeout: 0 }))
+      await withRetry(() => uploadApi.chunk(fd, { signal, timeout: 0 }))
     },
     (r) => onProgress(0.05 + r * 0.9)
   )
 
-  const { data: record } = await withRetry(() =>
-    http.post<{ id?: number }>('/api/upload/merge', { uploadId, mimeType: file.type || undefined }, { signal, timeout: 0 })
+  const record = await withRetry(() =>
+    uploadApi.merge({ uploadId, mimeType: file.type || undefined }, { signal, timeout: 0 })
   )
   onProgress(1)
   return { uploadId, fileId: record?.id }

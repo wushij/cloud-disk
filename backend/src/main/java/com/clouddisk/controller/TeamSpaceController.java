@@ -2,6 +2,8 @@ package com.clouddisk.controller;
 
 import com.clouddisk.entity.TeamSpace;
 import com.clouddisk.service.TeamSpaceService;
+import com.clouddisk.util.VOMapper;
+import com.clouddisk.vo.TeamSpaceVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -19,8 +21,8 @@ public class TeamSpaceController {
 
     /** 创建团队空间 */
     @PostMapping
-    public TeamSpace create(@RequestBody Map<String, String> body) {
-        return teamSpaceService.create(body.get("name"));
+    public TeamSpaceVO create(@RequestBody Map<String, String> body) {
+        return VOMapper.toTeamSpaceVO(teamSpaceService.create(body.get("name")));
     }
 
     /** 列出我的团队 */
@@ -31,14 +33,14 @@ public class TeamSpaceController {
 
     /** 获取团队详情 */
     @GetMapping("/{id}")
-    public TeamSpace detail(@PathVariable Long id) {
-        return teamSpaceService.getDetailForMember(id);
+    public TeamSpaceVO detail(@PathVariable Long id) {
+        return VOMapper.toTeamSpaceVO(teamSpaceService.getDetailForMember(id));
     }
 
     /** 重命名团队空间 */
     @PutMapping("/{id}")
-    public TeamSpace rename(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        return teamSpaceService.renameSpace(id, body.get("name"));
+    public TeamSpaceVO rename(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        return VOMapper.toTeamSpaceVO(teamSpaceService.renameSpace(id, body.get("name")));
     }
 
     /** 列出团队成员 */
@@ -93,13 +95,13 @@ public class TeamSpaceController {
 
     /** 设置团队存储配额（字节，0=不限） */
     @PutMapping("/{id}/quota")
-    public TeamSpace updateQuota(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public TeamSpaceVO updateQuota(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Object raw = body.get("maxSize");
         if (raw == null) {
             throw new com.clouddisk.common.BusinessException("缺少 maxSize 参数");
         }
         long maxSize = Long.parseLong(raw.toString());
-        return teamSpaceService.updateQuota(id, maxSize);
+        return VOMapper.toTeamSpaceVO(teamSpaceService.updateQuota(id, maxSize));
     }
 
     /** 列出团队文件 */

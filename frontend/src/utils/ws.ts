@@ -1,4 +1,4 @@
-import http from '@/api/http'
+import { authApi } from '@/api'
 
 export type WsMessage = {
   type?: string
@@ -23,7 +23,7 @@ let connectPromise: Promise<void> | null = null
 const listeners = new Set<WsListener>()
 
 async function connectWs() {
-  const { data } = await http.post<{ ticket: string }>('/api/auth/ws-ticket')
+  const data = await authApi.wsTicket()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   ws = new WebSocket(`${proto}://${location.host}/ws/upload?ticket=${encodeURIComponent(data.ticket)}`)
   ws.onmessage = (ev) => {

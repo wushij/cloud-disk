@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import http from '@/api/http'
+import { fileApi } from '@/api'
 
 export interface FileItem {
   id: number
@@ -64,15 +64,13 @@ export const useFileStore = defineStore('file', () => {
     loading.value = true
     try {
       if (resetPage) page.value = 0
-      const { data } = await http.get('/api/files', {
-        params: {
-          folderId: currentFolderId.value,
-          page: page.value,
-          size: pageSize,
-          q: keyword.value.trim() || undefined,
-          fileType: fileType.value || undefined
-        }
-      })
+      const data = (await fileApi.list({
+        folderId: currentFolderId.value,
+        page: page.value,
+        size: pageSize,
+        q: keyword.value.trim() || undefined,
+        fileType: fileType.value || undefined
+      })) as any
       if (resetPage) {
         items.value = data.content
       } else {

@@ -24,7 +24,7 @@ public class OnlyOfficeController {
             @RequestParam(required = false) String mode) {
         long userId = AuthService.currentUserId();
         var me = authService.me();
-        String username = String.valueOf(me.getOrDefault("nickname", me.get("username")));
+        String username = me.getNickname() != null ? me.getNickname() : me.getUsername();
         return onlyOfficeService.buildEditorConfig(id, userId, username, mode);
     }
 

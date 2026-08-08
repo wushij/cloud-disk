@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Message, Key, Lock } from '@element-plus/icons-vue'
-import http from '@/api/http'
+import { authApi } from '@/api'
 import { getApiErrorMessage } from '@/utils/error'
 import EmailCodeBtn from './EmailCodeBtn.vue'
 
@@ -51,11 +51,11 @@ async function handleReset() {
 
   loading.value = true
   try {
-    await http.post('/api/auth/email/reset-password', {
+    await authApi.resetPasswordByEmail({
       email: f.email.trim(),
       code: f.code.trim(),
       newPassword: f.newPassword
-    }, { skipErrorHandler: true })
+    })
 
     ElMessage.success('密码重置成功！请使用新密码登录')
     emit('success', { email: f.email.trim(), newPassword: f.newPassword })

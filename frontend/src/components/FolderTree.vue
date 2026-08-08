@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import http from '@/api/http'
+import { folderApi } from '@/api'
 
 export interface TreeNode {
   id: number
@@ -17,8 +17,8 @@ const defaultProps = { children: 'children', label: 'label' }
 const TREE_INDENT = 14
 
 async function loadTree() {
-  const { data } = await http.get('/api/folders/tree')
-  tree.value = [{ id: 0, label: '全部文件', children: data }]
+  const data = await folderApi.tree()
+  tree.value = [{ id: 0, label: '全部文件', children: data as any }]
 }
 
 function onNodeClick(node: TreeNode) {

@@ -18,6 +18,8 @@ import org.springframework.util.StringUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class TeamSpaceService {
     /**
      * 创建团队空间
      */
+    @Transactional(rollbackFor = Exception.class)
     public TeamSpace create(String name) {
         long userId = AuthService.currentUserId();
         if (name == null || name.isBlank()) {

@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { folderApi, fileApi, officeApi } from '@/api'
 import { resolveFilePreviewUrl } from '@/utils/fileUrl'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
 import { usePromptDialogStore } from '@/stores/promptDialog'
@@ -111,8 +111,11 @@ async function handleBatchDelete() {
   if (!ok) return
   try {
     for (const item of selectedItems.value) {
-      const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
-      await http.delete(url)
+      if (item.type === 'folder') {
+        await folderApi.remove(item.id)
+      } else {
+        await fileApi.remove(item.id)
+      }
     }
     ElMessage.success('批量删除成功')
     clearSelection()
@@ -196,11 +199,11 @@ async function preview(row: FileItem) {
   onlyOfficeConfig.value = null
   if (row.officeFile) {
     try {
-      const { data } = await http.get(`/api/files/${row.id}/onlyoffice`)
+      const data = await officeApi.config(row.id)
       if (data.documentServerUrl && data.config) {
         onlyOfficeConfig.value = {
-          documentServerUrl: data.documentServerUrl,
-          config: data.config
+          documentServerUrl: data.documentServerUrl as string,
+          config: data.config as Record<string, unknown>
         }
         previewVisible.value = true
         return
@@ -247,8 +250,11 @@ async function renameItem(row: FileItem) {
   })
   if (!value || value === row.name) return
   try {
-    const url = row.type === 'folder' ? `/api/folders/${row.id}/rename` : `/api/files/${row.id}/rename`
-    await http.put(url, { name: value })
+    if (row.type === 'folder') {
+      await folderApi.rename(row.id, value)
+    } else {
+      await fileApi.rename(row.id, value)
+    }
     ElMessage.success('重命名成功')
     await refreshAfterChange()
   } catch {
@@ -265,8 +271,11 @@ async function deleteItem(row: FileItem) {
   })
   if (!ok) return
   try {
-    const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
-    await http.delete(url)
+    if (row.type === 'folder') {
+      await folderApi.remove(row.id)
+    } else {
+      await fileApi.remove(row.id)
+    }
     ElMessage.success('已移入回收站')
     await refreshAfterChange()
   } catch {

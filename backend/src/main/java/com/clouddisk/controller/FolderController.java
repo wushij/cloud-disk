@@ -3,8 +3,11 @@ package com.clouddisk.controller;
 import com.clouddisk.dto.FolderCreateRequest;
 import com.clouddisk.dto.MoveRequest;
 import com.clouddisk.dto.RenameRequest;
-import com.clouddisk.entity.Folder;
 import com.clouddisk.service.FolderService;
+import com.clouddisk.util.VOMapper;
+import com.clouddisk.vo.BreadcrumbVO;
+import com.clouddisk.vo.FolderTreeNodeVO;
+import com.clouddisk.vo.FolderVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,23 +22,23 @@ public class FolderController {
     private final FolderService folderService;
 
     @GetMapping("/tree")
-    public List<Map<String, Object>> tree() {
+    public List<FolderTreeNodeVO> tree() {
         return folderService.tree();
     }
 
     @PostMapping
-    public Folder create(@RequestBody FolderCreateRequest req) {
-        return folderService.create(req);
+    public FolderVO create(@RequestBody FolderCreateRequest req) {
+        return VOMapper.toFolderVO(folderService.create(req));
     }
 
     @PutMapping("/{id}/rename")
-    public Folder rename(@PathVariable Long id, @RequestBody RenameRequest req) {
-        return folderService.rename(id, req);
+    public FolderVO rename(@PathVariable Long id, @RequestBody RenameRequest req) {
+        return VOMapper.toFolderVO(folderService.rename(id, req));
     }
 
     @PutMapping("/{id}/move")
-    public Folder move(@PathVariable Long id, @RequestBody MoveRequest req) {
-        return folderService.move(id, req);
+    public FolderVO move(@PathVariable Long id, @RequestBody MoveRequest req) {
+        return VOMapper.toFolderVO(folderService.move(id, req));
     }
 
     @DeleteMapping("/{id}")
@@ -45,7 +48,7 @@ public class FolderController {
     }
 
     @GetMapping("/{id}/breadcrumbs")
-    public List<Map<String, Object>> getBreadcrumbs(
+    public List<BreadcrumbVO> getBreadcrumbs(
             @PathVariable Long id,
             @RequestParam(value = "full", required = false, defaultValue = "false") boolean full) {
         return folderService.getBreadcrumbs(id, com.clouddisk.service.AuthService.currentUserId(), full);

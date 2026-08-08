@@ -1,4 +1,4 @@
-import http from '@/api/http'
+import { folderApi } from '@/api'
 
 const folderCache = new Map<string, number>()
 
@@ -19,8 +19,8 @@ export async function ensureFolderPath(baseFolderId: number, relativePath: strin
       parentId = folderCache.get(pathKey)!
       continue
     }
-    const { data } = await http.post('/api/folders', { parentId, folderName: name })
-    parentId = data.id as number
+    const data = await folderApi.create({ parentId, folderName: name })
+    parentId = data.id
     folderCache.set(pathKey, parentId)
   }
   return parentId

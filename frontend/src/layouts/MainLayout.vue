@@ -21,7 +21,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
 
-import http from '@/api/http'
+import { storageApi } from '@/api'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -121,7 +121,7 @@ onMounted(async () => {
 
   try {
 
-    const { data } = await http.get('/api/storage/info')
+    const data = await storageApi.info()
 
     if (data.type === 'minio') {
 
@@ -453,7 +453,7 @@ async function submitApplyQuota() {
 
   applySaving.value = true
   try {
-    await http.post('/api/quota-applications', {
+    await storageApi.applyQuota({
       applyQuota: quotaBytes,
       reason: applyReason.value
     })

@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import TeamSpaceIcon from '@/components/icons/TeamSpaceIcon.vue'
-import http from '@/api/http'
+import { teamApi, folderApi, fileApi } from '@/api'
 import { resolveFilePreviewUrl } from '@/utils/fileUrl'
 import { mediaApiUrl, appendQueryParam } from '@/utils/mediaUrl'
 import { useAuthStore } from '@/stores/auth'
@@ -118,8 +118,11 @@ async function handleBatchDelete() {
   if (!ok) return
   try {
     for (const item of deletable) {
-      const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
-      await http.delete(url)
+      if (item.type === 'folder') {
+        await folderApi.remove(item.id)
+      } else {
+        await fileApi.remove(item.id)
+      }
     }
     ElMessage.success('批量删除成功')
     clearSelection()
@@ -190,9 +193,7 @@ async function onTeamAvatarSelected(e: Event) {
   formData.append('file', file)
 
   try {
-    const { data } = await http.post(`/api/teams/${currentSpace.value.id}/avatar`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    const data = await teamApi.uploadAvatar(currentSpace.value.id, formData)
     ElMessage.success('团队头像已更新')
     bumpTeamAvatarVersion(currentSpace.value.id)
     const v = getTeamAvatarVersion(currentSpace.value.id)
@@ -324,8 +325,8 @@ function onMemberAvatarError(userId: number) {
 async function loadSpaces() {
   loading.value = true
   try {
-    const { data } = await http.get('/api/teams')
-    spaces.value = data
+    const data = await teamApi.list()
+    spaces.value = data as any
   } catch {
     /* global toast */
   } finally {
@@ -347,7 +348,7 @@ async function submitCreate() {
   if (creating.value) return
   creating.value = true
   try {
-    await http.post('/api/teams', { name })
+    await teamApi.create(name)
     createVisible.value = false
     ElMessage.success('创建成功')
     await loadSpaces()
@@ -376,7 +377,7 @@ async function submitRename() {
   if (renaming.value) return
   renaming.value = true
   try {
-    const { data } = await http.put(`/api/teams/${target.id}`, { name })
+    const data = await teamApi.rename(target.id, name)
     renameVisible.value = false
     ElMessage.success('已重命名')
     applyTeamNameUpdate(target.id, data.name)
@@ -393,7 +394,7 @@ async function submitRename() {
 async function syncSpaceMeta() {
   if (!currentSpace.value) return
   try {
-    const { data } = await http.get(`/api/teams/${currentSpace.value.id}`)
+    const data = await teamApi.detail(currentSpace.value.id)
     currentSpace.value = { ...currentSpace.value, name: data.name }
     applyTeamNameUpdate(data.id, data.name)
   } catch {
@@ -416,7 +417,7 @@ async function syncMemberContextMeta() {
   const ctx = memberContextSpace.value
   if (!ctx) return
   try {
-    const { data } = await http.get(`/api/teams/${ctx.id}`)
+    const data = await teamApi.detail(ctx.id)
     applyTeamNameUpdate(data.id, data.name)
   } catch {
     /* global toast */
@@ -436,12 +437,10 @@ async function loadFiles() {
   await syncSpaceMeta()
   loading.value = true
   try {
-    const { data } = await http.get(`/api/teams/${currentSpace.value.id}/files`, {
-      params: {
-        folderId:
-          currentFolderId.value !== currentSpace.value.rootFolderId ? currentFolderId.value : undefined
-      }
-    })
+    const data = (await teamApi.files(
+      currentSpace.value.id,
+      currentFolderId.value !== currentSpace.value.rootFolderId ? currentFolderId.value : undefined
+    )) as any
     files.value = data.items || []
     teamAccess.value = data.teamAccess || null
     if (teamAccess.value && currentSpace.value) {
@@ -474,8 +473,8 @@ async function loadMembers() {
   membersLoading.value = true
   avatarBroken.value = {}
   try {
-    const { data } = await http.get(`/api/teams/${ctx.id}/members`)
-    members.value = data
+    const data = await teamApi.members(ctx.id)
+    members.value = data as any
     const me = members.value.find((m) => m.username === auth.username)
     if (me) {
       if (memberContextSpace.value?.id === ctx.id) {
@@ -644,10 +643,7 @@ async function submitInvite() {
   if (inviting.value) return
   inviting.value = true
   try {
-    await http.post(`/api/teams/${ctx.id}/members`, {
-      username,
-      role: inviteRole.value
-    })
+    await teamApi.inviteMember(ctx.id, username, inviteRole.value)
     inviteVisible.value = false
     ElNotification({
       title: '邀请已发送',
@@ -668,7 +664,7 @@ async function updateMemberRole(member: TeamMember, role: string) {
   const ctx = membersContext.value
   if (!ctx) return
   try {
-    await http.put(`/api/teams/${ctx.id}/members/${member.userId}/role`, { role })
+    await teamApi.setMemberRole(ctx.id, member.userId, role)
     ElMessage.success('成员角色已更新')
     await loadMembers()
     if (currentSpace.value?.id === ctx.id) {
@@ -701,7 +697,7 @@ async function submitQuota() {
   const maxSize = quotaUnlimited.value ? 0 : Math.round(gb * 1024 ** 3)
   quotaSaving.value = true
   try {
-    await http.put(`/api/teams/${currentSpace.value.id}/quota`, { maxSize })
+    await teamApi.setQuota(currentSpace.value.id, maxSize)
     ElMessage.success('团队配额已更新')
     quotaVisible.value = false
     await loadSpaces()
@@ -728,7 +724,7 @@ async function removeMember(member: TeamMember) {
   })
   if (!ok) return
   try {
-    await http.delete(`/api/teams/${ctx.id}/members/${member.userId}`)
+    await teamApi.removeMember(ctx.id, member.userId)
     ElMessage.success('已移除')
     await loadMembers()
   } catch {
@@ -747,7 +743,7 @@ async function disbandSpace(space?: TeamSpace) {
   })
   if (!ok) return
   try {
-    await http.delete(`/api/teams/${target.id}`)
+    await teamApi.delete(target.id)
     ElMessage.success('已解散该团队空间')
     if (currentSpace.value?.id === target.id) backToList()
     await loadSpaces()
@@ -767,7 +763,7 @@ async function leaveSpace(space?: TeamSpace) {
   })
   if (!ok) return
   try {
-    await http.post(`/api/teams/${target.id}/leave`)
+    await teamApi.leave(target.id)
     ElMessage.success('已成功退出该团队空间')
     if (currentSpace.value?.id === target.id) backToList()
     await loadSpaces()
@@ -784,9 +780,12 @@ async function deleteItem(row: FileItem) {
     danger: true
   })
   if (!ok) return
-  const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
   try {
-    await http.delete(url)
+    if (row.type === 'folder') {
+      await folderApi.remove(row.id)
+    } else {
+      await fileApi.remove(row.id)
+    }
     ElMessage.success('已移至回收站')
     await loadFiles()
   } catch {

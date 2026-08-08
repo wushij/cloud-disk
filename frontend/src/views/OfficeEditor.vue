@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { officeApi } from '@/api'
 import OnlyOfficeEditor from '@/components/OnlyOfficeEditor.vue'
 
 const route = useRoute()
@@ -18,9 +18,9 @@ onMounted(async () => {
     return
   }
   try {
-    const { data } = await http.get(`/api/files/${id}/onlyoffice`)
-    documentServerUrl.value = data.documentServerUrl
-    config.value = data.config
+    const data = await officeApi.config(id)
+    documentServerUrl.value = data.documentServerUrl as string
+    config.value = data.config as Record<string, unknown>
   } catch {
     /* global toast */
   } finally {

@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.clouddisk.util.TransactionUtils;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 
@@ -209,6 +211,8 @@ public class RecycleService {
 
 
 
+    @Transactional(rollbackFor = Exception.class)
+
     public void restoreFile(Long id) {
 
         long userId = AuthService.currentUserId();
@@ -236,8 +240,11 @@ public class RecycleService {
                 throw new BusinessException("请先恢复所在文件夹");
 
             }
+
             if (folderService.isSharedTeamFolder(file.getFolderId(), userId)) {
+
                 teamAccessService.requireWrite(file.getFolderId(), userId);
+
             }
 
         }
@@ -253,6 +260,8 @@ public class RecycleService {
     }
 
 
+
+    @Transactional(rollbackFor = Exception.class)
 
     public void restoreFolder(Long id) {
 
@@ -271,6 +280,7 @@ public class RecycleService {
             throw new BusinessException("文件夹不在回收站");
 
         }
+
         teamAccessService.requireDeleteFolder(folder, userId);
 
         if (folder.getParentId() != null && folder.getParentId() > 0) {
@@ -317,6 +327,8 @@ public class RecycleService {
 
 
 
+    @Transactional(rollbackFor = Exception.class)
+
     public void permanentDeleteFile(Long id) {
 
         long userId = AuthService.currentUserId();
@@ -334,6 +346,7 @@ public class RecycleService {
             throw new BusinessException("文件不存在");
 
         }
+
         teamAccessService.requireDeleteFile(file, userId);
 
         storageReferenceService.deletePhysicalArtifacts(file, id);
@@ -349,6 +362,8 @@ public class RecycleService {
     }
 
 
+
+    @Transactional(rollbackFor = Exception.class)
 
     public void permanentDeleteFolder(Long id) {
 
@@ -387,6 +402,8 @@ public class RecycleService {
     }
 
 
+
+    @Transactional(rollbackFor = Exception.class)
 
     public void clearAll() {
 

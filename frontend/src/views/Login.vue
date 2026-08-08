@@ -10,7 +10,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AuthCaptchaField from '@/components/AuthCaptchaField.vue'
 import EmailCodeBtn from '@/components/EmailCodeBtn.vue'
 import ForgotPasswordModal from '@/components/ForgotPasswordModal.vue'
-import http from '@/api/http'
+import { authApi } from '@/api'
 import { getApiErrorMessage } from '@/utils/error'
 import { validateRegisterUsername } from '@/utils/username'
 import { toCaptchaDataUrl } from '@/utils/captcha'
@@ -46,7 +46,7 @@ const showCaptcha = ref(false)
 const showPassword = ref(false)
 
 async function refreshCaptcha() {
-  const { data } = await http.get(`/api/auth/captcha?_=${Date.now()}`, { skipErrorHandler: true })
+  const data = await authApi.captcha()
   captchaId.value = data.id
   captchaImg.value = toCaptchaDataUrl(data.img)
   captchaAnswer.value = ''
@@ -63,7 +63,7 @@ async function syncCaptchaState() {
     return
   }
   try {
-    const { data } = await http.get('/api/auth/captcha/required', { skipErrorHandler: true })
+    const data = await authApi.captchaRequired()
     showCaptcha.value = !!data.required
     if (showCaptcha.value) await refreshCaptcha()
   } catch {
@@ -84,7 +84,7 @@ function onForgotSuccess(payload: { email: string; newPassword: string }) {
 
 async function loadProviders() {
   try {
-    const { data } = await http.get('/api/auth/providers', { skipErrorHandler: true })
+    const data = await authApi.providers()
     ldapEnabled.value = !!data.ldapEnabled
     ssoEnabled.value = !!data.ssoEnabled
     if (data.sso?.authorizeUrl) {
@@ -101,7 +101,7 @@ async function applySsoTokenFromQuery() {
   if (!ticket) return
   loading.value = true
   try {
-    const { data } = await http.post('/api/auth/sso/ticket', { ticket }, { skipErrorHandler: true })
+    const data = await authApi.ssoTicket(ticket)
     await auth.completeSsoSession(data)
     ElMessage.success('单点登录成功')
     router.replace('/disk')

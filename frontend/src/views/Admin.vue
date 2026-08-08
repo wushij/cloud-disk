@@ -15,7 +15,8 @@ import {
   ArrowRight,
   Lock
 } from '@element-plus/icons-vue'
-import http, { applySecurityConfig } from '@/api/http'
+import { applySecurityConfig } from '@/api/http'
+import { adminApi } from '@/api'
 import { getSecurityConfig } from '@/utils/security-config'
 import { adminUserAvatarUrl } from '@/utils/mediaUrl'
 import { fmtSize, fmtTime } from '@/utils/fileMeta'
@@ -139,7 +140,7 @@ const savingSecurity = ref(false)
 
 async function loadSecurityConfig() {
   try {
-    const { data } = await http.get('/api/admin/security/config')
+    const data = await adminApi.getSecurityConfig()
     if (data) {
       securityForm.value.timestampEnabled = Boolean(data.timestampEnabled)
       securityForm.value.nonceEnabled = Boolean(data.nonceEnabled)
@@ -154,7 +155,7 @@ async function loadSecurityConfig() {
 async function saveSecurityConfig() {
   savingSecurity.value = true
   try {
-    const { data } = await http.put('/api/admin/security/config', securityForm.value)
+    const data = await adminApi.updateSecurityConfig(securityForm.value)
     ElMessage.success('系统 API 安全防护配置保存成功，即时生效')
     applySecurityConfig(data)
   } catch (err: any) {
@@ -170,28 +171,28 @@ async function loadAll() {
   loadSecurityConfig().catch(() => {})
 
   try {
-    const { data } = await http.get('/api/admin/dashboard')
+    const data = await adminApi.dashboard()
     dashboard.value = data || {}
   } catch {
     /* global toast */
   }
 
   try {
-    const { data } = await http.get('/api/admin/audit-logs', { params: { page: 0, size: auditPageSize } })
+    const data = (await adminApi.auditLogs(0, auditPageSize)) as any
     auditLogs.value = data.content || []
   } catch {
     /* global toast */
   }
 
   try {
-    const { data } = await http.get<AdminUserRow[]>('/api/admin/users')
-    adminUsers.value = data || []
+    const data = await adminApi.users()
+    adminUsers.value = (data || []) as any
   } catch {
     adminUsers.value = []
   }
 
   try {
-    const { data } = await http.get('/api/admin/storage/stats')
+    const data = (await adminApi.storageStats()) as any
     const userMap = new Map(adminUsers.value.map((u) => [u.id, u]))
     userStats.value = (data.userStats || []).map((stat: UserStorageStat) => {
       const profile = userMap.get(stat.userId)
@@ -218,7 +219,7 @@ async function rebuildIndex() {
   if (!dashboard.value.elasticsearchEnabled || rebuilding.value) return
   rebuilding.value = true
   try {
-    await http.post('/api/admin/search/rebuild')
+    await adminApi.rebuildSearch()
     ElMessage.success('索引重建完成')
   } catch {
     /* global toast */

@@ -17,6 +17,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.clouddisk.util.ClientIpUtil;
 import lombok.RequiredArgsConstructor;
+import com.clouddisk.util.TransactionUtils;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -72,13 +74,14 @@ public class ShareService {
         return result;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void cancel(Long shareId) {
         long userId = AuthService.currentUserId();
         ShareRecord share = shareMapper.selectById(shareId);
         if (share == null || !share.getUserId().equals(userId)) {
             throw new BusinessException("分享不存在");
         }
-        cacheService.delete(shareCacheKey(share.getShareCode()));
+        TransactionUtils.afterCommit(() -> cacheService.delete(shareCacheKey(share.getShareCode())));
         if (isShareExpired(share)) {
             shareMapper.deleteById(shareId);
         } else {
@@ -87,13 +90,14 @@ public class ShareService {
         }
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void clearExpired() {
         long userId = AuthService.currentUserId();
         List<ShareRecord> shares = shareMapper.selectList(new LambdaQueryWrapper<ShareRecord>()
                 .eq(ShareRecord::getUserId, userId));
         for (ShareRecord share : shares) {
             if (isShareExpired(share)) {
-                cacheService.delete(shareCacheKey(share.getShareCode()));
+                TransactionUtils.afterCommit(() -> cacheService.delete(shareCacheKey(share.getShareCode())));
                 shareMapper.deleteById(share.getId());
             }
         }
@@ -107,6 +111,7 @@ public class ShareService {
         return expireTime != null && expireTime.isBefore(LocalDateTime.now());
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> create(ShareCreateRequest req) {
         if (req.getFolderId() != null && req.getFolderId() > 0) {
             return createFolderShare(req);
@@ -513,7 +518,8 @@ public class ShareService {
 
     private void cacheShare(ShareRecord share) {
         try {
-            cacheService.set(shareCacheKey(share.getShareCode()), objectMapper.writeValueAsString(share), SHARE_CACHE_TTL);
+            String val = objectMapper.writeValueAsString(share);
+            TransactionUtils.afterCommit(() -> cacheService.set(shareCacheKey(share.getShareCode()), val, SHARE_CACHE_TTL));
         } catch (JsonProcessingException ignored) {
         }
     }

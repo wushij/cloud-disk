@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { authApi } from '@/api'
 import { getApiErrorMessage } from '@/utils/error'
 
 const props = defineProps<{
@@ -25,7 +25,7 @@ async function sendCode() {
 
   loading.value = true
   try {
-    await http.post('/api/auth/email/send-code', { email: em, scene: props.scene }, { skipErrorHandler: true })
+    await authApi.sendEmailCode({ email: em, scene: props.scene })
     ElMessage.success('验证码发送成功，请前往邮箱查看')
     countdown.value = 60
     const timer = setInterval(() => {

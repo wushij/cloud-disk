@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UserFilled, Coin, Lock, Check, Close, Search } from '@element-plus/icons-vue'
-import http from '@/api/http'
+import { adminApi } from '@/api'
 import { adminUserAvatarUrl } from '@/utils/mediaUrl'
 import { fmtSize } from '@/utils/fileMeta'
 import { useAuthStore } from '@/stores/auth'
@@ -52,8 +52,8 @@ const pwdInput = ref('')
 async function loadUsers() {
   loading.value = true
   try {
-    const { data } = await http.get<UserRow[]>('/api/admin/users')
-    users.value = data || []
+    const data = await adminApi.users()
+    users.value = (data || []) as any
     auth.pendingUserCount = users.value.filter(u => u.status === 2).length
   } catch {
     /* global toast */
@@ -147,7 +147,7 @@ async function toggleUserStatus(row: UserRow) {
   })
   if (!ok) return
   try {
-    await http.put(`/api/admin/users/${row.id}/status`, { status: next })
+    await adminApi.setUserStatus(row.id, next)
     row.status = next
     ElMessage.success('操作成功')
   } catch {
@@ -169,10 +169,7 @@ async function toggleUserRole(row: UserRow) {
   })
   if (!ok) return
   try {
-    const { data } = await http.put<{ role?: string; storageQuota?: number }>(
-      `/api/admin/users/${row.id}/role`,
-      { role: targetRole }
-    )
+    const data = await adminApi.setUserRole(row.id, targetRole) as any
     row.role = data?.role || targetRole
     if (data?.storageQuota != null) {
       row.storageQuota = data.storageQuota
@@ -193,7 +190,7 @@ async function handleApprove(row: UserRow) {
   })
   if (!ok) return
   try {
-    await http.post(`/api/admin/registrations/${row.id}/approve`)
+    await adminApi.approveRegistration(row.id)
     ElMessage.success('已通过注册申请')
     loadUsers()
   } catch {
@@ -211,7 +208,7 @@ async function handleReject(row: UserRow) {
   })
   if (!ok) return
   try {
-    await http.post(`/api/admin/registrations/${row.id}/reject`)
+    await adminApi.rejectRegistration(row.id)
     ElMessage.success('已拒绝注册申请')
     loadUsers()
   } catch {
@@ -242,7 +239,7 @@ async function submitQuota() {
   quotaSaving.value = true
   const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
   try {
-    await http.put(`/api/admin/users/${quotaTarget.value.id}/quota`, { storageQuota: quotaBytes })
+    await adminApi.setUserQuota(quotaTarget.value.id, quotaBytes)
     quotaTarget.value.storageQuota = quotaBytes
     quotaVisible.value = false
     ElMessage.success('配额设置成功')
@@ -273,7 +270,7 @@ async function submitResetPwd() {
   }
   pwdSaving.value = true
   try {
-    await http.put(`/api/admin/users/${pwdTarget.value.id}/password`, { password: pwd })
+    await adminApi.resetPassword(pwdTarget.value.id, pwd)
     pwdVisible.value = false
     ElMessage.success('密码重置成功，该用户在线会话已失效')
   } catch {

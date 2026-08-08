@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Share, CopyDocument, Close, Document, Folder, Picture, VideoPlay, Headset, Files } from '@element-plus/icons-vue'
-import http from '@/api/http'
+import { shareApi } from '@/api'
 import { buildPublicShareUrl } from '@/utils/shareUrl'
 import { mediaApiUrl } from '@/utils/mediaUrl'
 import { useConfirmDialogStore } from '@/stores/confirmDialog'
@@ -132,8 +132,8 @@ const confirmDialog = useConfirmDialogStore()
 async function load() {
   loading.value = true
   try {
-    const { data } = await http.get('/api/share/mine')
-    rows.value = data
+    const data = await shareApi.mine()
+    rows.value = data as any
   } catch {
     /* global toast */
   } finally {
@@ -155,7 +155,7 @@ async function clearAllExpired() {
   })
   if (!ok) return
   try {
-    await http.delete('/api/share/expired/clear')
+    await shareApi.clearExpired()
     rows.value = rows.value.filter((r) => !isExpired(r))
     ElMessage.success('已清空')
   } catch {
@@ -175,7 +175,7 @@ async function cancel(row: ShareRow) {
   })
   if (!ok) return
   try {
-    await http.delete(`/api/share/${row.id}`)
+    await shareApi.cancel(row.id)
     if (expired) {
       rows.value = rows.value.filter((r) => r.id !== row.id)
       ElMessage.success('已彻底删除')

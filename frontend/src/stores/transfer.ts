@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { fileApi, folderApi } from '@/api'
 import { mediaApiUrl } from '@/utils/mediaUrl'
 import { usePromptDialogStore } from '@/stores/promptDialog'
 import { calcFileMd5 } from '@/utils/md5'
@@ -113,7 +113,7 @@ export const useTransferStore = defineStore('transfer', () => {
         dataUrl = await captureVideoCover(file)
       }
       cacheCoverFromDataUrl(fileId, 0, dataUrl)
-      await http.post(`/api/files/${fileId}/poster`, { dataUrl })
+      await fileApi.savePoster(fileId, dataUrl)
       if (taskId) patchTask(taskId, { coverUrl: dataUrl, fileId })
     } catch {
       /* ignore */
@@ -421,10 +421,7 @@ export const useTransferStore = defineStore('transfer', () => {
 
       let downloadUrl = mediaApiUrl(`/api/files/${fileId}/download`)
       try {
-        const { data } = await http.get(`/api/files/${fileId}/direct-url`, {
-          signal: abortController.signal,
-          skipErrorHandler: true
-        })
+        const data = await fileApi.directUrl(fileId)
         if (data?.url) downloadUrl = data.url
       } catch (err: any) {
         if (axios.isCancel(err) || err?.name === 'CanceledError') throw err
@@ -587,7 +584,7 @@ export async function promptCreateFolder(parentId: number): Promise<boolean> {
     maxlength: 64
   })
   if (!value) return false
-  await http.post('/api/folders', { folderName: value, parentId })
+  await folderApi.create({ folderName: value, parentId })
   ElMessage.success('创建成功')
   return true
 }

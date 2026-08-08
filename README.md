@@ -37,11 +37,12 @@
 
 | 层级 | 技术 |
 |------|------|
-| 前端 PC | Vue 3 · TypeScript · Vite · Pinia · Element Plus · pdf.js · video.js · WebSocket |
+| 前端 PC | Vue 3 · TypeScript · Vite · Pinia · Element Plus · 类型安全 API 封装层 · pdf.js · video.js · WebSocket |
 | 前端 Mobile | UniApp · Vue 3 · Pinia · SCSS（H5 / 可打包 APK） |
 | 后端 | Spring Boot 3.2.5 · Sa-Token 1.38 · MyBatis Plus 3.5.6 · MySQL 8 · Knife4j 4.5 |
 | 缓存 | Redis（Sa-Token 独立库 + 业务缓存；`local,memory` 可降级内存） |
 | 存储 | MinIO 8.5 / 本地磁盘 |
+| 事务 | 严谨 `@Transactional` 隔离 · Spring AOP 代理自调用修补 (`@Lazy`) · 微事务配额防突破 |
 | 消息 | RabbitMQ（可选，异步转码） |
 | 搜索 | MySQL LIKE / ElasticSearch 8.12 + IK + 拼音（可选） |
 | 监控 | Spring Boot Admin 3.2 · SkyWalking · ELK（可选） |
@@ -64,6 +65,8 @@
 | 传输列表 | PC 右下角浮层 / Mobile 独立页；上传/下载队列、进度、暂停/恢复、清除已完成 |
 | 通知 | 站内通知、未读角标、团队邀请接受/拒绝、注册审批通知、通知删除/清空（WebSocket 推送） |
 | 安全 | BCrypt、登录失败锁定、图形验证码、API/IP 限流、Sentinel QPS、分享防暴力破解；ClamAV（可选）；**HMAC-SM3 签名 + SM4-CBC 加解密 + 时间戳/Nonce 防重放（热更新开关）** |
+| 事务与 ACID | 全写服务类规范化 `@Transactional` 隔离；引入 Spring AOP 自调用代理修补 (`@Lazy`)；将 MinIO/ClamAV 等长 IO 剥离出事务，保障 HikariCP 连接池高并发与存储配额 0 泄露漏洞 |
+| 前端 API 层 | 抽象 12 个领域 API 模块与 18 个后端 VO TS 接口定义（`types.ts`），实现组件/Store 0 裸 HTTP 请求调用，提升类型推导与维保质量 |
 | CDN | MinIO 预签名直链 + CDN 域名替换，预览/下载优先走直链 |
 | 管理后台 | 仪表盘、用户管理（注册审批/角色修改/密码重置/状态/配额）、存储统计、ES 索引重建、审计日志、**API 安全开关热更新**（`/admin`） |
 | 企业扩展 | FFmpeg · RabbitMQ · XXL-JOB · Sentinel · OnlyOffice · LDAP/SSO · 监控/ELK |
@@ -462,7 +465,8 @@ cd frontend && npm run build
 │   ├── src/components/                       # ConfirmDialog / FolderTypeIcon / TransferPanel / ShareDialog / PdfPreview / VideoPreview / TextPreview 等
 │   ├── src/stores/                           # Pinia 状态（auth / file / notification / transfer / confirmDialog / theme）
 │   ├── src/utils/                            # 工具（加密、签名、上传、下载、错误处理、文件预览/封面、WebSocket 等）
-│   └── src/api/  src/router/  src/styles/    # http（axios 拦截器）/ 路由 / 全局样式
+│   ├── src/api/                              # 类型安全 API 封装层（12 领域模块 + 18 VO TypeScript 类型映射 + Axios 拦截器）
+│   └── src/router/  src/styles/            # 路由 / 全局样式
 ├── mobile/                                   # UniApp 移动端（H5 / APK）
 │   ├── src/pages/                            # 登录、云盘、分享、团队、传输、通知、回收站、预览、用户管理等
 │   ├── src/stores/                           # auth / file / transfer / notification

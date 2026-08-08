@@ -19,6 +19,10 @@ import com.clouddisk.security.VirusScanService;
 import com.clouddisk.storage.StorageService;
 import com.clouddisk.util.FileTypeUtils;
 import com.clouddisk.util.FileValidator;
+import com.clouddisk.util.TransactionUtils;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +39,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class FileService {
+
+    @Autowired
+    @Lazy
+    private FileService self;
 
     private static final long MD5_CACHE_TTL = 86400 * 7;
 
@@ -191,8 +199,10 @@ public class FileService {
         throw new BusinessException("没有权限访问该文件");
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public FileRecord createRecord(long userId, Long folderId, String fileName, long size,
                                    String mimeType, String md5, String storagePath) {
+        log.debug("createRecord 事务活性状态: active={}", TransactionSynchronizationManager.isActualTransactionActive());
         if (folderId != null && folderId > 0) {
             folderService.getOwnedOrShared(folderId, userId);
             if (folderService.isSharedTeamFolder(folderId, userId)) {
@@ -217,20 +227,23 @@ public class FileService {
         record.setBucketName(storageService.bucketName());
         record.setStatus(1);
         fileMapper.insert(record);
-        fileCacheService.cacheFile(record);
         quotaService.addUsage(userId, size);
-        if (StringUtils.hasText(md5)) {
-            cacheService.set(FileCacheService.md5PathCacheKey(userId, md5), storagePath, MD5_CACHE_TTL);
-        }
         if (MediaProcessService.isVideo(mimeType, fileName)) {
             record.setTranscodeStatus(TranscodeStatus.PENDING);
             fileMapper.updateById(record);
         }
+
+        TransactionUtils.afterCommit(() -> {
+            fileCacheService.cacheFile(record);
+            if (StringUtils.hasText(md5)) {
+                cacheService.set(FileCacheService.md5PathCacheKey(userId, md5), storagePath, MD5_CACHE_TTL);
+            }
+            if (fileSearchService != null) {
+                fileSearchService.indexFile(record);
+            }
+        });
+
         mediaProcessService.afterFileCreated(record);
-        // ES 索引同步
-        if (fileSearchService != null) {
-            fileSearchService.indexFile(record);
-        }
         return record;
     }
 
@@ -251,7 +264,7 @@ public class FileService {
         try (var in = storageService.loadAsResource(storagePath).getInputStream()) {
             virusScanService.scan(in, fileName, file.getSize());
         }
-        return createRecord(userId, folderId, fileName, file.getSize(),
+        return self.createRecord(userId, folderId, fileName, file.getSize(),
                 file.getContentType(), null, storagePath);
     }
 
@@ -260,15 +273,17 @@ public class FileService {
         return fileCacheService.getByMd5(userId, md5);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public FileRecord instantUpload(String md5, String fileName, Long fileSize, Long folderId) {
         long userId = AuthService.currentUserId();
         FileRecord existing = findByMd5(userId, md5);
         if (existing == null) {
             throw new BusinessException("秒传失败：当前账号下不存在相同文件");
         }
-        return createRecord(userId, folderId, fileName, fileSize, existing.getFileType(), md5, existing.getStoragePath());
+        return self.createRecord(userId, folderId, fileName, fileSize, existing.getFileType(), md5, existing.getStoragePath());
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public FileRecord rename(Long id, RenameRequest req) {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
@@ -280,14 +295,17 @@ public class FileService {
         checkDuplicateFileName(userId, file.getFolderId(), name, id);
         file.setFileName(name);
         fileMapper.updateById(file);
-        fileCacheService.evict(file.getId());
-        // ES 索引同步
-        if (fileSearchService != null) {
-            fileSearchService.indexFile(file);
-        }
+
+        TransactionUtils.afterCommit(() -> {
+            fileCacheService.evict(file.getId());
+            if (fileSearchService != null) {
+                fileSearchService.indexFile(file);
+            }
+        });
         return file;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public FileRecord move(Long id, MoveRequest req) {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
@@ -303,11 +321,13 @@ public class FileService {
         checkDuplicateFileName(userId, targetId, file.getFileName(), id);
         file.setFolderId(targetId);
         fileMapper.updateById(file);
-        fileCacheService.evict(file.getId());
-        // ES 索引同步
-        if (fileSearchService != null) {
-            fileSearchService.indexFile(file);
-        }
+
+        TransactionUtils.afterCommit(() -> {
+            fileCacheService.evict(file.getId());
+            if (fileSearchService != null) {
+                fileSearchService.indexFile(file);
+            }
+        });
         return file;
     }
 
@@ -343,9 +363,11 @@ public class FileService {
         file.setPosterPath(posterPath);
         file.setThumbnailPath(posterPath);
         fileMapper.updateById(file);
-        fileCacheService.evict(file.getId());
+
+        TransactionUtils.afterCommit(() -> fileCacheService.evict(file.getId()));
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public FileRecord copy(Long id, MoveRequest req) {
         long userId = AuthService.currentUserId();
         FileRecord src = getOwnedOrShared(id, userId);
@@ -359,22 +381,25 @@ public class FileService {
             }
         }
         String copyName = generateCopyName(userId, targetId, src.getFileName());
-        return createRecord(userId, targetId, copyName, src.getFileSize(),
+        return self.createRecord(userId, targetId, copyName, src.getFileSize(),
                 src.getFileType(), src.getFileMd5(), src.getStoragePath());
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void deleteToRecycle(Long id) {
         long userId = AuthService.currentUserId();
         FileRecord file = getOwnedOrShared(id, userId);
         teamAccessService.requireDeleteFile(file, userId);
         file.setStatus(0);
         fileMapper.updateById(file);
-        fileCacheService.evict(file.getId());
         quotaService.subtractUsage(file.getUserId(), file.getFileSize() != null ? file.getFileSize() : 0);
-        // ES 索引同步（更新 status 字段）
-        if (fileSearchService != null) {
-            fileSearchService.indexFile(file);
-        }
+
+        TransactionUtils.afterCommit(() -> {
+            fileCacheService.evict(file.getId());
+            if (fileSearchService != null) {
+                fileSearchService.indexFile(file);
+            }
+        });
     }
 
     public Resource download(Long id, long userId) {

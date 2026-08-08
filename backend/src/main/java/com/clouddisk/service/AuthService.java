@@ -27,6 +27,11 @@ import com.clouddisk.mapper.UserMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.clouddisk.vo.AuthTokenVO;
+import com.clouddisk.vo.RegisterResultVO;
+import com.clouddisk.vo.UserVO;
+import com.clouddisk.util.TransactionUtils;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -141,7 +146,7 @@ public class AuthService {
 
 
 
-    public Map<String, Object> login(LoginRequest req) {
+    public com.clouddisk.vo.AuthTokenVO login(LoginRequest req) {
 
         String ip = ClientIpUtil.current();
 
@@ -237,7 +242,7 @@ public class AuthService {
 
 
 
-    public Map<String, Object> loginByEmailCode(com.clouddisk.dto.EmailLoginRequest req) {
+    public com.clouddisk.vo.AuthTokenVO loginByEmailCode(com.clouddisk.dto.EmailLoginRequest req) {
 
         String email = req.getEmail().trim();
 
@@ -283,6 +288,7 @@ public class AuthService {
 
 
 
+    @Transactional(rollbackFor = Exception.class)
     public void resetPasswordByEmail(com.clouddisk.dto.EmailResetPasswordRequest req) {
 
         String email = req.getEmail().trim();
@@ -315,7 +321,8 @@ public class AuthService {
 
 
 
-    public Map<String, Object> register(RegisterRequest req) {
+    @Transactional(rollbackFor = Exception.class)
+    public RegisterResultVO register(RegisterRequest req) {
 
         if (cloudDiskProperties.getRateLimit().isCaptchaOnRegister()) {
 
@@ -411,15 +418,15 @@ public class AuthService {
 
 
 
-        Map<String, Object> m = new HashMap<>();
+        return RegisterResultVO.builder()
 
-        m.put("pending", true);
+                .pending(true)
 
-        m.put("title", "注册申请已提交");
+                .title("注册申请已提交")
 
-        m.put("message", "管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。");
+                .message("管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。")
 
-        return m;
+                .build();
 
     }
 
@@ -428,16 +435,15 @@ public class AuthService {
                 .in(User::getRole, SystemRole.SUPER_ADMIN, SystemRole.ADMIN)
                 .eq(User::getStatus, UserStatus.ACTIVE));
         String displayName = user.getNickname() != null ? user.getNickname() : user.getUsername();
-        String content = displayName + "（" + user.getUsername() + "）申请注册账号，请审核是否通过";
+        String content = displayName + "（" + user.getUsername() + "）提交了注册申请，请前往系统管理进行审批";
         for (User admin : admins) {
-            notificationDispatcher.dispatch(admin.getId(), "USER_REGISTER", "新用户注册",
-                    content, String.valueOf(user.getId()));
+            notificationDispatcher.dispatch(admin.getId(), "USER_REGISTER", "新用户注册申请", content, String.valueOf(user.getId()));
         }
     }
 
 
 
-    public Map<String, Object> me() {
+    public UserVO me() {
 
         Long userId = StpUtil.getLoginIdAsLong();
 
@@ -445,24 +451,18 @@ public class AuthService {
 
         if (user == null) throw new BusinessException("用户不存在");
 
-        Map<String, Object> m = new HashMap<>();
+        UserVO vo = com.clouddisk.util.VOMapper.toUserVO(user);
+        vo.setAvatar(resolveReadableAvatarPath(user.getAvatar()));
+        vo.setDefaultPassword(passwordEncoder.matches("admin123", user.getPassword()));
 
-        m.put("id", user.getId());
-        m.put("username", user.getUsername());
-        m.put("nickname", user.getNickname());
-        m.put("avatar", resolveReadableAvatarPath(user.getAvatar()));
-        m.put("email", user.getEmail());
-        m.put("phone", user.getPhone());
-        m.put("role", user.getRole() != null ? user.getRole() : "USER");
-        m.put("defaultPassword", passwordEncoder.matches("admin123", user.getPassword()));
-
-        return m;
+        return vo;
 
     }
 
 
 
-    public Map<String, Object> updateProfile(ProfileUpdateRequest req) {
+    @Transactional(rollbackFor = Exception.class)
+    public UserVO updateProfile(ProfileUpdateRequest req) {
         Long userId = StpUtil.getLoginIdAsLong();
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException("用户不存在");
@@ -493,7 +493,7 @@ public class AuthService {
         }
 
         userMapper.updateById(user);
-        userCacheService.evict(userId);
+        TransactionUtils.afterCommit(() -> userCacheService.evict(userId));
         return me();
     }
 
@@ -530,7 +530,7 @@ public class AuthService {
 
 
 
-    public Map<String, Object> uploadAvatar(org.springframework.web.multipart.MultipartFile file) throws Exception {
+    public UserVO uploadAvatar(org.springframework.web.multipart.MultipartFile file) throws Exception {
 
         Long userId = StpUtil.getLoginIdAsLong();
 
@@ -566,7 +566,7 @@ public class AuthService {
 
         userMapper.updateById(user);
 
-        userCacheService.evict(userId);
+        TransactionUtils.afterCommit(() -> userCacheService.evict(userId));
 
         return me();
 
@@ -643,19 +643,15 @@ public class AuthService {
 
 
 
-    private Map<String, Object> buildAuthResponse(User user) {
-
-        Map<String, Object> m = new HashMap<>();
-
-        m.put("token", StpUtil.getTokenValue());
-        m.put("username", user.getUsername());
-        m.put("nickname", user.getNickname());
-        m.put("role", user.getRole() != null ? user.getRole() : "USER");
-        m.put("userId", user.getId());
-        m.put("defaultPassword", passwordEncoder.matches("admin123", user.getPassword()));
-
-        return m;
-
+    private com.clouddisk.vo.AuthTokenVO buildAuthResponse(User user) {
+        return com.clouddisk.vo.AuthTokenVO.builder()
+                .token(StpUtil.getTokenValue())
+                .username(user.getUsername())
+                .nickname(user.getNickname())
+                .role(user.getRole() != null ? user.getRole() : "USER")
+                .userId(user.getId())
+                .defaultPassword(passwordEncoder.matches("admin123", user.getPassword()))
+                .build();
     }
 
 }

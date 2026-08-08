@@ -11,6 +11,7 @@ import com.clouddisk.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,7 +33,7 @@ public class StorageQuotaService {
     /**
      * 获取用户存储用量信息
      */
-    public Map<String, Object> getUsage(long userId) {
+    public com.clouddisk.vo.StorageUsageVO getUsage(long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
@@ -40,19 +41,19 @@ public class StorageQuotaService {
 
         long usedBytes = getUsedBytes(userId);
         long quotaBytes = user.getStorageQuota() != null ? user.getStorageQuota() : 0;
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("usedBytes", usedBytes);
-        result.put("quotaBytes", quotaBytes);
-        result.put("usedFormatted", formatSize(usedBytes));
-        result.put("quotaFormatted", formatSize(quotaBytes));
+        double usedPercent = 0.0;
         if (quotaBytes > 0) {
             double percent = Math.round(usedBytes * 10000.0 / quotaBytes) / 100.0;
-            result.put("usedPercent", Math.min(percent, 100.0));
-        } else {
-            result.put("usedPercent", 0.0);
+            usedPercent = Math.min(percent, 100.0);
         }
-        return result;
+
+        return com.clouddisk.vo.StorageUsageVO.builder()
+                .usedBytes(usedBytes)
+                .quotaBytes(quotaBytes)
+                .usedFormatted(formatSize(usedBytes))
+                .quotaFormatted(formatSize(quotaBytes))
+                .usedPercent(usedPercent)
+                .build();
     }
 
     /**
@@ -77,6 +78,7 @@ public class StorageQuotaService {
     /**
      * 上传成功后累加用量
      */
+    @Transactional(rollbackFor = Exception.class)
     public void addUsage(long userId, long bytes) {
         userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
@@ -87,6 +89,7 @@ public class StorageQuotaService {
     /**
      * 删除文件后扣减用量
      */
+    @Transactional(rollbackFor = Exception.class)
     public void subtractUsage(long userId, long bytes) {
         userMapper.update(null, new LambdaUpdateWrapper<User>()
                 .eq(User::getId, userId)
@@ -97,6 +100,7 @@ public class StorageQuotaService {
     /**
      * 全量重算用户存储用量
      */
+    @Transactional(rollbackFor = Exception.class)
     public void recalculateUsage(long userId) {
         long total = fileMapper.selectList(
                 new LambdaQueryWrapper<FileRecord>()
@@ -117,6 +121,7 @@ public class StorageQuotaService {
     /**
      * 管理员设置用户配额
      */
+    @Transactional(rollbackFor = Exception.class)
     public void setQuota(long userId, long quotaBytes) {
         User user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException("用户不存在");

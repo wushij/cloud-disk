@@ -1,0 +1,15 @@
+package com.clouddisk.vo;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OperationResultVO {
+    private Boolean success;
+    private String message;
+}

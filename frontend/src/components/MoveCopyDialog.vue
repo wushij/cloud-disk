@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { folderApi, fileApi } from '@/api'
 
 const props = defineProps<{
   modelValue: boolean
@@ -26,8 +26,8 @@ watch(
   async (v) => {
     if (v) {
       targetFolderId.value = 0
-      const { data } = await http.get('/api/folders/tree')
-      tree.value = [{ id: 0, label: '全部文件', children: data }]
+      const data = await folderApi.tree()
+      tree.value = [{ id: 0, label: '全部文件', children: data as any }]
     }
   }
 )
@@ -43,12 +43,17 @@ async function confirm() {
     return
   }
   try {
-    const body = { targetFolderId: targetFolderId.value }
-    const base = props.itemType === 'folder' ? '/api/folders' : '/api/files'
-    if (props.mode === 'move') {
-      await http.put(`${base}/${props.itemId}/move`, body)
+    const targetId = targetFolderId.value
+    if (props.itemType === 'folder') {
+      if (props.mode === 'move') {
+        await folderApi.move(props.itemId, targetId)
+      }
     } else {
-      await http.post(`${base}/${props.itemId}/copy`, body)
+      if (props.mode === 'move') {
+        await fileApi.move(props.itemId, targetId)
+      } else {
+        await fileApi.copy(props.itemId, targetId)
+      }
     }
     ElMessage.success(props.mode === 'move' ? '移动成功' : '复制成功')
     emit('done')

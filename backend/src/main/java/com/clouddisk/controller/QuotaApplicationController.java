@@ -3,6 +3,8 @@ package com.clouddisk.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.clouddisk.entity.QuotaApplication;
 import com.clouddisk.service.QuotaApplicationService;
+import com.clouddisk.util.VOMapper;
+import com.clouddisk.vo.QuotaApplicationVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,18 +38,23 @@ public class QuotaApplicationController {
      * 获取用户本人的申请历史
      */
     @GetMapping("/my")
-    public List<QuotaApplication> listUserHistory() {
-        return quotaApplicationService.listUserHistory();
+    public List<QuotaApplicationVO> listUserHistory() {
+        return quotaApplicationService.listUserHistory().stream()
+                .map(VOMapper::toQuotaApplicationVO)
+                .toList();
     }
 
     /**
      * 管理员：获取所有申请记录
      */
     @GetMapping("/admin")
-    public Page<QuotaApplication> listAll(
+    public Page<QuotaApplicationVO> listAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return quotaApplicationService.listAllApplications(page, size);
+        Page<QuotaApplication> p = quotaApplicationService.listAllApplications(page, size);
+        Page<QuotaApplicationVO> voPage = new Page<>(p.getCurrent(), p.getSize(), p.getTotal());
+        voPage.setRecords(p.getRecords().stream().map(VOMapper::toQuotaApplicationVO).toList());
+        return voPage;
     }
 
     /**

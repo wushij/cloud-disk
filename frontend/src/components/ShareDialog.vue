@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import http from '@/api/http'
+import { shareApi } from '@/api'
 import { buildPublicShareUrl } from '@/utils/shareUrl'
 
 const props = defineProps<{
@@ -46,7 +46,7 @@ async function createShare() {
     }
     if (props.folderId) body.folderId = props.folderId
     else body.fileId = props.fileId
-    const { data } = await http.post('/api/share', body)
+    const data = await shareApi.create(body as any)
     result.value = data
     fullShareUrl.value = buildPublicShareUrl(data.shareCode, data.shareUrl)
     ElMessage.success('分享创建成功')

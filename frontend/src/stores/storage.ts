@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import http from '@/api/http'
+import { storageApi } from '@/api'
 
 export interface StorageUsage {
   usedBytes: number
@@ -15,7 +15,7 @@ export const useStorageStore = defineStore('storage', () => {
 
   async function refresh() {
     try {
-      const { data } = await http.get<StorageUsage>('/api/storage/usage')
+      const data = await storageApi.usage()
       usage.value = data
     } catch {
       /* ignore */

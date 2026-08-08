@@ -215,7 +215,17 @@ http.interceptors.response.use(
       }
     }
 
-    return response
+    // ── 统一 ApiResponse 自动解包 (code === 0 时解出 data) ───────
+    if (response.data && typeof response.data === 'object' && 'code' in response.data) {
+      if (response.data.code === 0) {
+        response.data = response.data.data
+      } else {
+        const errorMsg = response.data.message || '请求失败'
+        return Promise.reject(new Error(errorMsg))
+      }
+    }
+
+    return response.data
   },
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
@@ -284,3 +294,16 @@ const HAS_AVATAR_KEY = 'cd_has_avatar'
 
 export { TOKEN_KEY, USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY }
 export default http
+
+declare module 'axios' {
+  export interface AxiosInstance {
+    request<T = any>(config: AxiosRequestConfig): Promise<T>
+    get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    head<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    options<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+    put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+    patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  }
+}

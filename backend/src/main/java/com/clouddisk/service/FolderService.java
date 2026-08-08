@@ -30,10 +30,12 @@ import com.clouddisk.mapper.TeamSpaceMapper;
 
 import com.clouddisk.mapper.TeamMemberMapper;
 
+import com.clouddisk.vo.BreadcrumbVO;
+import com.clouddisk.vo.FolderTreeNodeVO;
+import com.clouddisk.util.TransactionUtils;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.stereotype.Service;
 
 
@@ -72,7 +74,7 @@ public class FolderService {
 
 
 
-    public List<Map<String, Object>> tree() {
+    public List<FolderTreeNodeVO> tree() {
 
         long userId = AuthService.currentUserId();
 
@@ -173,23 +175,20 @@ public class FolderService {
 
 
 
-    private List<Map<String, Object>> buildTree(Long parentId, Map<Long, List<Folder>> byParent) {
+    private List<FolderTreeNodeVO> buildTree(Long parentId, Map<Long, List<Folder>> byParent) {
 
         List<Folder> children = byParent.getOrDefault(parentId, List.of());
 
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<FolderTreeNodeVO> result = new ArrayList<>();
 
         for (Folder f : children) {
 
-            Map<String, Object> node = new LinkedHashMap<>();
-
-            node.put("id", f.getId());
-
-            node.put("label", f.getFolderName());
-
-            node.put("parentId", f.getParentId());
-
-            node.put("children", buildTree(f.getId(), byParent));
+            FolderTreeNodeVO node = FolderTreeNodeVO.builder()
+                    .id(f.getId())
+                    .label(f.getFolderName())
+                    .parentId(f.getParentId())
+                    .children(buildTree(f.getId(), byParent))
+                    .build();
 
             result.add(node);
 
@@ -201,6 +200,7 @@ public class FolderService {
 
 
 
+    @Transactional(rollbackFor = Exception.class)
     public Folder create(FolderCreateRequest req) {
 
         long userId = AuthService.currentUserId();
@@ -242,8 +242,7 @@ public class FolderService {
 
     }
 
-
-
+    @Transactional(rollbackFor = Exception.class)
     public Folder rename(Long id, RenameRequest req) {
 
         long userId = AuthService.currentUserId();
@@ -269,8 +268,7 @@ public class FolderService {
 
     }
 
-
-
+    @Transactional(rollbackFor = Exception.class)
     public Folder move(Long id, MoveRequest req) {
 
         long userId = AuthService.currentUserId();
@@ -315,10 +313,8 @@ public class FolderService {
 
     }
 
-
-
     /** 级联移入回收站：子文件夹 + 子文件 */
-
+    @Transactional(rollbackFor = Exception.class)
     public void deleteToRecycle(Long id) {
 
         long userId = AuthService.currentUserId();
@@ -328,8 +324,6 @@ public class FolderService {
         if (folder.getDeleted() != 0) throw new BusinessException("文件夹已在回收站");
         teamAccessService.requireDeleteFolder(folder, userId);
 
-
-
         List<Long> folderIds = folderTreeHelper.collectActiveSubtreeIds(id);
 
         folderMapper.update(null, new LambdaUpdateWrapper<Folder>()
@@ -337,8 +331,6 @@ public class FolderService {
                 .in(Folder::getId, folderIds)
 
                 .set(Folder::getDeleted, 1));
-
-
 
         List<FileRecord> files = fileMapper.selectList(new LambdaQueryWrapper<FileRecord>()
 
@@ -352,13 +344,15 @@ public class FolderService {
 
             fileMapper.updateById(file);
 
-            if (fileSearchBridge != null) {
-
-                fileSearchBridge.onFileRecycled(file);
-
-            }
-
         }
+
+        TransactionUtils.afterCommit(() -> {
+            for (FileRecord file : files) {
+                if (fileSearchBridge != null) {
+                    fileSearchBridge.onFileRecycled(file);
+                }
+            }
+        });
 
     }
 
@@ -493,17 +487,14 @@ public class FolderService {
 
     }
 
-    public List<Map<String, Object>> getBreadcrumbs(Long folderId, long userId) {
+    public List<BreadcrumbVO> getBreadcrumbs(Long folderId, long userId) {
         return getBreadcrumbs(folderId, userId, false);
     }
 
-    public List<Map<String, Object>> getBreadcrumbs(Long folderId, long userId, boolean full) {
-        List<Map<String, Object>> crumbs = new ArrayList<>();
+    public List<BreadcrumbVO> getBreadcrumbs(Long folderId, long userId, boolean full) {
+        List<BreadcrumbVO> crumbs = new ArrayList<>();
         if (folderId == null || folderId <= 0) {
-            Map<String, Object> rootCrumb = new LinkedHashMap<>();
-            rootCrumb.put("id", 0L);
-            rootCrumb.put("name", "全部文件");
-            crumbs.add(rootCrumb);
+            crumbs.add(new BreadcrumbVO(0L, "全部文件"));
             return crumbs;
         }
 
@@ -511,10 +502,7 @@ public class FolderService {
         Folder current = folder;
         int depth = 0;
         while (current != null && depth < 30) {
-            Map<String, Object> crumb = new LinkedHashMap<>();
-            crumb.put("id", current.getId());
-            crumb.put("name", current.getFolderName());
-            crumbs.add(0, crumb);
+            crumbs.add(0, new BreadcrumbVO(current.getId(), current.getFolderName()));
 
             Long parentId = current.getParentId();
             if (parentId == null || parentId <= 0) {
@@ -525,10 +513,7 @@ public class FolderService {
         }
 
         if (full) {
-            Map<String, Object> rootCrumb = new LinkedHashMap<>();
-            rootCrumb.put("id", 0L);
-            rootCrumb.put("name", "全部文件");
-            crumbs.add(0, rootCrumb);
+            crumbs.add(0, new BreadcrumbVO(0L, "全部文件"));
             return crumbs;
         }
 
@@ -537,29 +522,19 @@ public class FolderService {
             Long rootFolderId = space.getRootFolderId();
             int rootIndex = -1;
             for (int i = 0; i < crumbs.size(); i++) {
-                if (Objects.equals(crumbs.get(i).get("id"), rootFolderId)) {
+                if (Objects.equals(crumbs.get(i).getId(), rootFolderId)) {
                     rootIndex = i;
                     break;
                 }
             }
             if (rootIndex >= 0) {
-                crumbs = crumbs.subList(rootIndex, crumbs.size());
-                List<Map<String, Object>> copy = new ArrayList<>();
-                for (int i = 0; i < crumbs.size(); i++) {
-                    Map<String, Object> original = crumbs.get(i);
-                    Map<String, Object> m = new LinkedHashMap<>(original);
-                    if (i == 0) {
-                        m.put("name", space.getName());
-                    }
-                    copy.add(m);
+                crumbs = new ArrayList<>(crumbs.subList(rootIndex, crumbs.size()));
+                if (!crumbs.isEmpty()) {
+                    crumbs.get(0).setName(space.getName());
                 }
-                crumbs = copy;
             }
         } else {
-            Map<String, Object> rootCrumb = new LinkedHashMap<>();
-            rootCrumb.put("id", 0L);
-            rootCrumb.put("name", "全部文件");
-            crumbs.add(0, rootCrumb);
+            crumbs.add(0, new BreadcrumbVO(0L, "全部文件"));
         }
 
         return crumbs;

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import http, { USER_KEY, NICKNAME_KEY, ROLE_KEY, AVATAR_VERSION_KEY, HAS_AVATAR_KEY } from '@/api/http'
+import { authApi, adminApi } from '@/api'
 import { setSessionBearer, getSessionBearer } from '@/api/sessionAuth'
 import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken, mediaTokenRef } from '@/utils/mediaToken'
 import { mediaApiUrl, appendQueryParam } from '@/utils/mediaUrl'
@@ -85,7 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function syncSessionCookie() {
     try {
-      await http.post('/api/auth/sync-cookie', undefined, { skipErrorHandler: true })
+      await authApi.syncCookie()
     } catch {
       /* Cookie 同步失败时仍可用 Bearer 完成会话 */
     }
@@ -213,7 +214,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(u: string, p: string, captcha?: { captchaId?: string; captchaAnswer?: string }) {
     avatarCachedSrc.value = ''
     avatarStoragePath.value = ''
-    const { data } = await http.post('/api/auth/login', { username: u, password: p, ...captcha }, { skipErrorHandler: true })
+    const data = await authApi.login({ username: u, password: p, ...captcha })
     await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
@@ -232,11 +233,7 @@ export const useAuthStore = defineStore('auth', () => {
   ) {
     avatarCachedSrc.value = ''
     avatarStoragePath.value = ''
-    const { data } = await http.post(
-      '/api/auth/ldap/login',
-      { username: u, password: p, ...captcha },
-      { skipErrorHandler: true }
-    )
+    const data = (await authApi.ldapLogin({ username: u, password: p, ...captcha })) as any
     await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
@@ -250,7 +247,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function loginByEmailCode(email: string, code: string) {
     avatarCachedSrc.value = ''
     avatarStoragePath.value = ''
-    const { data } = await http.post('/api/auth/email/login', { email, code }, { skipErrorHandler: true })
+    const data = await authApi.emailLogin({ email, code })
     await establishSession(data.token)
     username.value = data.username
     nickname.value = data.nickname || data.username
@@ -269,17 +266,14 @@ export const useAuthStore = defineStore('auth', () => {
     captcha?: { captchaId?: string; captchaAnswer?: string },
     emailPayload?: { email?: string; emailCode?: string }
   ) {
-    const { data } = await http.post(
-      '/api/auth/register',
-      { username: u, password: p, nickname: nick, ...captcha, ...emailPayload },
-      { skipErrorHandler: true }
-    )
-    if (data?.token) {
-      await establishSession(data.token)
-      username.value = data.username
-      nickname.value = data.nickname || data.username
-      role.value = data.role || 'USER'
-      defaultPassword.value = data.defaultPassword || false
+    const data = await authApi.register({ username: u, password: p, nickname: nick, ...captcha, ...emailPayload })
+    if (data && (data as any).token) {
+      const d = data as any
+      await establishSession(d.token)
+      username.value = d.username
+      nickname.value = d.nickname || d.username
+      role.value = d.role || 'USER'
+      defaultPassword.value = d.defaultPassword || false
       persist()
       await requestSessionSignKey(http).catch(() => {})
       await fetchProfile({ silent: true })
@@ -296,7 +290,7 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     try {
-      const { data } = await http.get('/api/admin/dashboard', { skipErrorHandler: true })
+      const data = await adminApi.dashboard()
       if (data && typeof data.pendingUserCount === 'number') {
         pendingUserCount.value = data.pendingUserCount
       }
@@ -306,7 +300,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchProfile(opts?: { silent?: boolean }) {
-    const { data } = await http.get('/api/auth/me', opts?.silent ? { skipErrorHandler: true } : undefined)
+    const data = await authApi.me()
     applyProfile(data)
     if (isAdmin.value) {
       void fetchPendingCount()
@@ -315,7 +309,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function updateProfile(payload: { nickname?: string; email?: string; emailCode?: string; phone?: string }) {
-    const { data } = await http.put('/api/auth/profile', payload)
+    const data = await authApi.updateProfile(payload)
     applyProfile(data)
     return data
   }
@@ -324,7 +318,7 @@ export const useAuthStore = defineStore('auth', () => {
     const u = username.value
     const fd = new FormData()
     fd.append('file', file)
-    const { data } = await http.post('/api/auth/avatar', fd)
+    const data = await authApi.uploadAvatar(fd)
     bumpAvatar()
     applyProfile(data)
     if (u) {
@@ -340,7 +334,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     try {
-      await http.post('/api/auth/logout', undefined, { skipErrorHandler: true })
+      await authApi.logout()
     } catch {
       /* ignore */
     }

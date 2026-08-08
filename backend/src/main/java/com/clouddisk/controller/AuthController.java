@@ -7,28 +7,42 @@ import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.clouddisk.auth.FederatedAuthService;
 import com.clouddisk.common.BusinessException;
 import com.clouddisk.config.CloudDiskProperties;
+import com.clouddisk.dto.EmailLoginRequest;
+import com.clouddisk.dto.EmailResetPasswordRequest;
+import com.clouddisk.dto.EmailSendCodeRequest;
 import com.clouddisk.dto.LoginRequest;
 import com.clouddisk.dto.ProfileUpdateRequest;
 import com.clouddisk.dto.RegisterRequest;
-import com.clouddisk.security.ApiSecurityFilter;
 import com.clouddisk.security.CaptchaService;
+import com.clouddisk.security.EmailCodeService;
 import com.clouddisk.security.LoginProtectionService;
 import com.clouddisk.security.MediaAccessTokenService;
+import com.clouddisk.security.SecurityConfigService;
 import com.clouddisk.security.WebSocketTicketService;
 import com.clouddisk.service.AuthService;
 import com.clouddisk.util.ClientIpUtil;
+import com.clouddisk.vo.AuthTokenVO;
+import com.clouddisk.vo.CaptchaRequiredVO;
+import com.clouddisk.vo.CaptchaVO;
+import com.clouddisk.vo.MessageVO;
+import com.clouddisk.vo.OperationResultVO;
+import com.clouddisk.vo.RegisterResultVO;
+import com.clouddisk.vo.SecurityPublicConfigVO;
+import com.clouddisk.vo.UserVO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -56,12 +70,20 @@ public class AuthController {
     private final MediaAccessTokenService mediaAccessTokenService;
     private final CloudDiskProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
-    private final com.clouddisk.security.SecurityConfigService securityConfigService;
+    private final SecurityConfigService securityConfigService;
+    private final EmailCodeService emailCodeService;
 
     /** 公开接口：获取当前系统的安全特性配置（供 PC / 移动端初始化安全开关） */
     @GetMapping("/config")
-    public Map<String, Object> config() {
-        return securityConfigService.getPublicConfig();
+    public SecurityPublicConfigVO config() {
+        Map<String, Object> cfg = securityConfigService.getPublicConfig();
+        return SecurityPublicConfigVO.builder()
+                .timestampEnabled(Boolean.TRUE.equals(cfg.get("timestampEnabled")))
+                .nonceEnabled(Boolean.TRUE.equals(cfg.get("nonceEnabled")))
+                .sm3SignEnabled(Boolean.TRUE.equals(cfg.get("sm3SignEnabled")))
+                .sm2SignEnabled(Boolean.TRUE.equals(cfg.get("sm2SignEnabled")))
+                .sm4EncryptEnabled(Boolean.TRUE.equals(cfg.get("sm4EncryptEnabled")))
+                .build();
     }
 
     @GetMapping("/providers")
@@ -70,27 +92,31 @@ public class AuthController {
     }
 
     @GetMapping("/captcha")
-    public Map<String, Object> captcha(HttpServletResponse response) {
+    public CaptchaVO captcha(HttpServletResponse response) {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate, max-age=0");
         response.setHeader(HttpHeaders.PRAGMA, "no-cache");
-        return captchaService.create();
+        Map<String, Object> m = captchaService.create();
+        return CaptchaVO.builder()
+                .id((String) m.get("id"))
+                .img((String) m.get("img"))
+                .build();
     }
 
     @GetMapping("/captcha/required")
-    public Map<String, Object> captchaRequired(HttpServletRequest request) {
+    public CaptchaRequiredVO captchaRequired(HttpServletRequest request) {
         String ip = ClientIpUtil.resolve(request);
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("required", loginProtection.captchaRequired(ip));
-        return m;
+        return CaptchaRequiredVO.builder()
+                .required(loginProtection.captchaRequired(ip))
+                .build();
     }
 
     @PostMapping("/login")
     @SentinelResource(value = "auth_login", blockHandler = "loginBlocked")
-    public Map<String, Object> login(@Valid @RequestBody LoginRequest req) {
+    public AuthTokenVO login(@Valid @RequestBody LoginRequest req) {
         return authService.login(req);
     }
 
-    public static Map<String, Object> loginBlocked(LoginRequest req, BlockException ex) {
+    public static AuthTokenVO loginBlocked(LoginRequest req, BlockException ex) {
         throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
     }
 
@@ -139,43 +165,41 @@ public class AuthController {
         return federatedAuthService.loginWithSsoTicket(ticket, response);
     }
 
-    private final com.clouddisk.security.EmailCodeService emailCodeService;
-
     @PostMapping("/email/send-code")
-    public Map<String, Object> sendEmailCode(@Valid @RequestBody com.clouddisk.dto.EmailSendCodeRequest req) {
+    public OperationResultVO sendEmailCode(@Valid @RequestBody EmailSendCodeRequest req) {
         emailCodeService.sendCode(req.getEmail(), req.getScene());
-        Map<String, Object> m = new HashMap<>();
-        m.put("success", true);
-        m.put("message", "验证码发送成功，请前往邮箱查看");
-        return m;
+        return OperationResultVO.builder()
+                .success(true)
+                .message("验证码发送成功，请前往邮箱查看")
+                .build();
     }
 
     @PostMapping("/email/login")
-    public Map<String, Object> emailLogin(@Valid @RequestBody com.clouddisk.dto.EmailLoginRequest req) {
+    public AuthTokenVO emailLogin(@Valid @RequestBody EmailLoginRequest req) {
         return authService.loginByEmailCode(req);
     }
 
     @PostMapping("/email/reset-password")
-    public Map<String, Object> resetPasswordByEmail(@Valid @RequestBody com.clouddisk.dto.EmailResetPasswordRequest req) {
+    public OperationResultVO resetPasswordByEmail(@Valid @RequestBody EmailResetPasswordRequest req) {
         authService.resetPasswordByEmail(req);
-        Map<String, Object> m = new HashMap<>();
-        m.put("success", true);
-        m.put("message", "密码重置成功，请使用新密码登录");
-        return m;
+        return OperationResultVO.builder()
+                .success(true)
+                .message("密码重置成功，请使用新密码登录")
+                .build();
     }
 
     @PostMapping("/register")
     @SentinelResource(value = "auth_register", blockHandler = "registerBlocked")
-    public Map<String, Object> register(@Valid @RequestBody RegisterRequest req) {
+    public RegisterResultVO register(@Valid @RequestBody RegisterRequest req) {
         return authService.register(req);
     }
 
-    public static Map<String, Object> registerBlocked(RegisterRequest req, BlockException ex) {
+    public static RegisterResultVO registerBlocked(RegisterRequest req, BlockException ex) {
         throw new BusinessException("请求过于频繁，请稍后再试", "RATE_LIMITED");
     }
 
     @GetMapping("/me")
-    public Map<String, Object> me() {
+    public UserVO me() {
         return authService.me();
     }
 
@@ -192,48 +216,39 @@ public class AuthController {
     }
 
     @PutMapping("/profile")
-    public Map<String, Object> updateProfile(@Valid @RequestBody ProfileUpdateRequest req) {
+    public UserVO updateProfile(@Valid @RequestBody ProfileUpdateRequest req) {
         return authService.updateProfile(req);
     }
 
     @PostMapping("/logout")
-    public Map<String, String> logout() {
+    public MessageVO logout() {
         authService.logout();
-        return Map.of("message", "已退出");
+        return MessageVO.builder().message("已退出").build();
     }
 
     @PostMapping("/sync-cookie")
-    public Map<String, String> syncCookie(jakarta.servlet.http.HttpServletResponse response) {
+    public MessageVO syncCookie(HttpServletResponse response) {
         authService.syncSessionCookie(response);
-        return Map.of("message", "ok");
+        return MessageVO.builder().message("ok").build();
     }
 
     @PostMapping("/avatar")
-    public Map<String, Object> uploadAvatar(@RequestParam("file") org.springframework.web.multipart.MultipartFile file)
-            throws Exception {
+    public UserVO uploadAvatar(@RequestParam("file") MultipartFile file) throws Exception {
         return authService.uploadAvatar(file);
     }
 
     @GetMapping("/avatar/view")
-    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> avatarView(
-            jakarta.servlet.http.HttpServletRequest request) {
+    public ResponseEntity<Resource> avatarView(HttpServletRequest request) {
         return authService.loadAvatar(request);
     }
 
     /**
      * 会话签名密钥初始化接口。
-     * <p>
      * 前端每次页面加载后调用，获取本次会话的 HMAC-SM3 签名密钥和 SM4 加密密钥。
-     * 密钥由后端随机生成并存入 Redis（TTL = api-security.session-sign-ttl-minutes），
-     * 前端仅保存在内存中（不持久化），页面刷新后重新协商。
-     *
-     * @param clientId 前端随机生成的客户端标识（8~128位字母数字）
      */
     @PostMapping("/session-sign-init")
     @SentinelResource(value = "auth_session_sign_init", blockHandler = "sessionSignInitBlocked")
-    public Map<String, Object> sessionSignInit(
-            @RequestParam("clientId") String clientId) {
-        // 校验 clientId 格式，防止 Redis key 注入
+    public Map<String, Object> sessionSignInit(@RequestParam("clientId") String clientId) {
         if (StrUtil.isBlank(clientId)
                 || clientId.length() < CLIENT_ID_MIN_LEN
                 || clientId.length() > CLIENT_ID_MAX_LEN
@@ -254,10 +269,6 @@ public class AuthController {
 
         long ttl = properties.getApiSecurity().getSessionSignTtlMinutes();
 
-        // 【安全收紧】只有已登录用户才签发会话密钥并建立 clientId-user 强绑定。
-        // 未登录时公开接口/分享页本就不需要签名密钥（签名仅对已登录的受保护接口生效），
-        // 因此未登录一律返回 enabled=false，不生成密钥、不写 Redis，
-        // 从而堵住"攻击者未登录伪造 clientId 获取会话密钥"的攻击面。
         if (!cn.dev33.satoken.stp.StpUtil.isLogin()) {
             return Map.of(
                 "enabled", false,
@@ -273,7 +284,6 @@ public class AuthController {
         result.put("sm3SignEnabled", signActive);
         result.put("sm4EncryptEnabled", sm4Active);
 
-        // 已登录：建立 clientId 与 userId 的归属强绑定（供 validateClientUserBinding Fail-Closed 校验）
         try {
             long userId = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
             stringRedisTemplate.opsForValue().set(
@@ -281,24 +291,22 @@ public class AuthController {
                     String.valueOf(userId), ttl, TimeUnit.MINUTES);
         } catch (Exception ignored) {}
 
-        // 签名密钥：64位 Hex（32字节密码学安全随机，使用 SecureRandom 而非 RandomUtil）
         if (signActive) {
             byte[] signBytes = new byte[32];
             SECURE_RANDOM.nextBytes(signBytes);
             String signKey = HexUtil.encodeHexStr(signBytes);
             stringRedisTemplate.opsForValue().set(
-                    ApiSecurityFilter.SESSION_SIGN_KEY_PREFIX + clientId,
+                    com.clouddisk.security.ApiSecurityFilter.SESSION_SIGN_KEY_PREFIX + clientId,
                     signKey, ttl, TimeUnit.MINUTES);
             result.put("sm3SignKey", signKey);
         }
 
-        // SM4 密钥：32位 Hex（16字节，SM4 要求 128 位密钥，使用 SecureRandom）
         if (sm4Active) {
             byte[] sm4Bytes = new byte[16];
             SECURE_RANDOM.nextBytes(sm4Bytes);
             String sm4Key = HexUtil.encodeHexStr(sm4Bytes);
             stringRedisTemplate.opsForValue().set(
-                    ApiSecurityFilter.SESSION_SM4_KEY_PREFIX + clientId,
+                    com.clouddisk.security.ApiSecurityFilter.SESSION_SM4_KEY_PREFIX + clientId,
                     sm4Key, ttl, TimeUnit.MINUTES);
             result.put("sm4Key", sm4Key);
         }
