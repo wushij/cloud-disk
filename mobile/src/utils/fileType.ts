@@ -1,18 +1,4 @@
-import type { FileItem } from '@/stores/file'
-
-export type FileKind =
-  | 'folder'
-  | 'image'
-  | 'video'
-  | 'audio'
-  | 'archive'
-  | 'pdf'
-  | 'doc'
-  | 'sheet'
-  | 'slide'
-  | 'text'
-  | 'code'
-  | 'default'
+import type { FileItem, FileKind } from '@/api/types'
 
 function fileExt(row: FileItem): string {
   const name = row.name || ''
@@ -99,7 +85,7 @@ export function fileExtLabel(row: FileItem): string {
 }
 
 function pseudoFileItem(name: string, mimeType?: string | null): FileItem {
-  return { name, type: 'file', mimeType }
+  return { id: 0, name, type: 'file', mimeType }
 }
 
 export function fileTypeKindFromName(name: string, mimeType?: string | null): FileKind {

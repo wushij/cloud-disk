@@ -3,7 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useTransferStore } from '@/stores/transfer'
-import { request, fileApiUrl, uploadFile } from '@/api/http'
+import { fileApiUrl, uploadFile } from '@/api/http'
+import { teamApi, fileApi, folderApi, type FileItem } from '@/api'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
@@ -14,7 +15,6 @@ import EmptyState from '@/components/EmptyState.vue'
 import { isImageFile, isVideoFile } from '@/utils/fileCover'
 import { isTextFile } from '@/utils/filePreview'
 import { useH5BackGuard } from '@/composables/useH5BackGuard'
-import type { FileItem } from '@/stores/file'
 import { downloadZip } from '@/utils/download'
 import { updateUrlQueryParam } from '@/utils/navUrlHelper'
 import { ensureMediaToken } from '@/utils/mediaToken'
@@ -32,7 +32,7 @@ const spaceAvatar = ref('')
 
 function getTeamAvatarUrl(teamId: number) {
   const v = teamAvatarVersions.value[teamId] || 0
-  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  const base = fileApiUrl(teamApi.avatarUrl(teamId))
   return v ? `${base}&v=${v}` : base
 }
 
@@ -47,7 +47,7 @@ function changeTeamAvatar() {
       uni.showLoading({ title: '上传中...' })
       try {
         const data = await uploadFile({
-          url: `/api/teams/${spaceId.value}/avatar`,
+          url: teamApi.avatarUrl(spaceId.value),
           filePath: tempFilePath,
           name: 'file'
         }) as { avatar: string }
@@ -283,7 +283,7 @@ const menuList = computed(() => {
 async function syncSpaceMeta() {
   if (!spaceId.value) return
   try {
-    const space = await request<{ name: string; avatar?: string }>({ url: `/api/teams/${spaceId.value}` })
+    const space = await teamApi.detail(spaceId.value)
     spaceName.value = space.name
     spaceAvatar.value = space.avatar || ''
     if (breadcrumb.value.length > 0 && breadcrumb.value[0].id === rootFolderId.value) {
@@ -305,9 +305,7 @@ onLoad(async (query) => {
   if (queryFolderId > 0 && queryFolderId !== rootFolderId.value) {
     currentFolderId.value = queryFolderId
     try {
-      const data = await request<{ id: number; name: string }[]>({
-        url: `/api/folders/${queryFolderId}/breadcrumbs`
-      })
+      const data = await folderApi.breadcrumbs(queryFolderId)
       if (Array.isArray(data)) {
         breadcrumb.value = data
       } else {
@@ -348,7 +346,7 @@ async function submitRenameTeam(name: string) {
   if (renaming.value) return
   renaming.value = true
   try {
-    await request({ url: `/api/teams/${spaceId.value}`, method: 'PUT', data: { name: trimmed } })
+    await teamApi.rename(spaceId.value, trimmed)
     renameVisible.value = false
     uni.showToast({ title: '已重命名', icon: 'success' })
     
@@ -373,21 +371,24 @@ async function submitRenameTeam(name: string) {
 async function onConfirmAction() {
   try {
     if (confirmAction.value === 'dissolve') {
-      await request({ url: `/api/teams/${spaceId.value}`, method: 'DELETE' })
+      await teamApi.delete(spaceId.value)
       uni.showToast({ title: '已解散该团队空间', icon: 'success' })
       uni.navigateBack()
       return
     }
     if (confirmAction.value === 'leave') {
-      await request({ url: `/api/teams/${spaceId.value}/leave`, method: 'POST' })
+      await teamApi.leave(spaceId.value)
       uni.showToast({ title: '已退出该团队空间', icon: 'success' })
       uni.navigateBack()
       return
     }
     if (confirmAction.value === 'delete' && confirmFile.value) {
       const row = confirmFile.value
-      const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
-      await request({ url, method: 'DELETE' })
+      if (row.type === 'folder') {
+        await folderApi.delete(row.id)
+      } else {
+        await fileApi.delete(row.id)
+      }
       uni.showToast({ title: '已移至回收站', icon: 'success' })
       loadFiles()
     }
@@ -395,8 +396,11 @@ async function onConfirmAction() {
       uni.showLoading({ title: '正在删除...' })
       try {
         for (const item of selectedItems.value) {
-          const url = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`
-          await request({ url, method: 'DELETE' })
+          if (item.type === 'folder') {
+            await folderApi.delete(item.id)
+          } else {
+            await fileApi.delete(item.id)
+          }
         }
         uni.showToast({ title: '批量删除成功', icon: 'success' })
         clearSelection()
@@ -435,15 +439,9 @@ async function loadFiles() {
   clearSelection()
   loading.value = true
   try {
-    const params: Record<string, unknown> = {}
-    if (currentFolderId.value !== rootFolderId.value) {
-      params.folderId = currentFolderId.value
-    }
-    const data = await request<{ items: FileItem[]; teamAccess?: { role: string; canWrite?: boolean; canShare?: boolean } }>({
-      url: `/api/teams/${spaceId.value}/files`,
-      data: params
-    })
-    items.value = data.items || []
+    const folderId = currentFolderId.value !== rootFolderId.value ? currentFolderId.value : undefined
+    const data = await teamApi.files(spaceId.value, folderId) as any
+    items.value = data.content || data.items || []
     teamAccess.value = data.teamAccess || null
     if (teamAccess.value?.role) {
       myRole.value = teamAccess.value.role
@@ -483,12 +481,12 @@ function openItem(row: FileItem) {
     return
   }
   if (isVideoFile(row)) {
-    const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+    const url = encodeURIComponent(fileApiUrl(fileApi.previewUrl(row.id)))
     uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
     return
   }
   if (isTextFile(row.mimeType, row.name)) {
-    const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+    const url = encodeURIComponent(fileApiUrl(fileApi.previewUrl(row.id)))
     uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
     return
   }
@@ -545,12 +543,12 @@ function onActionSelect(item: { name: string }) {
       void openImagePreview(row)
       break
     case '播放视频': {
-      const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+      const url = encodeURIComponent(fileApiUrl(fileApi.previewUrl(row.id)))
       uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(row.name)}` })
       break
     }
     case '预览文本': {
-      const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+      const url = encodeURIComponent(fileApiUrl(fileApi.previewUrl(row.id)))
       uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
       break
     }
@@ -588,7 +586,7 @@ function openShare(row: FileItem) {
 }
 
 function previewPdf(row: FileItem) {
-  const url = fileApiUrl(`/api/files/${row.id}/preview`)
+  const url = fileApiUrl(fileApi.previewUrl(row.id))
   // #ifdef H5
   window.open(url, '_blank')
   // #endif

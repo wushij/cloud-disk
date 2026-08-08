@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request, applySecurityConfig } from '@/api/http'
+import { applySecurityConfig } from '@/api/http'
+import { adminApi } from '@/api'
 import { getSecurityConfig } from '@/utils/security-config'
 import MobileHeader from '@/components/MobileHeader.vue'
 
@@ -19,7 +20,7 @@ const sm4EncryptEnabled = ref(currentSec.sm4EncryptEnabled ?? true)
 async function loadConfig() {
   loading.value = true
   try {
-    const data = await request<Record<string, any>>({ url: '/api/admin/security/config' })
+    const data = await adminApi.securityConfig() as Record<string, any>
     if (data) {
       timestampEnabled.value = Boolean(data.timestampEnabled)
       nonceEnabled.value = Boolean(data.nonceEnabled)
@@ -36,16 +37,12 @@ async function loadConfig() {
 async function saveConfig() {
   saving.value = true
   try {
-    const res = await request<Record<string, any>>({
-      url: '/api/admin/security/config',
-      method: 'PUT',
-      data: {
-        timestampEnabled: timestampEnabled.value,
-        nonceEnabled: nonceEnabled.value,
-        sm3SignEnabled: sm3SignEnabled.value,
-        sm4EncryptEnabled: sm4EncryptEnabled.value,
-      }
-    })
+    const res = await adminApi.saveSecurityConfig({
+      timestampEnabled: timestampEnabled.value,
+      nonceEnabled: nonceEnabled.value,
+      sm3SignEnabled: sm3SignEnabled.value,
+      sm4EncryptEnabled: sm4EncryptEnabled.value,
+    }) as Record<string, any>
     applySecurityConfig(res)
     uni.showToast({ title: '保存成功', icon: 'success' })
   } catch (err: any) {

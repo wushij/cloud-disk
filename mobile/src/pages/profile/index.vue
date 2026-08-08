@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
-import { request } from '@/api/http'
+import { storageApi } from '@/api'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobileBindEmailDialog from '@/components/MobileBindEmailDialog.vue'
@@ -128,7 +128,7 @@ function openApplyQuota() {
 
 async function refreshUsage() {
   try {
-    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    const data = await storageApi.usage()
     updateStorageUsage(data)
   } catch {
     /* ignore */

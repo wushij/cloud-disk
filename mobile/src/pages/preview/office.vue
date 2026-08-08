@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request, fileApiUrl } from '@/api/http'
+import { officeApi } from '@/api'
 
 const fileId = ref(0)
 const name = ref('')
@@ -38,10 +38,7 @@ async function mountEditor() {
   error.value = ''
   try {
     // 1. 获取 OnlyOffice 配置
-    const data = await request<{ documentServerUrl: string; config: Record<string, any> }>({
-      url: `/api/files/${fileId.value}/onlyoffice`,
-      data: { mode: 'view' }
-    })
+    const data = await officeApi.config(fileId.value, 'view')
     if (!data.documentServerUrl || !data.config) {
       throw new Error('在线文档配置无效')
     }

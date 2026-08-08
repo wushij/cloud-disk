@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { ensureMediaToken } from '@/utils/mediaToken'
 import { fileApiUrl } from '@/api/http'
+import { fileApi } from '@/api'
 
 const url = ref('')
 const name = ref('')
@@ -21,7 +22,7 @@ onLoad(async (query) => {
       await ensureMediaToken()
     }
     if (fileId > 0) {
-      url.value = fileApiUrl(`/api/files/${fileId}/preview`)
+      url.value = fileApiUrl(fileApi.previewUrl(fileId))
     } else {
       url.value = rawUrl
     }

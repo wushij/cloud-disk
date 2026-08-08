@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { authApi } from '@/api'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobileEmailCodeBtn from '@/components/MobileEmailCodeBtn.vue'
 import MobileForgotPwdDialog from '@/components/MobileForgotPwdDialog.vue'
@@ -39,14 +39,14 @@ const pendingDialogTitle = ref('注册申请已提交')
 const pendingDialogMessage = ref('管理员审核通过后您才能登录云盘，请耐心等待，无需重复注册。')
 
 async function refreshCaptcha() {
-  const data = await request<{ id: string; img: string }>({
-    url: `/api/auth/captcha?_=${Date.now()}`,
-    skipAuth: true,
-    skipErrorHandler: true
-  })
-  captchaId.value = data.id
-  captchaImg.value = toCaptchaDataUrl(data.img)
-  captchaAnswer.value = ''
+  try {
+    const data = await authApi.captcha()
+    captchaId.value = data.id
+    captchaImg.value = toCaptchaDataUrl(data.img)
+    captchaAnswer.value = ''
+  } catch {
+    /* ignore */
+  }
 }
 
 async function syncCaptchaState() {
@@ -60,11 +60,7 @@ async function syncCaptchaState() {
     return
   }
   try {
-    const data = await request<{ required?: boolean }>({
-      url: '/api/auth/captcha/required',
-      skipAuth: true,
-      skipErrorHandler: true
-    })
+    const data = await authApi.captchaRequired()
     showCaptcha.value = !!data.required
     if (showCaptcha.value) await refreshCaptcha()
   } catch {

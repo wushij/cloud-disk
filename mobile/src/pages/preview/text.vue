@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request } from '@/api/http'
+import { fileApi } from '@/api'
 
 const url = ref('')
 const name = ref('')
@@ -28,11 +28,7 @@ async function loadText() {
     if (/^https?:\/\//.test(apiPath)) {
       apiPath = apiPath.replace(/^https?:\/\/[^/]+/, '')
     }
-    const data = await request<string>({
-      url: apiPath,
-      method: 'GET',
-      header: { Accept: 'text/plain,*/*' }
-    })
+    const data = await fileApi.fetchTextContent(apiPath)
     text.value = typeof data === 'string' ? data : String(data ?? '')
   } catch {
     error.value = '文本加载失败'

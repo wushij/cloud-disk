@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { smartUpload } from '@/utils/chunkedUpload'
 import { calcFileMd5 } from '@/utils/md5'
 import { fileApiUrl, resolveBearer, resolveErrorMessage } from '@/api/http'
+import { fileApi } from '@/api'
 import { createTaskId } from '@/utils/uuid'
 import { persistVideoCover } from '@/utils/coverCache'
 import { captureVideoCoverFromPath, isVideoUploadName } from '@/utils/videoCover'
@@ -370,7 +371,7 @@ export const useTransferStore = defineStore('transfer', () => {
       startTime: Date.now()
     })
 
-    const url = fileApiUrl(`/api/files/${fileId}/download`)
+    const url = fileApiUrl(fileApi.downloadUrl(fileId))
 
     // #ifdef H5
     // H5 环境：直接打开窗口或 XHR 流式下载

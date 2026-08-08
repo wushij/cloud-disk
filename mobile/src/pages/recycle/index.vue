@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { recycleApi, type RecycledItem as RecycleItem } from '@/api'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FolderTypeIcon from '@/components/FolderTypeIcon.vue'
@@ -10,16 +10,6 @@ import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import { fmtSize, fileCoverUrl, fileHasCover, fileIsVideoCover } from '@/utils/fileCover'
 import { fileExtLabel, fileTypeColor, fileTypeIcon, fileTypeKind } from '@/utils/fileType'
 import CachedCover from '@/components/CachedCover.vue'
-
-interface RecycleItem {
-  id: number
-  name: string
-  type: 'file' | 'folder'
-  sizeBytes?: number
-  deletedAt?: string
-  mimeType?: string | null
-  hasThumbnail?: boolean
-}
 
 const auth = useAuthStore()
 const list = ref<RecycleItem[]>([])
@@ -42,8 +32,8 @@ function coverKey(item: RecycleItem) {
 async function loadList() {
   loading.value = true
   try {
-    const data = await request<{ content?: RecycleItem[] } | RecycleItem[]>({ url: '/api/recycle' })
-    list.value = Array.isArray(data) ? data : data.content || []
+    const data = await recycleApi.list()
+    list.value = (Array.isArray(data) ? data : (data as any).content || []) as any
     listInitialized.value = true
   } catch {
     /* handled */
@@ -77,12 +67,8 @@ function restoreItem(item: RecycleItem) {
 async function handleRestoreConfirm() {
   const item = itemToRestore.value
   if (!item) return
-  const url =
-    item.type === 'folder'
-      ? `/api/recycle/restore/folder/${item.id}`
-      : `/api/recycle/restore/file/${item.id}`
   try {
-    await request({ url, method: 'POST' })
+    await recycleApi.restore(item.type, item.id)
     uni.showToast({ title: '已恢复', icon: 'success' })
     await loadList()
   } catch {
@@ -100,10 +86,8 @@ function purgeItem(item: RecycleItem) {
 async function handlePurgeConfirm() {
   const item = itemToPurge.value
   if (!item) return
-  const url =
-    item.type === 'folder' ? `/api/recycle/folder/${item.id}` : `/api/recycle/file/${item.id}`
   try {
-    await request({ url, method: 'DELETE' })
+    await recycleApi.delete(item.type, item.id)
     uni.showToast({ title: '已删除', icon: 'success' })
     await loadList()
   } catch {
@@ -119,7 +103,7 @@ function confirmClearAll() {
 
 async function handleClearAllConfirm() {
   try {
-    await request({ url: '/api/recycle/clear', method: 'DELETE' })
+    await recycleApi.clear()
     uni.showToast({ title: '回收站已清空', icon: 'success' })
     await loadList()
   } catch {

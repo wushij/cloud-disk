@@ -2,28 +2,13 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request, fileApiUrl } from '@/api/http'
+import { fileApiUrl } from '@/api/http'
+import { adminApi, type AdminUserRow as UserRow } from '@/api'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import { fmtSize } from '@/utils/fileCover'
-
-interface UserRow {
-  id: number
-  username: string
-  nickname?: string
-  role: string
-  status: number
-  storageQuota?: number
-  storageUsed?: number
-  createTime?: string
-  hasAvatar?: boolean
-  canManage?: boolean
-  canResetPassword?: boolean
-  canApprove?: boolean
-  canAssignRole?: boolean
-}
 
 const auth = useAuthStore()
 const loading = ref(false)
@@ -54,8 +39,8 @@ const promptAction = ref<(val: string) => Promise<void> | void>()
 async function loadUsers() {
   loading.value = true
   try {
-    const data = await request<UserRow[]>({ url: '/api/admin/users' })
-    users.value = data || []
+    const data = await adminApi.users()
+    users.value = (data || []) as any
     auth.pendingUserCount = users.value.filter(u => u.status === 2).length
   } catch {
     /* error handled by api */
@@ -120,7 +105,7 @@ const filteredUsers = computed(() => {
 })
 
 function getAvatarUrl(userId: number) {
-  return fileApiUrl(`/api/admin/users/${userId}/avatar`) + `&v=${auth.avatarVersion}`
+  return fileApiUrl(adminApi.userAvatarUrl(userId)) + `&v=${auth.avatarVersion}`
 }
 
 function onAvatarError(userId: number) {
@@ -172,7 +157,7 @@ function approveUser() {
   closeActions()
   openConfirm('通过注册申请', `确定通过「${user.nickname || user.username}」的注册申请吗？通过后该账号将被激活并分配 3GB 存储空间。`, false, async () => {
     try {
-      await request({ url: `/api/admin/registrations/${user.id}/approve`, method: 'POST' })
+      await adminApi.approveRegistration(user.id)
       uni.showToast({ title: '已通过注册', icon: 'success' })
       await loadUsers()
     } catch {}
@@ -186,7 +171,7 @@ function rejectUser() {
   closeActions()
   openConfirm('拒绝注册申请', `确定拒绝「${user.nickname || user.username}」的注册申请吗？该申请记录将被永久清理。`, true, async () => {
     try {
-      await request({ url: `/api/admin/registrations/${user.id}/reject`, method: 'POST' })
+      await adminApi.rejectRegistration(user.id)
       uni.showToast({ title: '已拒绝注册', icon: 'success' })
       await loadUsers()
     } catch {}
@@ -207,11 +192,7 @@ function editQuota() {
     }
     const quotaBytes = Math.round(gb * 1024 * 1024 * 1024)
     try {
-      await request({
-        url: `/api/admin/users/${user.id}/quota`,
-        method: 'PUT',
-        data: { storageQuota: quotaBytes }
-      })
+      await adminApi.setQuota(user.id, quotaBytes)
       uni.showToast({ title: '配额设置成功', icon: 'success' })
       await loadUsers()
     } catch {}
@@ -230,11 +211,7 @@ function resetPassword() {
       return
     }
     try {
-      await request({
-        url: `/api/admin/users/${user.id}/password`,
-        method: 'PUT',
-        data: { password: pwd }
-      })
+      await adminApi.resetUserPassword(user.id, pwd)
       uni.showToast({ title: '密码重置成功，已下线该用户', icon: 'none' })
       await loadUsers()
     } catch {}
@@ -251,11 +228,7 @@ function toggleRole() {
   const actionText = isCurrentlyAdmin ? '降为普通用户' : '设为管理员'
   openConfirm('修改角色', `确定将用户「${user.nickname || user.username}」${actionText}吗？`, isCurrentlyAdmin, async () => {
     try {
-      await request({
-        url: `/api/admin/users/${user.id}/role`,
-        method: 'PUT',
-        data: { role: targetRole }
-      })
+      await adminApi.setUserRole(user.id, targetRole)
       uni.showToast({ title: '角色修改成功', icon: 'success' })
       await loadUsers()
     } catch {}
@@ -271,11 +244,7 @@ function toggleStatus() {
   const actionText = next === 0 ? '禁用' : '启用'
   openConfirm('确认操作', `确定${actionText}用户「${user.nickname || user.username}」？${next === 0 ? '禁用后该用户的所有在线会话将被注销！' : ''}`, next === 0, async () => {
     try {
-      await request({
-        url: `/api/admin/users/${user.id}/status`,
-        method: 'PUT',
-        data: { status: next }
-      })
+      await adminApi.setUserStatus(user.id, next)
       uni.showToast({ title: '操作成功', icon: 'success' })
       await loadUsers()
     } catch {}

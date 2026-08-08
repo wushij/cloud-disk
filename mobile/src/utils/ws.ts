@@ -1,4 +1,4 @@
-import { request } from '@/api/http'
+import { authApi } from '@/api'
 
 export type WsMessage = {
   type?: string
@@ -24,10 +24,7 @@ let connecting = false
 
 async function wsUrl(): Promise<string> {
   // #ifdef H5
-  const data = await request<{ ticket: string }>({
-    url: '/api/auth/ws-ticket',
-    method: 'POST'
-  })
+  const data = await authApi.wsTicket()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   return `${proto}://${location.host}/ws/upload?ticket=${encodeURIComponent(data.ticket)}`
   // #endif

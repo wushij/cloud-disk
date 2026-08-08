@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request, fileApiUrl } from '@/api/http'
+import { shareApi, fileApi } from '@/api'
+import { fileApiUrl } from '@/api/http'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -79,9 +80,9 @@ function markCoverBroken(item: ShareItem) {
 function getShareCoverUrl(item: ShareItem) {
   if (!item.fileId) return ''
   if (isVideoShare(item)) {
-    return fileApiUrl(`/api/files/${item.fileId}/thumbnail`)
+    return fileApiUrl(fileApi.thumbnailUrl(item.fileId))
   }
-  return fileApiUrl(`/api/files/${item.fileId}/preview`)
+  return fileApiUrl(fileApi.previewUrl(item.fileId))
 }
 
 function shouldShowCover(item: ShareItem) {
@@ -204,8 +205,8 @@ onShow(async () => {
   if (!auth.requireLogin()) return
   loading.value = true
   try {
-    const data = await request<{ content?: ShareItem[] } | ShareItem[]>({ url: '/api/share/mine' })
-    list.value = Array.isArray(data) ? data : data.content || []
+    const data = await shareApi.mine()
+    list.value = Array.isArray(data) ? data : (data as any).content || []
   } finally {
     loading.value = false
   }
@@ -234,7 +235,7 @@ function confirmClearAllExpired() {
 
 async function handleClearAllExpiredConfirm() {
   try {
-    await request({ url: '/api/share/expired/clear', method: 'DELETE' })
+    await shareApi.clearExpired()
     list.value = list.value.filter((item) => !isExpired(item))
     uni.showToast({ title: '已清空', icon: 'success' })
   } catch {
@@ -247,7 +248,7 @@ async function handleRemoveShareConfirm() {
   if (!item) return
   const expired = isExpired(item)
   try {
-    await request({ url: `/api/share/${item.id}`, method: 'DELETE' })
+    await shareApi.cancel(item.id)
     if (expired) {
       list.value = list.value.filter((r) => r.id !== item.id)
       uni.showToast({ title: '已彻底删除', icon: 'success' })

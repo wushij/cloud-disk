@@ -2,7 +2,8 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request, fileApiUrl, uploadFile } from '@/api/http'
+import { fileApiUrl, uploadFile } from '@/api/http'
+import { teamApi, type TeamSpace } from '@/api'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
@@ -15,17 +16,6 @@ import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
 import { cacheEntityAvatarFromPath, teamAvatarCacheKey } from '@/utils/entityAvatarCache'
 
 const auth = useAuthStore()
-
-interface TeamSpace {
-  id: number
-  name: string
-  ownerId: number
-  rootFolderId: number
-  myRole: string
-  memberCount: number
-  createdAt: string
-  avatar?: string
-}
 
 const teams = globalTeamList
 const loading = ref(false)
@@ -41,7 +31,7 @@ onShow(async () => {
 async function loadTeams() {
   loading.value = true
   try {
-    teams.value = (await request<TeamSpace[]>({ url: '/api/teams' })) ?? []
+    teams.value = (await teamApi.list()) ?? []
   } catch {
     /* handled */
   } finally {
@@ -78,12 +68,12 @@ function getAvatarStyle(teamId: number) {
 function getTeamAvatarUrl(teamId: number, avatarPath?: string) {
   if (!avatarPath) return ''
   const v = teamAvatarVersions.value[teamId] || 0
-  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  const base = fileApiUrl(teamApi.avatarUrl(teamId))
   return v ? `${base}&v=${v}` : base
 }
 
 function changeTeamAvatar(team: TeamSpace) {
-  if (team.myRole !== 'OWNER' && team.myRole !== 'ADMIN') return
+  if (team.role !== 'OWNER' && team.role !== 'ADMIN') return
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
@@ -93,7 +83,7 @@ function changeTeamAvatar(team: TeamSpace) {
       uni.showLoading({ title: '上传中...' })
       try {
         const data = await uploadFile({
-          url: `/api/teams/${team.id}/avatar`,
+          url: teamApi.avatarUrl(team.id),
           filePath: tempFilePath,
           name: 'file'
         }) as { avatar: string }
@@ -119,7 +109,7 @@ function changeTeamAvatar(team: TeamSpace) {
 
 function enterTeam(team: TeamSpace) {
   uni.navigateTo({
-    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}&myRole=${team.myRole}&avatar=${encodeURIComponent(team.avatar || '')}`
+    url: `/pages/teams/files?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&rootFolderId=${team.rootFolderId}&myRole=${team.role}&avatar=${encodeURIComponent(team.avatar || '')}`
   })
 }
 
@@ -153,7 +143,7 @@ async function submitCreateTeam(name: string) {
   if (creating.value) return
   creating.value = true
   try {
-    await request({ url: '/api/teams', method: 'POST', data: { name } })
+    await teamApi.create(name)
     createVisible.value = false
     uni.showToast({ title: '创建成功', icon: 'success' })
     await loadTeams()
@@ -184,11 +174,11 @@ const confirmMessage = computed(() => {
 const actionList = computed(() => {
   if (!selectedTeam.value) return []
   const list: { name: string; color?: string }[] = [{ name: '成员管理' }]
-  if (selectedTeam.value.myRole === 'OWNER' || selectedTeam.value.myRole === 'ADMIN') {
+  if (selectedTeam.value.role === 'OWNER' || selectedTeam.value.role === 'ADMIN') {
     list.push({ name: '更换团队头像' })
     list.push({ name: '重命名团队' })
   }
-  if (selectedTeam.value.myRole === 'OWNER') {
+  if (selectedTeam.value.role === 'OWNER') {
     list.push({ name: '解散团队', color: '#ef4444' })
   } else {
     list.push({ name: '退出团队', color: '#ef4444' })
@@ -207,7 +197,7 @@ function onActionSelect(item: { name: string }) {
   if (!team) return
   if (item.name === '成员管理') {
     uni.navigateTo({
-      url: `/pages/teams/members?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&myRole=${team.myRole}&avatar=${encodeURIComponent(team.avatar || '')}`
+      url: `/pages/teams/members?spaceId=${team.id}&name=${encodeURIComponent(team.name)}&myRole=${team.role}&avatar=${encodeURIComponent(team.avatar || '')}`
     })
     return
   }
@@ -238,7 +228,7 @@ async function submitRenameTeam(name: string) {
   if (renaming.value) return
   renaming.value = true
   try {
-    await request({ url: `/api/teams/${team.id}`, method: 'PUT', data: { name: trimmed } })
+    await teamApi.rename(team.id, trimmed)
     renameVisible.value = false
     uni.showToast({ title: '已重命名', icon: 'success' })
     await loadTeams()
@@ -254,12 +244,12 @@ async function onConfirmAction() {
   if (!team) return
   try {
     if (confirmMode.value === 'dissolve') {
-      await request({ url: `/api/teams/${team.id}`, method: 'DELETE' })
+      await teamApi.delete(team.id)
       uni.showToast({ title: '已解散团队', icon: 'success' })
       await loadTeams()
       return
     }
-    await request({ url: `/api/teams/${team.id}/leave`, method: 'POST' })
+    await teamApi.leave(team.id)
     uni.showToast({ title: '已退出团队', icon: 'success' })
     await loadTeams()
   } catch {

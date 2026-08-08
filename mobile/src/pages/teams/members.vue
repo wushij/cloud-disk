@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
-import { request, fileApiUrl } from '@/api/http'
+import { fileApiUrl } from '@/api/http'
+import { teamApi, type TeamMemberItem as TeamMember } from '@/api'
 import MobileHeader from '@/components/MobileHeader.vue'
 import MobilePromptDialog from '@/components/MobilePromptDialog.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
@@ -12,16 +13,6 @@ import MemberCachedAvatar from '@/components/MemberCachedAvatar.vue'
 import { teamAvatarCacheKey } from '@/utils/entityAvatarCache'
 
 const auth = useAuthStore()
-
-interface TeamMember {
-  userId: number
-  username?: string
-  nickname?: string
-  avatar?: string
-  hasAvatar?: boolean
-  role: string
-  joinTime: string
-}
 
 const spaceId = ref(0)
 const spaceName = ref('')
@@ -46,7 +37,7 @@ const teamInitial = computed(() => (spaceName.value.charAt(0) || 'T').toUpperCas
 
 function getTeamAvatarUrl(teamId: number) {
   const v = teamAvatarVersions.value[teamId] || 0
-  const base = fileApiUrl(`/api/teams/${teamId}/avatar`)
+  const base = fileApiUrl(teamApi.avatarUrl(teamId))
   return v ? `${base}&v=${v}` : base
 }
 
@@ -91,7 +82,7 @@ onShow(() => {
 async function syncSpaceMeta() {
   if (!spaceId.value) return
   try {
-    const space = await request<{ name: string; avatar?: string }>({ url: `/api/teams/${spaceId.value}` })
+    const space = await teamApi.detail(spaceId.value)
     spaceName.value = space.name
     spaceAvatar.value = space.avatar || ''
   } catch {
@@ -164,9 +155,7 @@ async function loadMembers() {
   membersLoading.value = true
   avatarBroken.value = {}
   try {
-    members.value = await request<TeamMember[]>({
-      url: `/api/teams/${spaceId.value}/members`
-    })
+    members.value = (await teamApi.members(spaceId.value)) as TeamMember[]
     const me = members.value.find((m) => m.username === auth.username)
     if (me) {
       myRole.value = me.role
@@ -193,11 +182,7 @@ async function confirmSubmitInvite() {
   if (inviting.value) return
   inviting.value = true
   try {
-    await request({
-      url: `/api/teams/${spaceId.value}/members`,
-      method: 'POST',
-      data: { username: pendingInviteUsername.value, role: 'MEMBER' }
-    })
+    await teamApi.inviteMember(spaceId.value, pendingInviteUsername.value, 'MEMBER')
     inviteConfirmVisible.value = false
     inviteSuccessVisible.value = true
     await loadMembers()
@@ -221,11 +206,7 @@ function openMemberActions(member: TeamMember) {
 
 async function updateMemberRole(member: TeamMember, role: string) {
   try {
-    await request({
-      url: `/api/teams/${spaceId.value}/members/${member.userId}/role`,
-      method: 'PUT',
-      data: { role }
-    })
+    await teamApi.setMemberRole(spaceId.value, member.userId, role)
     uni.showToast({ title: '成员角色已更新', icon: 'success' })
     await loadMembers()
   } catch {
@@ -248,10 +229,7 @@ async function confirmRemove() {
   const member = removeTarget.value
   if (!member) return
   try {
-    await request({
-      url: `/api/teams/${spaceId.value}/members/${member.userId}`,
-      method: 'DELETE'
-    })
+    await teamApi.removeMember(spaceId.value, member.userId)
     uni.showToast({ title: '已移除', icon: 'success' })
     await loadMembers()
   } catch {

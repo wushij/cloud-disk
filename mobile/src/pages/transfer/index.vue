@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTransferStore, type TransferTask } from '@/stores/transfer'
 import { fileApiUrl, tokenQuery } from '@/api/http'
+import { fileApi } from '@/api'
 import { loadCoverThumb } from '@/utils/coverCache'
 import EmptyState from '@/components/EmptyState.vue'
 import MobileConfirmDialog from '@/components/MobileConfirmDialog.vue'
@@ -98,9 +99,9 @@ function coverSrc(t: TransferTask): string {
   if (kind !== 'image') return ''
   const param = `access_token=${tokenQuery()}`
   if (coverFallback.value[t.id]) {
-    return fileApiUrl(`/api/files/${t.fileId}/preview?${param}`)
+    return fileApiUrl(`${fileApi.previewUrl(t.fileId)}?${param}`)
   }
-  return fileApiUrl(`/api/files/${t.fileId}/thumbnail?${param}`)
+  return fileApiUrl(`${fileApi.thumbnailUrl(t.fileId)}?${param}`)
 }
 
 function onCoverError(t: TransferTask) {

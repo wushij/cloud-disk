@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { subscribeWs } from '@/utils/ws'
 import { updateStorageUsage } from '@/utils/sharedState'
-import { request } from '@/api/http'
+import { storageApi, authApi } from '@/api'
 import { redirectPublicSharePathIfNeeded } from '@/utils/shareUrl'
 import { getClientId, requestSessionSignKey } from '@/utils/security-config'
 
@@ -35,7 +35,7 @@ function setupNotifications() {
       })
       if (data.notifyType === 'ROLE_CHANGED' || data.notifyType === 'QUOTA_RESULT') {
         auth.fetchProfile().catch(() => {})
-        request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+        storageApi.usage()
           .then((usage) => updateStorageUsage(usage))
           .catch(() => {})
       }
@@ -55,13 +55,7 @@ async function initSecurityConfig() {
   // 若此处强制 resetSecurityConfigAndPromise，会在 onShow 频繁触发时反复生成新 key 覆盖 Redis，
   // 造成"前端旧 key 与后端 Redis 新 key 不一致"的偶发/持续 403。
   // requestSessionSignKey 内部已有 early-return：key 存在时不再协商，仅在 key 为空/403 失效时协商。
-  const requestFn = () =>
-    request<any>({
-      url: `/api/auth/session-sign-init?clientId=${getClientId()}`,
-      method: 'POST',
-      data: undefined,
-      skipErrorHandler: true,
-    } as any)
+  const requestFn = () => authApi.sessionSignInit(getClientId())
   try {
     await requestSessionSignKey(requestFn)
   } catch {

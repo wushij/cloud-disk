@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { onShow, onLoad } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { useFileStore, type FileItem } from '@/stores/file'
+import { useFileStore } from '@/stores/file'
 import { useTransferStore } from '@/stores/transfer'
+import { fileApi, type FileItem } from '@/api'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import MobileHeader from '@/components/MobileHeader.vue'
 import BrandMark from '@/components/BrandMark.vue'
@@ -389,12 +390,12 @@ async function openVideoPreview(row: FileItem) {
 }
 
 function previewText(row: FileItem) {
-  const url = encodeURIComponent(fileApiUrl(`/api/files/${row.id}/preview`))
+  const url = encodeURIComponent(fileApiUrl(fileApi.previewUrl(row.id)))
   uni.navigateTo({ url: `/pages/preview/text?url=${url}&name=${encodeURIComponent(row.name)}` })
 }
 
 function previewPdf(row: FileItem) {
-  const url = fileApiUrl(`/api/files/${row.id}/preview`)
+  const url = fileApiUrl(fileApi.previewUrl(row.id))
   // #ifdef H5
   window.open(url, '_blank')
   // #endif

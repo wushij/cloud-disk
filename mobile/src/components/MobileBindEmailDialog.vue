@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { authApi } from '@/api'
 import MobileEmailCodeBtn from '@/components/MobileEmailCodeBtn.vue'
 
 const props = defineProps<{
@@ -55,13 +55,9 @@ async function submit() {
 
   saving.value = true
   try {
-    await request({
-      url: '/api/auth/profile',
-      method: 'PUT',
-      data: {
-        email: em,
-        emailCode: emailCodeInput.value.trim()
-      }
+    await authApi.updateProfile({
+      email: em,
+      emailCode: emailCodeInput.value.trim()
     })
     await auth.fetchProfile()
     uni.showToast({ title: isBound.value ? '邮箱修改成功' : '邮箱绑定成功', icon: 'none' })

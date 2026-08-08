@@ -1,4 +1,4 @@
-import type { FileItem } from '@/stores/file'
+import type { FileItem, FileCoverContext } from '@/api/types'
 import { fileApiUrl } from '@/api/http'
 import { loadCoverThumb } from '@/utils/coverCache'
 
@@ -11,11 +11,6 @@ function isVideo(mime?: string | null, name?: string) {
   if (m.startsWith('video/')) return true
   const lower = (name || '').toLowerCase()
   return ['.mp4', '.webm', '.mkv', '.avi', '.mov'].some((ext) => lower.endsWith(ext))
-}
-
-export interface FileCoverContext {
-  shareCode?: string
-  extractCode?: string
 }
 
 function apiOrigin(): string {

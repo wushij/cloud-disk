@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { request } from '@/api/http'
+import { shareApi, type FileItem } from '@/api'
+import { fileApiUrl } from '@/api/http'
 import MobileHeader from '@/components/MobileHeader.vue'
 import FileListItem from '@/components/FileListItem.vue'
-import type { FileItem } from '@/stores/file'
 import { isImageFile, isVideoFile, shareSingleCoverUrl } from '@/utils/fileCover'
 
 const code = ref('')
@@ -40,18 +40,10 @@ onLoad((query) => {
   if (code.value) void loadInfo()
 })
 
-function apiBase(path: string) {
-  const base = import.meta.env.VITE_API_BASE || ''
-  return `${base}${path}`
-}
-
 async function loadInfo() {
   loading.value = true
   try {
-    const data = await request<Record<string, unknown>>({
-      url: `/share/${code.value}`,
-      skipAuth: true
-    })
+    const data = await shareApi.detail(code.value) as Record<string, unknown>
     info.value = data
     needExtract.value = !!data.needExtractCode
     if (!needExtract.value) {
@@ -68,10 +60,7 @@ async function loadInfo() {
 async function loadItems() {
   if (!info.value) return
   if (info.value.shareType === 'FOLDER') {
-    const data = await request<{ items?: FileItem[] }>({
-      url: `/share/${code.value}/items`,
-      skipAuth: true
-    })
+    const data = await shareApi.items(code.value)
     items.value = data.items || []
     return
   }
@@ -135,12 +124,7 @@ async function submitExtract() {
   }
   loading.value = true
   try {
-    await request({
-      url: `/share/${code.value}/access`,
-      method: 'POST',
-      data: { extractCode: extractInput.value.trim() },
-      skipAuth: true
-    })
+    await shareApi.access(code.value, extractInput.value.trim())
     verified.value = true
     await loadItems()
   } catch {
@@ -148,10 +132,6 @@ async function submitExtract() {
   } finally {
     loading.value = false
   }
-}
-
-function shareQuery() {
-  return ''
 }
 
 function openItem(item: FileItem) {
@@ -176,17 +156,17 @@ function openItem(item: FileItem) {
 }
 
 function previewImage(item: FileItem) {
-  const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
+  const url = encodeURIComponent(fileApiUrl(shareApi.previewUrl(code.value, item.id)))
   uni.navigateTo({ url: `/pages/preview/image?url=${url}&name=${encodeURIComponent(item.name)}` })
 }
 
 function previewVideo(item: FileItem) {
-  const url = encodeURIComponent(apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`))
+  const url = encodeURIComponent(fileApiUrl(shareApi.previewUrl(code.value, item.id)))
   uni.navigateTo({ url: `/pages/preview/video?url=${url}&name=${encodeURIComponent(item.name)}` })
 }
 
 function previewPdf(item: FileItem) {
-  const url = apiBase(`/share/${code.value}/preview?fileId=${item.id}${shareQuery()}`)
+  const url = fileApiUrl(shareApi.previewUrl(code.value, item.id))
   // #ifdef H5
   window.open(url, '_blank')
   // #endif
@@ -209,7 +189,7 @@ function previewPdf(item: FileItem) {
 }
 
 function downloadFile(item: FileItem) {
-  const url = apiBase(`/share/${code.value}/download?fileId=${item.id}${shareQuery()}`)
+  const url = fileApiUrl(shareApi.downloadUrl(code.value, item.id))
   // #ifdef H5
   window.open(url, '_blank')
   // #endif

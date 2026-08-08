@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { request } from '@/api/http'
+import { authApi } from '@/api'
 import MobileEmailCodeBtn from './MobileEmailCodeBtn.vue'
 
 const props = defineProps<{
@@ -53,12 +53,7 @@ async function handleReset() {
 
   loading.value = true
   try {
-    await request({
-      url: '/api/auth/email/reset-password',
-      method: 'POST',
-      data: { email: em, code: cd, newPassword: np },
-      skipAuth: true
-    })
+    await authApi.resetPasswordByEmail({ email: em, code: cd, newPassword: np })
     uni.showToast({ title: '密码重置成功', icon: 'none' })
     emit('success', { email: em, newPassword: np })
     close()

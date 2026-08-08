@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { request } from '@/api/http'
+import { ref, watch } from 'vue'
+import { shareApi } from '@/api'
 import { buildPublicShareUrl } from '@/utils/shareUrl'
 
 const props = defineProps<{
@@ -62,11 +62,7 @@ async function createShare() {
     } else {
       body.fileId = props.fileId
     }
-    const data = await request<any>({
-      url: '/api/share',
-      method: 'POST',
-      data: body
-    })
+    const data = await shareApi.create(body)
     result.value = data
     fullShareUrl.value = buildPublicShareUrl(data.shareCode, data.shareUrl)
     uni.showToast({ title: '分享创建成功', icon: 'success' })

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { request, USER_KEY, NICKNAME_KEY, ROLE_KEY, uploadFile, fileApiUrl } from '@/api/http'
+import { USER_KEY, NICKNAME_KEY, ROLE_KEY, uploadFile, fileApiUrl } from '@/api/http'
+import { authApi, adminApi } from '@/api'
 import { useFileStore } from './file'
 import {
   getSessionBearer,
@@ -9,12 +10,7 @@ import {
   clearLegacyToken
 } from '@/api/sessionAuth'
 import { clearMediaTokenCache, ensureMediaToken, refreshMediaToken, mediaTokenRef } from '@/utils/mediaToken'
-import {
-  loadAvatarThumb,
-  clearAvatarThumb,
-  cacheAvatarFromPath,
-  cacheAvatarFromUrl
-} from '@/utils/avatarCache'
+import { loadAvatarThumb, clearAvatarThumb, cacheAvatarFromPath, cacheAvatarFromUrl } from '@/utils/avatarCache'
 import { requestSessionSignKey, clearSignKeys, getClientId } from '@/utils/security-config'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -109,39 +105,22 @@ export const useAuthStore = defineStore('auth', () => {
     p: string,
     captcha?: { captchaId?: string; captchaAnswer?: string }
   ) {
-    const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
-      url: '/api/auth/login',
-      method: 'POST',
-      data: { username: u, password: p, ...captcha },
-      skipAuth: true,
-      skipErrorHandler: true
-    })
+    const data = await authApi.login({ username: u, password: p, ...captcha })
     token.value = data.token
     username.value = data.username
     nickname.value = data.nickname || data.username
     role.value = data.role || 'USER'
     persist()
     const requestFn = () =>
-      request<any>({
-        url: `/api/auth/session-sign-init?clientId=${getClientId()}`,
-        method: 'POST',
-        data: undefined,
-        skipErrorHandler: true
-      } as any)
+      authApi.wsTicket() as any
     await requestSessionSignKey(requestFn).catch(() => {})
     await fetchProfile()
     await refreshMediaToken()
     useFileStore().reset()
   }
 
-  async function loginByEmailCode(email: string, code: string) {
-    const data = await request<{ token: string; username: string; nickname?: string; role?: string }>({
-      url: '/api/auth/email/login',
-      method: 'POST',
-      data: { email, code },
-      skipAuth: true,
-      skipErrorHandler: true
-    })
+  async function loginByEmailCode(emailStr: string, code: string) {
+    const data = await authApi.emailLogin({ email: emailStr, code })
     setSessionBearer(data.token)
     token.value = data.token
     username.value = data.username
@@ -149,12 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = data.role || 'USER'
     persist()
     const requestFn = () =>
-      request<any>({
-        url: `/api/auth/session-sign-init?clientId=${getClientId()}`,
-        method: 'POST',
-        data: undefined,
-        skipErrorHandler: true
-      } as any)
+      authApi.wsTicket() as any
     await requestSessionSignKey(requestFn).catch(() => {})
     await fetchProfile()
     await refreshMediaToken()
@@ -168,13 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
     captcha?: { captchaId?: string; captchaAnswer?: string },
     emailPayload?: { email?: string; emailCode?: string }
   ) {
-    const data = await request<{ token?: string; username?: string; nickname?: string; role?: string; pending?: boolean; title?: string; message?: string }>({
-      url: '/api/auth/register',
-      method: 'POST',
-      data: { username: u, password: p, nickname: nick, ...captcha, ...emailPayload },
-      skipAuth: true,
-      skipErrorHandler: true
-    })
+    const data = await authApi.register({ username: u, password: p, nickname: nick, ...captcha, ...emailPayload })
     if (data.pending) {
       return data
     }
@@ -191,9 +159,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchProfile() {
-    const data = await request<{ username?: string; nickname?: string; role?: string; avatar?: string | null }>({
-      url: '/api/auth/me'
-    })
+    const data = await authApi.me()
     applyProfile(data)
     if (isAdmin.value) {
       void fetchPendingCount()
@@ -245,11 +211,7 @@ export const useAuthStore = defineStore('auth', () => {
     const hadToken = !!getSessionBearer()
     if (hadToken) {
       try {
-        await request({
-          url: '/api/auth/logout',
-          method: 'POST',
-          skipErrorHandler: true
-        })
+        await authApi.logout()
       } catch {
         /* 会话已过期时 logout 接口也会 401，忽略即可 */
       }
@@ -274,7 +236,7 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     try {
-      const data = await request<{ pendingUserCount?: number }>({ url: '/api/admin/dashboard', skipErrorHandler: true })
+      const data = await adminApi.dashboard()
       if (data && typeof data.pendingUserCount === 'number') {
         pendingUserCount.value = data.pendingUserCount
       }

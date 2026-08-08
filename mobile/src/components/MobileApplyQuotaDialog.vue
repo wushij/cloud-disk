@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { request } from '@/api/http'
+import { storageApi } from '@/api'
 import { fmtSize } from '@/utils/fileCover'
 import BrandMark from '@/components/BrandMark.vue'
 
@@ -48,13 +48,9 @@ async function submitApply() {
 
   applySaving.value = true
   try {
-    await request({
-      url: '/api/quota-applications',
-      method: 'POST',
-      data: {
-        applyQuota: targetBytes,
-        reason: applyReason.value
-      }
+    await storageApi.applyQuota({
+      applyQuota: targetBytes,
+      reason: applyReason.value
     })
     uni.showToast({ title: '申请已提交', icon: 'none' })
     applyGB.value = ''

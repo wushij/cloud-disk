@@ -1,4 +1,5 @@
 import { uploadFile } from '@/api/http'
+import { uploadApi } from '@/api'
 
 export async function uploadSimpleFile(
   filePath: string,
@@ -7,7 +8,7 @@ export async function uploadSimpleFile(
   onProgress?: (ratio: number) => void
 ) {
   return uploadFile({
-    url: '/api/files/simple',
+    url: uploadApi.simpleUploadUrl(),
     filePath,
     name: 'file',
     formData: {

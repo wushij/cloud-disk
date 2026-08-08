@@ -1,24 +1,8 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { request } from '@/api/http'
+import { fileApi, folderApi } from '@/api'
 import { updateUrlQueryParam } from '@/utils/navUrlHelper'
-
-export interface FileItem {
-  id: number
-  name: string
-  type: 'file' | 'folder'
-  sizeBytes?: number
-  mimeType?: string | null
-  previewable?: boolean
-  hasThumbnail?: boolean
-  transcodeStatus?: string
-  createdAt?: string
-  officeFile?: boolean
-  ownerId?: number
-  canDelete?: boolean
-  canModify?: boolean
-  canEdit?: boolean
-}
+import type { FileItem } from '@/api/types'
 
 export const useFileStore = defineStore('file', () => {
   const currentFolderId = ref(0)
@@ -64,17 +48,14 @@ export const useFileStore = defineStore('file', () => {
   async function loadList() {
     loading.value = true
     try {
-      const data = await request<{ content: FileItem[] }>({
-        url: '/api/files',
-        data: {
-          folderId: currentFolderId.value,
-          page: 0,
-          size: 200,
-          q: keyword.value.trim() || undefined,
-          fileType: fileType.value || undefined
-        }
+      const data = await fileApi.list({
+        folderId: currentFolderId.value,
+        page: 0,
+        size: 200,
+        q: keyword.value.trim() || undefined,
+        fileType: fileType.value || undefined
       })
-      items.value = data.content || []
+      items.value = (data.content || []) as any
       listInitialized.value = true
       needsRefresh.value = false
     } finally {
@@ -88,9 +69,7 @@ export const useFileStore = defineStore('file', () => {
       return
     }
     try {
-      const data = await request<{ id: number; name: string }[]>({
-        url: `/api/folders/${folderId}/breadcrumbs?full=true`
-      })
+      const data = await folderApi.breadcrumbs(folderId, true)
       if (Array.isArray(data)) {
         breadcrumb.value = data
       }
@@ -124,23 +103,25 @@ export const useFileStore = defineStore('file', () => {
   }
 
   async function createFolder(name: string) {
-    await request({
-      url: '/api/folders',
-      method: 'POST',
-      data: { folderName: name, parentId: currentFolderId.value }
-    })
+    await folderApi.create({ folderName: name, parentId: currentFolderId.value })
     await loadList()
   }
 
   async function renameItem(row: FileItem, newName: string) {
-    const url = row.type === 'folder' ? `/api/folders/${row.id}/rename` : `/api/files/${row.id}/rename`
-    await request({ url, method: 'PUT', data: { name: newName } })
+    if (row.type === 'folder') {
+      await folderApi.rename(row.id, newName)
+    } else {
+      await fileApi.rename(row.id, newName)
+    }
     await loadList()
   }
 
   async function deleteItem(row: FileItem) {
-    const url = row.type === 'folder' ? `/api/folders/${row.id}` : `/api/files/${row.id}`
-    await request({ url, method: 'DELETE' })
+    if (row.type === 'folder') {
+      await folderApi.delete(row.id)
+    } else {
+      await fileApi.delete(row.id)
+    }
     await loadList()
   }
 

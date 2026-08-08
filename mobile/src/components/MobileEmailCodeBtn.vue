@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { request } from '@/api/http'
+import { authApi } from '@/api'
 
 const props = defineProps<{
   email: string
@@ -25,11 +25,7 @@ async function sendCode() {
 
   loading.value = true
   try {
-    await request({
-      url: '/api/auth/email/send-code',
-      method: 'POST',
-      data: { email: em, scene: props.scene }
-    })
+    await authApi.sendEmailCode({ email: em, scene: props.scene })
     uni.showToast({ title: '验证码已发送，请查收', icon: 'none' })
     countdown.value = 60
     const timer = setInterval(() => {

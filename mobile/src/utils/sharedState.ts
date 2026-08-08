@@ -20,8 +20,8 @@ export function updateStorageUsage(data: { usedBytes?: number; quotaBytes?: numb
 
 export async function refreshStorageUsageFromApi() {
   try {
-    const { request } = await import('@/api/http')
-    const data = await request<{ usedBytes?: number; quotaBytes?: number }>({ url: '/api/storage/usage' })
+    const { storageApi } = await import('@/api')
+    const data = await storageApi.usage()
     updateStorageUsage(data)
   } catch {
     /* ignore */

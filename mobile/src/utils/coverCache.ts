@@ -1,7 +1,6 @@
 import { getSessionBearer } from '@/api/sessionAuth'
 import { ensureMediaToken } from '@/utils/mediaToken'
-
-import { request } from '@/api/http'
+import { fileApi } from '@/api'
 
 const MEMORY = new Map<number, string>()
 const STORAGE_KEY = 'cd_cover_thumbs'
@@ -147,12 +146,11 @@ export function cacheCoverFromDataUrl(fileId: number, version: number, dataUrl: 
 export async function persistVideoCover(fileId: number, dataUrl: string): Promise<void> {
   cacheCoverFromDataUrl(fileId, 0, dataUrl)
   cacheCoverFromDataUrl(fileId, 1, dataUrl)
-  await request({
-    url: `/api/files/${fileId}/poster`,
-    method: 'POST',
-    data: { dataUrl },
-    skipErrorHandler: true
-  })
+  try {
+    await fileApi.savePoster(fileId, dataUrl)
+  } catch {
+    /* skipErrorHandler */
+  }
 }
 
 function saveCoverThumb(fileId: number, version: number, data: string): string {

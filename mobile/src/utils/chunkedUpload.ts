@@ -1,4 +1,5 @@
-import { request, uploadFile, buildUrl, resolveBearer } from '@/api/http'
+import { uploadFile, buildUrl, resolveBearer } from '@/api/http'
+import { uploadApi } from '@/api'
 import { getTimestamp, generateNonce } from '@/utils/crypto'
 import { getClientId } from '@/utils/security-config'
 import { pickChunkSize } from '@/utils/md5'
@@ -86,7 +87,7 @@ function uploadChunkXHR(
     fd.append('file', slice, `part-${index}`)
     const token = resolveBearer()
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', buildUrl('/api/upload/chunk'))
+    xhr.open('POST', buildUrl(uploadApi.chunkUploadUrl()))
     applySecurityHeaders(xhr)
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
@@ -115,16 +116,13 @@ function mergeUploadXHR(
   mimeType?: string,
   signal?: AbortSignal
 ): Promise<{ id?: number }> {
-  // merge 走 JSON body，与 PC 端一致：使用 request() 走拦截器统一加签名/加解密头，
+  // merge 走 JSON body，与 PC 端一致：使用 uploadApi.merge() 走拦截器统一加签名/加解密头，
   // 避免 XHR 手工补签名/加解密容易与拦截器逻辑分叉。
   // 通过 AbortSignal 链路监听取消；timeout: 0 与 PC 端 axios 一致，长耗时大文件不超时。
-  return request<{ id?: number }>({
-    url: '/api/upload/merge',
-    method: 'POST',
-    data: { uploadId, mimeType: mimeType || undefined },
-    timeout: 0,
-    signal,
-  } as any).then((data) => ({ id: data?.id }))
+  return uploadApi.merge(
+    { uploadId, mimeType: mimeType || undefined },
+    signal
+  ).then((data) => ({ id: data?.id }))
 }
 
 // #ifdef H5
@@ -185,7 +183,7 @@ function uploadSimpleFileH5(
         fd.append('folderId', String(folderId))
 
         const xhr = new XMLHttpRequest()
-        xhr.open('POST', buildUrl('/api/files/simple'))
+        xhr.open('POST', buildUrl(uploadApi.simpleUploadUrl()))
         applySecurityHeaders(xhr)
         const token = resolveBearer()
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
@@ -244,11 +242,7 @@ export async function uploadChunkedFile(
 
   if (fileMd5 && !options?.skipMd5Check) {
     try {
-      const check = await request<{ exists: boolean; instant: boolean; fileId: number }>({
-        url: '/api/upload/check-md5',
-        method: 'POST',
-        data: { fileMd5, fileName, fileSize, folderId }
-      })
+      const check = (await uploadApi.checkMd5({ md5: fileMd5, fileName, totalSize: fileSize, folderId })) as any
       if (check.exists && check.instant) {
         onProgress?.(1)
         return { instant: true, fileId: check.fileId }
@@ -266,44 +260,26 @@ export async function uploadChunkedFile(
   let uploadedSet: Set<number>
 
   if (isResume && options?.existingUploadId) {
-    const resume = await request<{
-      uploadId: string
-      chunkSize: number
-      totalChunks: number
-      uploadedChunks: number[]
-    }>({
-      url: `/api/upload/${options.existingUploadId}/resume`,
-      method: 'GET'
-    })
+    const resume = (await uploadApi.resumeChunked(options.existingUploadId)) as any
     uploadId = resume.uploadId
     serverChunkSize = resume.chunkSize
     totalChunks = resume.totalChunks
-    uploadedSet = new Set(resume.uploadedChunks || [])
+    uploadedSet = new Set(resume.existParts || resume.uploadedChunks || [])
     if (totalChunks > 0) {
       onProgress?.(0.05 + (uploadedSet.size / totalChunks) * 0.9)
     }
   } else {
     const chunkSize = pickChunkSize(fileSize)
-    const init = await request<{
-      uploadId: string
-      chunkSize: number
-      totalChunks: number
-      uploadedChunks: number[]
-    }>({
-      url: '/api/upload/init',
-      method: 'POST',
-      data: {
-        fileName,
-        totalSize: fileSize,
-        chunkSize,
-        fileMd5: fileMd5 || undefined,
-        folderId
-      }
-    })
+    const init = (await uploadApi.initChunked({
+      fileName,
+      totalSize: fileSize,
+      md5: fileMd5 || '',
+      folderId
+    })) as any
     uploadId = init.uploadId
     serverChunkSize = init.chunkSize
     totalChunks = init.totalChunks
-    uploadedSet = new Set(init.uploadedChunks || [])
+    uploadedSet = new Set(init.existParts || init.uploadedChunks || [])
     options?.onInit?.({ uploadId, chunkSize: serverChunkSize, totalChunks })
   }
 
@@ -335,7 +311,7 @@ export async function uploadChunkedFile(
       const buffer = fs.readFileSync(filePath, 'binary', start, end - start) as unknown as ArrayBuffer
       fs.writeFileSync(tempPath, buffer, 'binary')
       await uploadFile({
-        url: '/api/upload/chunk',
+        url: uploadApi.chunkUploadUrl(),
         filePath: tempPath,
         name: 'file',
         formData: { uploadId, chunkIndex: String(index) },
@@ -417,7 +393,7 @@ export async function smartUpload(
     signal?.addEventListener('abort', onAbort)
     try {
       const data = (await uploadFile({
-        url: '/api/files/simple',
+        url: uploadApi.simpleUploadUrl(),
         filePath,
         name: 'file',
         formData: { folderId: String(folderId) },
